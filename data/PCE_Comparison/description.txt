@@ -1,2 +1,0 @@
-minimizing miss distance, but an altitude trigger of 6km was used so no real altitude optimization
-all cases use the nominal optimized profile
