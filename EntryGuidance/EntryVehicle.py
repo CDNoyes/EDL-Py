@@ -27,8 +27,8 @@ class EntryVehicle:
         self.CL = CL
         
         self.Thrust = Thrust
-        self.ThrustLoss = ThrustLoss
-        self.Isp = Isp
+        self.ThrustFactor = ThrustFactor
+        self.ThrustApplied = self.Thrust*self.ThrustFactor
         self.g0 = 9.81
         
         
