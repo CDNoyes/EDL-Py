@@ -1,3 +1,5 @@
+from functools import partial
+
 # def IgniteSRP():
 
     # return
@@ -11,6 +13,7 @@ def Parachute(alt,vel):
             Satisfied - bool, true if inside the safe deployment box
             Deploy - bool, true if too low or too slow
     '''
+    
     from scipy.interpolate import interp1d
     v = [438.5,487]
     h = [6,7.98]
@@ -82,11 +85,20 @@ def DeployParachuteTest():
     plt.show()
         
         
-def VelocityTrigger(rangeToGo,alt,vel,velTrigger=360):
+def __VelocityTrigger(rangeToGo,alt,vel,velTrigger=360):
     return vel <= velTrigger
-       
-def AltitudeTrigger(rangeToGo,alt,vel,altTrigger=6):
+
+def VelocityTrigger(velTrigger=6): # These return immediately useable triggers when called with or without an argument
+    return partial(__VelocityTrigger,velTrigger=velTrigger)
+    
+def __AltitudeTrigger(rangeToGo,alt,vel,altTrigger):       
     return alt <= altTrigger
+
+def AltitudeTrigger(altTrigger=6):
+    return partial(__AltitudeTrigger,altTrigger=altTrigger)
+    
+def DragTrigger(drag,dragMin = 0.2*9.81): # Useful for pre-entry
+    return drag>=dragMin
        
 def findTriggerPoint(x,t):
     import numpy as np
