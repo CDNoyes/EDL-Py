@@ -190,26 +190,25 @@ def OptimizeSmooth(x0):
     from scipy.optimize import minimize, differential_evolution
     
     entry = Entry(Trigger=partial(DeployParachute,{'velBias':30}))
-    # bankFun = HEPBankReducedSmooth
-    bankFun = HEPBank
+    bankFun = HEPBankReducedSmooth
+    # bankFun = HEPBank
 
-    # guess = [100,110]
+    # guess = [108,133]
     getIV = lambda x,t: t
     check = lambda T: True
     
-    # newGuess = Optimize(x0,n=2)
     
-    # bounds = [(0,250),(100,350)]
-    bounds = [(0,250),(0,250),(100,350)]
+    bounds = [(0,250),(100,350)]
+    # bounds = [(0,250),(0,250),(100,350)]
     # constraints = [{'type':'ineq','fun': (lambda T:T[1]-T[0]-12) },{'type':'ineq','fun': (lambda T:T[0]) }]
     
     # sol = minimize(HEPCost,np.array(guess),args = (x0, entry, Target(), bankFun, getIV, check),bounds=bounds, method='SLSQP', constraints=constraints, tol=1e-5,options={'disp':True}) # SLSQP
     # sol = minimize(HEPCost,np.array(guess),args = (x0, entry, Target(), bankFun, getIV, check), method='COBYLA', constraints=constraints, tol=1e-5,options={'disp':True}) #COBYLA doesn't handle bounds
     sol = differential_evolution(HEPCost,args = (x0, entry, Target(), bankFun, getIV, check),bounds=bounds, tol=1e-1, disp=True)
 
-    print "The 2 switching times are {}".format(sol.x)
+    print "The 2 switching times are {} with final cost {}".format(sol.x,sol.fun)
 
-    return (lambda x,t: bankFun(getIV(x,t),*sol.x)), sol.x
+    return (lambda x,t: bankFun(getIV(x,t),*sol.x)), sol
 
    
 
