@@ -1,5 +1,5 @@
 %% Baseline viewing
-base = load('C:\Users\cdnoyes\Documents\Experimental\Python\data\Baseline.mat');
+base = load('E:\Documents\EDL\data\Baseline.mat');
 
 figure()
 plot(base.states(:,2),base.states(:,3),'k','LineWidth',3)
@@ -14,9 +14,9 @@ plot(base.states(:,4),(base.states(:,1)-3397e3)/1000,'k','LineWidth',3)
 clear
 % addpath('C:\Users\cdnoyes\Documents\Experimental\Matlab')
 dtr = pi/180;
-base = load('C:\Users\cdnoyes\Documents\Experimental\Python\data\Baseline.mat');
-mc =  load('C:\Users\cdnoyes\Documents\Experimental\Python\data\MC.mat');
-pce = load('C:\Users\cdnoyes\Documents\Experimental\Python\data\PCE2.mat');
+base = load('E:\Documents\EDL\data\PCE_Comparison\Baseline.mat');
+mc =  load('E:\Documents\EDL\data\PCE_Comparison\MC.mat');
+pce = load('E:\Documents\EDL\data\PCE_Comparison\PCE2.mat');
 
 ind = base.index;
 base = rmfield(base,'index');
@@ -45,7 +45,9 @@ for d = 1:length(data)
     end
     %     plot(pce.mean(:,4),(pce.mean(:,1)-3397e3)/1000,'r','LineWidth',4)
     
-    figure
+    figure(100)
+    %     c = {'b','r'};
+    hold all
     plot(states(:,end,4),(states(:,end,1)-3397e3)/1000,'o')
     title(label{d})
     
@@ -107,20 +109,73 @@ for i = [2,3,5,6]
     ylabel(['Error between mean state ',num2str(i),' estimations (deg)'])
     
 end
-
-scales([2,3,5,6]) = dtr;
-scales(1) = 1000;
-scales(4) = 1;
-figure
-for i = 1:6
-    figure
-    plot(en,nonlin(:,i)/scales(i))
-    xlabel('Normalized Energy')
-    ylabel(['Difference between mean estimation and baseline state ',num2str(i),''])
-    
-end
+%
+% scales([2,3,5,6]) = dtr;
+% scales(1) = 1000;
+% scales(4) = 1;
+% figure
+% for i = 1:6
+%     figure
+%     plot(en,nonlin(:,i)/scales(i))
+%     xlabel('Normalized Energy')
+%     ylabel(['Difference between mean estimation and baseline state ',num2str(i),''])
+%
+% end
 % for i = 1:size(samples,1)
 %     figure
 %     hist(samples(i,:))
 %
 % end
+
+%% Cost function comparison
+dtr = pi/180;
+base = load('E:\Documents\EDL\data\CostFunction\Baseline.mat');
+mc =  load('E:\Documents\EDL\data\CostFunction\MC.mat');
+pce = load('E:\Documents\EDL\data\CostFunction\PCE2.mat');
+pdf = load('E:\Documents\EDL\data\CostFunction\samplePDF.mat');
+ind = base.index;
+base = rmfield(base,'index');
+mc.mean = squeeze(mean(mc.states,2));
+data = [mc,pce];
+label = {'MC','PCE'};
+
+err = data(2).states-data(1).states;
+errPer = err./data(1).states;
+errSamp = data(2).samples-data(1).samples;
+errMean = abs(data(1).mean-data(2).mean);
+
+for i=1:length(data)
+    figure(1)
+    subplot(1,2,i)
+    scatter(data(i).samples(1,:)*100,data(i).samples(2,:)*100,[],data(i).states)
+    title(label{i})
+    xlabel('CD offset (%)')
+    ylabel('CL offset (%)')
+    
+    figure(2)
+    subplot(1,2,i)
+    scatter(data(i).samples(3,:)*100,data(i).samples(4,:)*100,[],data(i).states)
+    title(label{i})
+    xlabel('rho0 offset (%)')
+    ylabel('scale height offset (%)')
+    
+    
+end
+
+figure(3)
+subplot(1,2,1)
+scatter(data(1).samples(1,:)*100,data(1).samples(2,:)*100,[],errPer)
+title('Error in Cost Function')
+xlabel('CD offset (%)')
+ylabel('CL offset (%)')
+colorbar
+subplot(1,2,2)
+scatter(data(1).samples(3,:)*100,data(1).samples(4,:)*100,[],errPer)
+title('Error in Cost Function')
+xlabel('rho0 offset (%)')
+ylabel('scale height offset (%)')
+
+
+figure
+plot(pdf.pdf,errPer,'o')
+title('Percent Error in Cost Function vs Sample Density')
