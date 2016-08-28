@@ -20,7 +20,7 @@ class EntryVehicle:
         
     '''
     
-    def __init__(self, mass = 2804.0, area = 15.8, CD = 0, CL = 0, Thrust = 10375, Isp = 260, ThrustFactor = 1):
+    def __init__(self, mass = 2804.0, area = 15.8, CD = 0, CL = 0, Thrust = 60375, Isp = 260, ThrustFactor = 1):
         self.mass = mass
         self.area = area
         self.CD = CD
@@ -30,10 +30,11 @@ class EntryVehicle:
         self.ThrustFactor = ThrustFactor
         self.ThrustApplied = self.Thrust*self.ThrustFactor
         self.g0 = 9.81
+        self.isp = Isp
+        self.ve = self.g0*self.isp
         
-        
-    def mdot(throttle):
-        return -self.Thrust*throttle/(self.g0*self.isp)
+    def mdot(self,throttle):
+        return -self.Thrust*throttle/(self.ve)
         
     def aerodynamic_coefficients(self, M):
         pD = [2.598e4, -1022.0, -2904.0, 678.6, -44.33, 1.373]
