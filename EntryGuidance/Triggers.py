@@ -1,8 +1,52 @@
 from functools import partial
 
-# def IgniteSRP():
 
-    # return
+class Trigger(object):
+    '''
+    Although purely functional triggers work, it's nice for them to encapsulate knowledge about themselves such as their type and trigger point
+    '''
+    def __init__(self, fun, info):
+        self.__trigger = fun
+        self.__info = info
+
+    def __call__(self, input):
+        return self.__trigger(**input)
+
+
+    def dump(self):
+        print self.__info
+
+
+class VelocityTrigger(Trigger):
+    
+    def __Trigger(self, velocity, **kwargs):
+        return velocity <= self.__vt
+    
+    def __init__(self,velTrigger):
+        self.__vt = velTrigger
+        super(VelocityTrigger,self).__init__(self.__Trigger, 'Velocity trigger <= {} m/s'.format(velTrigger))
+
+class AltitudeTrigger(Trigger):
+
+    def __Trigger(self, altitude, **kwargs):       
+        return altitude <= self.__at
+
+    def __init__(self,altTrigger):
+        self.__at = altTrigger*1000 # Assumed that the trigger is defined in km while the input from the sim will definitely be in meters
+        super(AltitudeTrigger,self).__init__(self.__Trigger, 'Altitude trigger <= {} km'.format(altTrigger))    
+        
+class AccelerationTrigger(Trigger):
+    # Can be used with drag, lift, acc magnitude etc, useful for pre-entry
+        
+    def __Trigger(self, **kwargs):
+        return kwargs[self.__name] >= self.__at
+    
+    def __init__(self, accName, accTrigger):
+        self.__at =  accTrigger
+        self.__name = accName
+        super(AccelerationTrigger,self).__init__(self.__Trigger, '{} trigger >= {} m/s^2'.format(accName.capitalize(),accTrigger))   
+    
+# class AngularTrigger(Trigger):
 
 
 def Parachute(alt,vel):
@@ -85,20 +129,8 @@ def DeployParachuteTest():
     plt.show()
         
         
-def __VelocityTrigger(rangeToGo,alt,vel,velTrigger=360):
-    return vel <= velTrigger
-
-def VelocityTrigger(velTrigger=6): # These return immediately useable triggers when called with or without an argument
-    return partial(__VelocityTrigger,velTrigger=velTrigger)
     
-def __AltitudeTrigger(rangeToGo,alt,vel,altTrigger):       
-    return alt <= altTrigger
 
-def AltitudeTrigger(altTrigger=6):
-    return partial(__AltitudeTrigger,altTrigger=altTrigger)
-    
-def DragTrigger(drag,dragMin = 0.2*9.81): # Useful for pre-entry
-    return drag>=dragMin
        
 def findTriggerPoint(x,t):
     import numpy as np
