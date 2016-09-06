@@ -3,7 +3,7 @@ from functools import partial
 
 class Trigger(object):
     '''
-    Although purely functional triggers work, it's nice for them to encapsulate knowledge about themselves such as their type and trigger point
+        Although purely functional triggers work, it's nice for them to encapsulate knowledge about themselves such as their type and trigger point
     '''
     def __init__(self, fun, info):
         self.__trigger = fun
@@ -17,6 +17,8 @@ class Trigger(object):
         print self.__info
 
 
+# Can refactor this a bit: a generic trigger where the name, setpoint, greater than or less than, and units are inputs
+        
 class VelocityTrigger(Trigger):
     
     def __Trigger(self, velocity, **kwargs):
@@ -24,7 +26,7 @@ class VelocityTrigger(Trigger):
     
     def __init__(self,velTrigger):
         self.__vt = velTrigger
-        super(VelocityTrigger,self).__init__(self.__Trigger, 'Velocity trigger <= {} m/s'.format(velTrigger))
+        super(VelocityTrigger,self).__init__(self.__Trigger, 'Velocity <= {} m/s'.format(velTrigger))
 
 class AltitudeTrigger(Trigger):
 
@@ -33,7 +35,7 @@ class AltitudeTrigger(Trigger):
 
     def __init__(self,altTrigger):
         self.__at = altTrigger*1000 # Assumed that the trigger is defined in km while the input from the sim will definitely be in meters
-        super(AltitudeTrigger,self).__init__(self.__Trigger, 'Altitude trigger <= {} km'.format(altTrigger))    
+        super(AltitudeTrigger,self).__init__(self.__Trigger, 'Altitude <= {} km'.format(altTrigger))    
         
 class AccelerationTrigger(Trigger):
     # Can be used with drag, lift, acc magnitude etc, useful for pre-entry
@@ -44,11 +46,28 @@ class AccelerationTrigger(Trigger):
     def __init__(self, accName, accTrigger):
         self.__at =  accTrigger
         self.__name = accName
-        super(AccelerationTrigger,self).__init__(self.__Trigger, '{} trigger >= {} m/s^2'.format(accName.capitalize(),accTrigger))   
+        super(AccelerationTrigger,self).__init__(self.__Trigger, '{} >= {} m/s^2'.format(accName.capitalize(),accTrigger))   
     
 # class AngularTrigger(Trigger):
 
+class MassTrigger(Trigger):
+    def __Trigger(self, mass, **kwargs):
+        return mass <= self.__mt
+        
+    def __init__(self, massTrigger):
+        self.__mt = massTrigger
+        super(MassTrigger,self).__init__(self.__Trigger, 'Mass <= {} kg'.format(massTrigger))
 
+# class LogicalTrigger(Trigger):
+    # '''
+    # A class for combining triggers to form more powerful logics
+    # bools - links between triggers, 0 for OR, 1 for AND
+    # '''
+    # def __init__(self, Triggers, Bools):
+        # self.__triggers = Triggers
+        # self.__bools = Bools
+        
+        
 def Parachute(alt,vel):
     '''
         Checks if the parachute should be deployed based on whether or not the current altitude (in km) and velocity (in m/s)

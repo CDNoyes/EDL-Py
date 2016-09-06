@@ -140,7 +140,7 @@ data = [mc,pce];
 label = {'MC','PCE'};
 
 err = data(2).states-data(1).states;
-errPer = err./data(1).states;
+errPer = 100*err./data(1).states;
 errSamp = data(2).samples-data(1).samples;
 errMean = abs(data(1).mean-data(2).mean);
 
@@ -178,4 +178,18 @@ ylabel('scale height offset (%)')
 
 figure
 plot(pdf.pdf,errPer,'o')
-title('Percent Error in Cost Function vs Sample Density')
+title('Error in PCE Cost Function Approximation ')
+xlabel('Sample Density (-)')
+ylabel('Error (%)')
+
+% samp = 1 + mc.samples;
+% dcd = samp(1,:).*(samp(3,:)-samp(4,:));
+% dcl = samp(2,:).*(samp(3,:)-samp(4,:));
+% 
+% figure
+% scatter(dcd,dcl,[],errPer)
+% title('Error in Cost Function')
+% xlabel('CD offset (%)')
+% ylabel('CL offset (%)')
+
+histogram(err)

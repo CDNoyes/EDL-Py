@@ -7,7 +7,7 @@ from functools import partial
 
 class Entry:
     
-    def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, DegFreedom = 3, Powered = False): #Funs to get called on trigger? To ignite for example
+    def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, DegFreedom = 3, Powered = False):
         self.planet = PlanetModel
         self.vehicle = VehicleModel
         self.powered = Powered
@@ -23,7 +23,7 @@ class Entry:
             print 'Inapproriate number of degrees of freedom.'
             
         
-    def ignite(self,Trigger=None):
+    def ignite(self):
         self.powered = True
             
     

@@ -52,7 +52,6 @@ class Planet:
             print 'Input planet name, '+ self.name +', is not valid'
         
     def atmosphere(self, h):
-        if self.name == 'Mars':
         #Density computation:
             rho0 = self.rho0
             scaleHeight = self.scaleHeight
@@ -61,9 +60,7 @@ class Planet:
             coeff = [223.8, -0.2004e-3, -1.588e-8, 1.404e-13]
             a = sum([c*h**i for i,c in enumerate(coeff)])
             return rho,a
-        else:
-            print 'Atmosphere model not yet implemented!'
-            return float('nan'), float('nan')
+
             
     def range(self,lon0,lat0,heading0,lonc,latc,km=False):
         '''Computes the downrange and crossrange between two lat/lon pairs with a given initial heading.'''

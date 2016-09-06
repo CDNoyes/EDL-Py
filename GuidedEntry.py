@@ -13,7 +13,8 @@ from EntryGuidance.Planet import Planet
 from EntryGuidance.EntryVehicle import EntryVehicle
 from EntryGuidance.Triggers import DeployParachute, findTriggerPoint, AltitudeTrigger, VelocityTrigger
 from EntryGuidance.ParametrizedPlanner import Optimize, HEPBankReducedSmooth, OptimizeSmooth
-#Consider using an fsm
+
+from EntryGuidance.Simulation import Simulation, SRP
 
 def Simulate(sample=None):
     if sample is not None:
@@ -41,18 +42,18 @@ def Simulate(sample=None):
     
     idx = findTriggerPoint(X,time)
     istart = np.argmax(X[0:idx,3])
-    # # range = [entry.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(X[0:idx,1],X[0:idx,2])]
+    range = [entry.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(X[0:idx,1],X[0:idx,2])]
 
     # #In reality, need to compute the range to go to target. The initial condition in entry is set to the range to ignition?
     # entry.ignite(AltitudeTrigger(0.0)) # Initializes the srp phase and sets a condition for terminating the simulation
     
     
     
-    # energy = entry.energy(X[istart:idx,0],X[istart:idx,3])
-    # eInterp = np.linspace(0,1,1000)
-    # tInterp = interp1d(energy,time[istart:idx],'cubic')(eInterp)
-    # xInterp = interp1d(energy,X[istart:idx,:],'cubic',axis=0)(eInterp)
-    # return xInterp
+    energy = entry.energy(X[istart:idx,0],X[istart:idx,3])
+    eInterp = np.linspace(0,1,1000)
+    tInterp = interp1d(energy,time[istart:idx],'cubic')(eInterp)
+    xInterp = interp1d(energy,X[istart:idx,:],'cubic',axis=0)(eInterp)
+    return xInterp
 
 
 
@@ -104,10 +105,10 @@ if __name__ == '__main__':
     n = args.n;
     if args.dir is not None:
         saveDir = './data/{0}/'.format(args.dir)
-        if not os.path.exists(saveDir):
-            os.mkdir(saveDir)
     else:
         saveDir = './data/temp/'
+    if not os.path.exists(saveDir):
+        os.mkdir(saveDir)        
         
     # Define Uncertainty Joint PDF
     CD          = cp.Uniform(-0.10, 0.10)   # CD
