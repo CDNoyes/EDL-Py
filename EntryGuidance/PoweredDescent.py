@@ -1,8 +1,9 @@
 from numpy import sin, cos
+from numpy.linalg import norm
 import numpy as np
 from scipy.integrate import odeint
-from scipy.optimize import root
-
+from scipy.optimize import root, differential_evolution, minimize
+import pyOpt
 
 def sat(x,xmin,xmax):
     return np.fmax(xmin,np.fmin(x,xmax))
@@ -12,18 +13,18 @@ def sec(x):
     return 1.0/cos(x)
 
 
-def getProblem(vertical=False):
+def getProblem():
     problem = {}
     # Problem Info #
     isp = 268
     
-    problem['x0'] = -3200*(not vertical)
+    problem['x0'] = -3200
     problem['xf'] = 0
     
     problem['y0'] = 2000
     problem['yf'] = 0
     
-    problem['u0'] = 625*(not vertical)
+    problem['u0'] = 625
     problem['uf'] = 0
     
     problem['v0'] = -270
@@ -39,29 +40,44 @@ def getProblem(vertical=False):
     problem['Tmax'] = thrust
     problem['Tmin'] = thrust*0.1  # 10% throttle
 
-    if vertical:
-        fpa0 = -np.pi/2.0
-    else:
-        V0 = (problem['u0']**2 + problem['v0']**2)**0.5
-        fpa0 = np.arcsin(problem['v0']/V0)
-    problem['mu0'] = np.pi+fpa0
+    # V0 = (problem['u0']**2 + problem['v0']**2)**0.5
+    # fpa0 = np.arcsin(problem['v0']/V0)
+    # problem['mu0'] = np.pi+fpa0
     problem['mudotmax'] = 40*np.pi/180  # 40 deg/s
 
     problem['gain'] = 1000
     problem['tf'] = None  
     
-    # problem['sol0'] = np.array([0, 0, 3, 0, -1, -10, 12])  # The solution to the initial problem beginning the homotopy.
-    problem['sol0'] = np.array([0, 0, 2, -2, -1, 17, 0.001])
-    problem['solv'] = np.array([0, 0.0431, 0, -2.6119, -0.8889, 0, 9.458]) # Costates of the corresponding vertical solution
+    # problem['sol0'] = np.array([0, 0.013355, 0, -2.433418, -0.756649, 0, 9.7562])  # Best known sol for h = 0
+    # problem['sol1'] = np.array([0.080372, 0.126816, 2.667427, -0.361754, -0.755004, -9.279743, 12.319111]) #  Best known solution for h = 1
+
+    problem['sol0'] = np.array([0, 0.013355, 0, -2.433418, -0.756649, 9.7562])  # Best known sol for h = 0
+    # problem['sol1'] = np.array([0.080372, 0.126816, 2.667427, -0.361754, -0.755004, 12.319111]) #  Best known solution for h = 1
+    problem['sol1'] = np.array([0.08066016,   0.12672358,   2.67065948, - 0.36033732, - 0.75492235,    12.35255585])
+    problem['bounds'] = [(0,0.1), (0,0.2), (0,3), (-2.5,0), (-0.8,-0.7), (9,13)]
     problem['h'] = 0
     return problem
 
+
+def getInitialState(guess,problem):
+    lx,ly,lu0,lv0,lm0,tf = guess
+    lmu0 = 0
+    h = problem['h']
+    c1 = sin(h * np.pi / 2)
+    c2 = cos(h * np.pi / 2)
+    y0 = np.sqrt(problem['y0']**2 + (c2*problem['x0'])**2)
+    v0 = -np.sqrt(problem['v0']**2 + (c2*problem['u0'])**2)
+    mu0 = np.pi + np.arctan2(v0, problem['u0']*c1)
+    x0 = np.array([problem['x0']*c1, y0, problem['u0']*c1, v0, problem['m0'], mu0, lm0, lmu0,0])
+
+    return x0
 
 # #################### #
 # Pontryagin Approach  #
 # #################### #
 
-def  EoM(X,t, lx,ly,lu0,lv0, problem, output=False):
+
+def  EoM(X, t, lx,ly,lu0,lv0, problem, output=False):
     # Defines the equations of motion for 2-D powered flight and the associated costates.
     # Only two costates needs to be integrated numerically.
 
@@ -69,32 +85,31 @@ def  EoM(X,t, lx,ly,lu0,lv0, problem, output=False):
     
     g = 3.7
 
-    x, y, u, v, m, mu, lm, lmu = X
+    x, y, u, v, m, mu, lm, lmu, e = X
     lu = lu0-lx*t
     lv = lv0-ly*t
     target = np.pi+np.arctan2(lv, lu)
+    dmu = sat((target*0.9975-mu)*20 + e*1,-problem['mudotmax'],problem['mudotmax'])
+    
+    # if t == 0:
+        # setattr(EoM,'reached',False)
+        # setattr(EoM,'sign',np.sign(lmu))
 
-    # if not hasattr(EoM,'reached'):
-    if t == 0:
-        setattr(EoM,'reached',False)
-        setattr(EoM,'sign',np.sign(lmu))
-
-    # if (not EoM.reached) and (np.sign(lmu) != EoM.sign):
-    if (not EoM.reached) and (EoM.sign*lmu <= 0.004):
-        EoM.reached = True
+    # if (not EoM.reached)  and EoM.sign*(target-mu)>=1: #and (EoM.sign*lmu <= -0.001)
+        # EoM.reached = True
 
     tTurn = np.abs(np.pi/2.0-mu)/problem['mudotmax']
     if (t+tTurn) >= problem['tf']:
         target = np.pi/2.0
         dmu = np.sign(target-mu)*problem['mudotmax']
-    else:
-        if EoM.reached:
-            if np.abs(lu) <= 1e-8:
-                dmu = sat((target - mu) * 100, -problem['mudotmax'], problem['mudotmax'])
-            else:
-                dmu = (lx*lv/lu**2 - ly/lu)*cos(mu)**2 + sat((target-mu)*100,-problem['mudotmax'],problem['mudotmax'])
-        else:
-            dmu = -EoM.sign*np.sign(lu*sin(mu)-lv*cos(mu))*problem['mudotmax']
+    # else:
+        # if EoM.reached:
+            # if np.abs(lu) <= 1e-5:
+                # dmu = 0
+            # else:
+                # dmu = (lx*lv/lu**2 - ly/lu)*cos(mu)**2 + sat((target-mu)*0,-problem['mudotmax'],problem['mudotmax'])
+        # else:
+            # dmu = -EoM.sign*np.sign(lu*sin(mu)-lv*cos(mu))*problem['mudotmax']
 
     s = (lu*cos(mu)+lv*sin(mu)) - m*lm/problem['ve']
     if s <= 0:
@@ -108,47 +123,21 @@ def  EoM(X,t, lx,ly,lu0,lv0, problem, output=False):
     dv = T*sin(mu)/m-g
     dm = -T/problem['ve']
     dlm = T*(lu*cos(mu)+lv*sin(mu))/m**2
-    dlmu = T*(lu*sin(mu)-lv*cos(mu))/m
+    dlmu = 0*T*(lu*sin(mu)-lv*cos(mu))/m
     
     if output:
         return T, dmu
     else:
-        return np.array([dx, dy, du, dv, dm, dmu, dlm, dlmu])*problem['tf']
+        return np.array([dx, dy, du, dv, dm, dmu, dlm, dlmu,(target-mu)])*problem['tf']
 
 
-def EoM_Simple(X,t,problem):
-    return t*np.ones_like(X)*np.sqrt(2*problem['tf'])
+def PMPCost(guess,problem,opt=False):
 
-    
-def EoM_Homotopy(X,t, lx,ly,lu0,lv0, problem):
-    h = problem['h']
-    return (1-h)*EoM_Simple(X,t,problem)+h*EoM(X,t, lx,ly,lu0,lv0, problem)
-    
-    
-def SimpleCost(guess,problem):
-    g1 = guess[0:6] - problem['sol0'][0:6]
-
-    lx,ly,lu0,lv0,lm0,lmu0,tf = guess
+    lx,ly,lu0,lv0,lm0,tf = guess
+    lmu0 = 0
     problem['tf'] = tf
-    x0 = np.array([lx,ly,lu0,lv0,lm0,lmu0,1,1])
-    X = odeint(EoM_Homotopy, x0, np.linspace(0,1,50), args=(lx, ly, lu0, lv0, problem))
-
-    g = np.hstack((g1,X[-1,4]-lm0-tf))
-    return g
-
-
-def HomotopyCost(guess,problem):
-    h = problem['h']
-    return (1-h)*SimpleCost(guess,problem) + h*PMPCost(guess,problem,EoM_Homotopy)
-
-
-def PMPCost(guess,problem,dynamics=EoM):
-
-    lx,ly,lu0,lv0,lm0,lmu0,tf = guess
-    problem['tf'] = tf
-    x0 = np.array([problem['x0'],problem['y0'],problem['u0'],problem['v0'],problem['m0'],problem['mu0'],lm0,lmu0])*problem['h'] + \
-         np.array([problem['xf'], problem['yf'], problem['uf'], problem['vf'], problem['m0']*0.5, problem['muf'], lm0, lmu0]) * (1-problem['h'])
-    X = odeint(dynamics, x0, np.linspace(0,1,500), args=(lx, ly, lu0, lv0, problem))
+    x0 = getInitialState(guess,problem)
+    X = odeint(EoM, x0, np.linspace(0,1,500), args=(lx, ly, lu0, lv0, problem))
 
     imax = X.shape[0]
     for i in range(imax):
@@ -158,57 +147,115 @@ def PMPCost(guess,problem,dynamics=EoM):
             break
 
     Xf = X[imax-1,:]
-    xf,yf,uf,vf,mf,muf,lmf,lmuf = Xf
+    xf,yf,uf,vf,mf,muf,lmf,lmuf,e = Xf # 
     luf = lu0-lx*tf
     lvf = lv0-ly*tf
-    dx, dy, du, dv, dm, dmu, dlm, dlmu = EoM(Xf, 1, lx, ly, lu0, lv0, problem, output=False)
+    dx, dy, du, dv, dm, dmu, dlm, dlmu,edot = EoM(Xf, 1, lx, ly, lu0, lv0, problem, output=False)/tf
 
-    Hf = lx*uf + ly*vf + luf*du + lvf*dv + lmf*dm + lmuf*dmu 
+    Hf = lx*uf + ly*vf + luf*du + lvf*dv + lmf*dm #+ lmuf*dmu 
 
     g = [
       # Equality Constraints
-        (xf-problem['xf'])/100,
-        (yf-problem['yf'])/100,
-        (uf-problem['uf'])/10,
-        (vf-problem['vf'])/10,
+        (xf-problem['xf'])/1,
+        (yf-problem['yf'])/1,
+        (uf-problem['uf'])/1,
+        (vf-problem['vf'])/1,
         1*(muf-problem['muf']),   # Ensures a vertical landing, could be automatically satisfied
 
-        1*Hf,                     # Free tf, transversality condition
+        # 1*Hf,                     # Free tf, transversality condition
         lmf + 1]                  # Free final mass, so the associated costate is fixed at the final time
+    if opt:
+        return sum(np.fabs(g))
+    else:
+        return np.array(g) 
 
-    return np.array(g)
+
+def PMPCostScalar(guess, problem):
+    J, c = PMPCost(guess, problem,opt=True)
+
+    return J,c,0
+
+
+def PMPDE(h, guess):
+    problem = getProblem()
+    problem['h'] = h
+
+    # bounds = [(0.8*val, 1.2*val) for val in guess]
+    bounds = problem['bounds']
+
+    sol = differential_evolution(PMPCost, bounds, args=(problem, True), disp=True, tol=0.01, polish=False)
+    # sol = minimize(PMPCost, guess, args=(problem, True), method='Nelder-Mead')
+
+    return sol.x, problem
 
 
 def PMPOpt():
-    import matplotlib.pyplot as plt
-
-    vertical = not True
-    problem = getProblem(vertical=vertical)
+    problem = getProblem()
     problem['h'] = 1
-    if vertical:
-        guess = problem['solv']
-    else:
-        # guess = np.array([0.08042227,   0.12706492,   2.66632126,  -0.36258304,  -0.75506248,  -9.26403713,  12.26226516])
-        guess = np.array([0.0829,   0.1328,   2.6765,  -0.3318,  -0.7549,  -9.1742,  12.21])
+    guess = problem['sol{}'.format(problem['h'])]
 
-    # guess = [g*1.01 for g in guess]
 
-    sol = root(PMPCost, guess, args=(problem,EoM),tol=1e-4)
+    opt = pyOpt.Optimization('Optimal PDG', lambda c: PMPCostScalar(c, problem))
+
+    opt.addVar('lambdaX',  'c', lower=0, upper=.25, value=guess[0])
+    opt.addVar('lambdaY',  'c', lower=0, upper=.25, value=guess[1])
+    opt.addVar('lambdaU',  'c', lower=0, upper=3, value=guess[2])
+    opt.addVar('lambdaV',  'c', lower=-3, upper=0, value=guess[3])
+    opt.addVar('lambdaM',  'c', lower=-1, upper=0, value=guess[4])
+    # opt.addVar('lambdaMu', 'c', lower=-10, upper=0, value=guess[5])
+    opt.addVar('tf',       'c', lower=guess[6]-1, upper=guess[6]+1, value=guess[6])
+
+    opt.addCon('xf','e')
+    opt.addCon('yf','e')
+    opt.addCon('vf','e')
+    opt.addCon('uf','e')
+    opt.addCon('lambdaMf','e')
+
+    opt.addObj('J')
+
+    # optimizer = pyOpt.ALGENCAN()
+    # optimizer.setOption('epsfeas',1e-2)
+    # optimizer.setOption('epsopt',1e-1)
+
+    optimizer = pyOpt.SLSQP()
+    optimizer.setOption('ACC',1e-1)
+
+    fopt, copt, info = optimizer(opt, sens_step=1e-5)
+
+    print opt.solution(0)
+    print info
+
+    return copt, problem
+
+
+
+def PMPSolve():
+    problem = getProblem()
+    problem['h'] = 0.01
+    guess = problem['sol0']
+
+    sol = root(PMPCost, guess, args=(problem),tol=1e-4,options={'eps': 1e-8})
     xsol = sol['x']
     print sol['message']
     print "Number of function evaluations: {}\n".format(sol['nfev'])
-    print xsol
+    print "Solution: {}".format(xsol)
 
     # xsol = guess
-    print PMPCost(xsol, problem)
-    t, x,y, u,v, udot,vdot, m,T, mu,mudot, lx,ly,lu,lv,lm,lmu, s, H,Hp,Hv,Hm,Hmu = PMPParse(xsol,problem)
+    print "Constraint Satisfaction and Optimality Measures:\n{}".format(PMPCost(xsol, problem))
+    return sol, problem
+
+
+def ShowSolution(sol,problem):
+    import matplotlib.pyplot as plt
+
+    t, x,y, u,v, udot,vdot, m,T, mu,mudot, lx,ly,lu,lv,lm,lmu, s, H,Hp,Hv,Hm,Hmu = PMPParse(sol,problem)
 
     if np.abs(lu[0]) > 1e-12:
         mu_dot_opt = (lx*lv/lu**2 - ly/lu)*cos(mu)**2
     else:
         mu_dot_opt = np.zeros_like(t)
-    print lv[-1]
-    print (-mudot[-1]*lmu[-1]+lm[-1]*problem['Tmin']/problem['ve'])/(problem['Tmin']/m[-1] - 3.7)
+    # print lv[-1]
+    # print (-mudot[-1]*lmu[-1]+lm[-1]*problem['Tmin']/problem['ve'])/(problem['Tmin']/m[-1] - 3.7)
     print("Prop used: {} kg".format(m[0]-m[-1]))
 
     plt.figure()
@@ -253,28 +300,31 @@ def PMPOpt():
         plt.plot(t,l)
     plt.title('Costates')
 
-    plt.figure()
+    # plt.figure()
     # plt.plot(t,s)
-    plt.plot(t,lu*sin(mu)-lv*cos(mu))
-    plt.title('Switching fun')
+    # plt.plot(t,lu*sin(mu)-lv*cos(mu))
+    # plt.title('Switching fun')
 
-    plt.figure()
-    plt.plot(t,H)
+    # plt.figure()
+    # plt.plot(t,H)
     # for h in [Hp,Hv,Hm,Hmu]:
     #     plt.plot(t,h)
-    plt.title('Hamiltonian')
+    # plt.title('Hamiltonian')
     # plt.legend(('H','pos','vel','mass','mu'))
 
     plt.show()    
 
 
+
 def PMPParse(guess,problem):
-    print "Parsing solution:"
+    print "Parsing solution with h = {}:".format(problem['h'])
     g = 3.7
-    lx,ly,lu0,lv0,lm0,lmu0,tf = guess
+    lx,ly,lu0,lv0,lm0,tf = guess
+    lmu0 = 0
     problem['tf'] = tf
-    x0 = np.array([problem['x0'],problem['y0'],problem['u0'],problem['v0'],problem['m0'],problem['mu0'],lm0,lmu0])*problem['h'] + \
-         np.array([problem['xf'], problem['yf'], problem['uf'], problem['vf'], problem['m0']*0.5, problem['muf'], lm0, lmu0]) * (1-problem['h'])
+
+    x0 = getInitialState(guess,problem)
+
     tau = np.linspace(0, 1, 500)
     t = tau*tf  # Turn tau into true time
 
@@ -311,81 +361,104 @@ def PMPParse(guess,problem):
     return t,x,y,u,v,udot,vdot,m,T,mu,mu_dot, lx*np.ones_like(t),ly*np.ones_like(t),lu,lv,lm,lmu, s, H, Hp,Hv,Hm,Hmu
 
 
-def testSimple():
-    problem = getProblem()
-    guess = problem['sol0']
-    print SimpleCost(guess,problem)
-    sol = root(SimpleCost, guess, args=(problem), tol=1e-12)
-    xsol = sol['x']
-    print sol['message']
-    print "Number of function evaluations: {}\n".format(sol['nfev'])
-    print xsol
-    return None
-
-
 def Homotopy():
+    import matplotlib.pyplot as plt
 
     problem = getProblem()
     guess = problem['sol0']
-    print PMPCost(guess,problem)
+    print PMPCost(guess, problem)
 
-    guess = np.array([0.08042227,   0.12706492,   2.66632126,  -0.36258304,  -0.75506248,  -9.26403713,  12.26226516])
-    problem['h'] = 1
-    print PMPCost(guess,problem)
+    # guess = np.array([0.08042227,   0.12706492,   2.66632126,  -0.36258304,  -0.75506248,  -9.26403713,  12.26226516])
+    # problem['h'] = 1
+    # print PMPCost(guess,problem)
 
     h = 0
-    Iu = 15  # Reasonable number of iterations
-    dh = 0.00000001 # Initial stepsize
+    hf = 1  # Final value of h (should be 1 for full homotopy solution)
+    Ilow = 15  # Reasonable number of iterations % for root, 15 and 75 work well; for neldermead,200,500
+    Ihigh = 75
+    dh = 0.01  # Initial stepsize
     dh_max = 0.1
-    dh_min = 0.0001
+    dh_min = 0.001
     guess = problem['sol0']
-    # h += dh
+    h += dh
+    method =  'hybr' # 'lm'
+    history = {'h': [0], 'sol': [guess]}
+
     while True:
 
         problem['h'] = h
         print "Current step: {}".format(h)
         print "Current stepsize: {}".format(dh)
         print "Current guess: {}".format(guess)
-        sol = root(PMPCost, guess, args=(problem), tol=1e-4)
+        sol = root(PMPCost, guess, args=(problem), tol=1e-4, method=method, options={'eps': 1e-8})
+        # sol = minimize(PMPCost, guess, args=(problem, True), method='TNC',bounds=problem['bounds'])
+
         print sol['message']
 
         if np.any(np.abs(sol['x'])>1e3):
             print "Homotopy aborted because the solution is diverging."
-            return sol['x']
+            return sol['x'], problem
 
-        if "converged" in sol['message']:
-            if np.abs(h - 1) <= 1e-6:
-                print "Final Solution: {}".format(sol['x'])
-                return sol['x']
+        if sol['success']:
+            history['h'].append(h)
+            history['sol'].append(sol['x'])
+            if np.abs(h - hf) <= 1e-6:
+                print "Final Solution (h={}): {}".format(h,sol['x'])
+                return sol['x'], problem
             guess = sol['x']
             print "Number of function evaluations: {}".format(sol['nfev'])
             print "New guess: {}\n".format(guess)
             # Update the stepsize:
-            if sol['nfev'] <= Iu:
+            if sol['nfev'] <= Ilow:
                 print 'Increasing stepsize due to low iterations'
                 dh *= 1.8
-            elif sol['nfev'] >= 75:
+            elif sol['nfev'] >= Ihigh:
                 dh *= 0.5
-            dh = sat(dh,dh_min,np.min((dh_max,1-h)))
+            dh = sat(dh,dh_min,np.min((dh_max,hf-h)))
             h += dh
 
         else:
             if dh == dh_min:
                 print "Homotopy aborted because the last step failed and stepsize is equal to minimum stepsize."
-                return sol['x']
+                return sol['x'], problem
             print "Decreasing stepsize from {} to {} and rerunning current guess.\n".format(dh,dh/2.0)
             h = np.max((0,h-0.5*dh))
             dh *= 0.5
             dh = sat(dh,dh_min,dh_max)
 
-def testODE():
-    fun = lambda x,t: 0
+        sols = np.vstack(history['sol'])
+        plt.plot(history['h'], sols)
 
-    sol = odeint(fun,1,0.1)
-    print sol
 
-if __name__=='__main__':
-    PMPOpt()
-    # testSimple()
-    # Homotopy()
-    # testODE()
+
+
+def test_root():
+
+    for method in ['hybr','lm','broyden1','broyden2','anderson']:
+        print method
+        sol = root(nonsmooth_fun, [30,10], tol=1e-5, method=method)
+        print sol['x']
+    return None
+
+
+def nonsmooth_fun(x):
+    if x[1] < 0 :
+        g2 = x[1]*(x[1]-1)
+    else:
+        g2 = -2*x[1]*(x[1]+1)
+    return np.fabs(x[0]**2-9), g2
+
+if __name__ == '__main__':
+    # Sol, prob = PMPSolve()
+    # sol = Sol['x']
+
+    sol, prob = Homotopy()
+
+    # sol, prob = PMPOpt()
+
+    # prob['h'] = 1
+    # sol = prob['sol{}'.format(prob['h'])]
+    # test_root()
+    # problem = getProblem()
+    # sol, prob = PMPDE(1, 0)
+    ShowSolution(sol, prob)
