@@ -4,23 +4,12 @@ from scipy.integrate import odeint, trapz
 from scipy import linalg
 from scipy.interpolate import interp1d
 from scipy.io import savemat, loadmat
-
-
-
-# cmd_folder =    os.path.realpath(
-                # os.path.dirname(
-                # os.path.abspath(os.path.split(inspect.getfile( inspect.currentframe() ))[0])))
-
-# if cmd_folder not in sys.path:
-    # sys.path.insert(0, cmd_folder)
-
-# from Utils.redirect import stdout_redirected
     
 import logging
 from transitions import Machine, State, logger
-from EntryGuidance.EntryEquations import Entry
-from EntryGuidance.Planet import Planet
-from EntryGuidance.EntryVehicle import EntryVehicle
+from EntryEquations import Entry
+from Planet import Planet
+from EntryVehicle import EntryVehicle
 
 # Graphing specific imports
 from transitions.extensions import GraphMachine as MGraph
@@ -44,25 +33,29 @@ class Simulation(Machine):
         
     '''
     
-    def __init__(self, states, conditions, cycle = None):
-        # logger.setLevel(logging.INFO)
+    def __init__(self, states, conditions, cycle=None, output=True):
 
         if len(states) != len(conditions):
             raise ValueError("Number of states must equal number of conditions.")
             
         if cycle is None:
+            print "Simulation using default guidance cycle."
             cycle = Cycle()
         
         self.__conditions = conditions
         self.__states = states
-        self.cycle = cycle          # The guidance cycle governing the simulation. Data is logged ever cycle.duration seconds while trigger checking and control updates occur 10x per cycle.
+        self.__output = output
+        
+        self.cycle = cycle          # The guidance cycle governing the simulation. Data logging and control updates occur every cycle.duration seconds while trigger checking happens 10x per cycle
         self.time = 0.0             # Current simulation time
-        self.times = [0.0]          # Collection of times at which the state history is logged
+        self.times = []             # Collection of times at which the state history is logged
         self.index = 0              # The index of the current phase
         self.sample = None          # Uncertainty sample to be run
         self.x = None               # Current state vector
-        self.history = []           # Collection of state sectors
-        self.ie = []                # Indices of event transitions
+        self.history = []           # Collection of state vectors
+        self.u = None               # Previous controls
+        self.control_history = []   # Collection of controls
+        self.ie = [0]                # Indices of event transitions
         self.edlModel = None        # The dynamics and other functions associated with EDL
         self.triggerInput = None    # An input to triggers and controllers
         
@@ -85,22 +78,21 @@ class Simulation(Machine):
         while not self.__conditions[self.index](self.triggerInput):
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
-
         return True
     
     def __step(self):
         if self.edlModel.powered:
-            throttle, mu = self.control[self.index](**self.triggerInput) #Pass stuff to the controllers here!
-            sigma = 0
+            throttle, mu = self.control[self.index](**self.triggerInput)
+            sigma = 0.
         else:
             sigma = self.control[self.index](**self.triggerInput)
-            throttle = 0
-            mu = 0
+            throttle = 0.
+            mu = 0.
             
             
         X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,10))
         #find nearest endpoint here
-        self.update(X,self.cycle.duration)
+        self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
         # return X
     
     def run(self, InitialState, Controllers, InputSample=None):
@@ -113,20 +105,28 @@ class Simulation(Machine):
         
         self.sample = InputSample
         self.edlModel = Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL))
-        self.update(np.asarray(InitialState),0)
+        self.update(np.asarray(InitialState),0.0,None)
         self.control = Controllers
         while not self.is_Complete():
             temp = self.advance()
     
         self.history = np.vstack(self.history) # So that we can work with the data more easily than a list of arrays
+        self.control_history.append(self.u) # So that the control history has the same length as the data;
+        self.control_history = np.vstack(self.control_history) 
         
+        return self.postProcess()
 
        
-    def update(self,x,dt):
+    def update(self,x,dt,u):
         if len(x.shape) == 1:
             self.x = x
         else:
             self.x = x[-1,:]
+        
+        if u is not None:
+            self.u = u    
+            self.control_history.append(self.u)
+            
         self.history.append(self.x)
         self.time += dt
         self.times.append(self.time)
@@ -135,11 +135,12 @@ class Simulation(Machine):
         
     def printState(self):        
         
-        print('Transitioning from state {} to {} because the following condition was met:'.format(self.__states[self.index],self.state))
-        print(self.__conditions[self.index].dump())
-        # print('t = {}: {}\n'.format(self.time,self.x))
-        for key,value in self.triggerInput.items():
-            print '{} : {}\n'.format(key,value)
+        if self.__output:
+            print('Transitioning from state {} to {} because the following condition was met:'.format(self.__states[self.index],self.state))
+            print(self.__conditions[self.index].dump())
+            # print('t = {}: {}\n'.format(self.time,self.x))
+            for key,value in self.triggerInput.items():
+                print '{} : {}\n'.format(key,value)
         self.index += 1
         self.ie.append(len(self.history)-1)
     
@@ -158,6 +159,7 @@ class Simulation(Machine):
               'rangeToGo': self.x[6],
               'drag'     : D[0],
               'lift'     : L[0],
+              'vehicle'  : self.edlModel.vehicle
               }
         
         return d
@@ -165,29 +167,58 @@ class Simulation(Machine):
     def ignite(self):
         self.edlModel.ignite()
         
-    def plot(self):   
+    def plot(self, plotEvents = True):   
         import matplotlib.pyplot as plt
-        plt.figure()
-        plt.plot(self.history[:,3], self.edlModel.altitude(self.history[:,0],km=True))
-        for i in self.ie:
-            plt.plot(self.history[i,3],self.edlModel.altitude(self.history[i,0],km=True),'o')
-            
-        plt.figure()
-        plt.plot(self.history[:,1]*180/np.pi, self.history[:,2]*180/np.pi)
-        for i in self.ie:
-            plt.plot(self.history[i,1]*180/np.pi, self.history[i,2]*180/np.pi,'o')
-
-        plt.show()
         
+        # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
+        
+        
+        plt.figure(1)
+        plt.plot(self.history[:,3], self.edlModel.altitude(self.history[:,0],km=True), lw = 3)
+        if plotEvents:
+            for i in self.ie:
+                plt.plot(self.history[i,3],self.edlModel.altitude(self.history[i,0],km=True),'o',label = self.__states[self.ie.index(i)], markersize=12)
+        plt.legend(loc='upper left')   
+        plt.xlabel('Velocity (m/s)')
+        plt.ylabel('Altitude (km)')
+        
+        plt.figure(2)
+        plt.plot(self.history[:,1]*180/np.pi, self.history[:,2]*180/np.pi)
+        if plotEvents:        
+            for i in self.ie:
+                plt.plot(self.history[i,1]*180/np.pi, self.history[i,2]*180/np.pi,'o',label = self.__states[self.ie.index(i)])
+        # plt.legend()
+        
+        plt.figure(3)
+        plt.plot(self.history[:,3], self.history[:,6]/1000)
+        if plotEvents:
+            for i in self.ie:
+                plt.plot(self.history[i,3],self.history[i,6]/1000,'o',label = self.__states[self.ie.index(i)])
+        # plt.legend(loc='upper left')   
+        plt.xlabel('Velocity (m/s)')
+        plt.ylabel('Range to Target (km)')
+        
+        # plt.figure(4)
+        # plt.plot(self.times, np.degrees(self.control_history[:,0]))
+        # for i in self.ie:
+            # plt.plot(self.times[i], np.degrees(self.control_history[i,0]),'o',label = self.__states[self.ie.index(i)])
+        # plt.legend(loc='best')   
+        # plt.xlabel('Time (s)')
+        # plt.ylabel('Bank Angle (deg)')
+        
+
         
     # def analyze(self):
     
     def postProcess(self, dict=False):
-        
+
+        bank = np.degrees(self.control_history[:,0])
+
         r,theta,phi = self.history[:,0], np.degrees(self.history[:,1]), np.degrees(self.history[:,2])
         v,gamma,psi = self.history[:,3], np.degrees(self.history[:,4]), np.degrees(self.history[:,5])
         s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
         
+        x0 = self.history[0,:]
         range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
         energy = self.edlModel.energy(r,v)
         # eInterp = np.linspace(0,1,1000)
@@ -195,10 +226,9 @@ class Simulation(Machine):
         # xInterp = interp1d(energy,self.history[istart:idx,:],'cubic',axis=0)(eInterp)  
             
         h = [self.edlModel.altitude(R,km=True) for R in r]
-        bank = [np.degrees(hep(xx,tt)) for xx,tt in zip(self.history,self.times)]
         L,D = self.edlModel.aeroforces(r,v)
-        
-        data = np.c_[time, energy, bank, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D]
+
+        data = np.c_[self.times, energy, bank, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D]
         self.output = data
         return data
         
@@ -206,16 +236,19 @@ class Simulation(Machine):
         print "Resetting simulation states.\n"
         self.set_state(self.__states[0])
         self.time = 0.0
-        self.times = [0.0]
+        self.times = []
         self.index = 0
         self.sample = None
         self.x = None # Current State vector
         self.history = [] # Collection of State Vectors
-        self.ie = []
+        self.u = None
+        self.control_history = [] # Collection of State Vectors
+        self.ie = [0]
         self.edlModel = None
         self.triggerInput = None
         self.control = None
         self.output = None
+        
     # def save(self): #Create a .mat file
     
     
@@ -225,27 +258,27 @@ def SRP():
     from Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
     states = ['PreEntry','Entry','SRP']
     def combo(inputs):
-        return (AltitudeTrigger(0.1)(inputs) or MassTrigger(1000)(inputs))
-    combo.dump = MassTrigger(1000).dump    
-    conditions = [AccelerationTrigger('drag',2), VelocityTrigger(500), combo]
+        return (AltitudeTrigger(2)(inputs) or MassTrigger(1000)(inputs))
+    combo.dump = AltitudeTrigger(2).dump    
+    conditions = [AccelerationTrigger('drag',2), VelocityTrigger(700), VelocityTrigger(50)]
     input = { 'states' : states,
               'conditions' : conditions }
 
     return input
               
 def testSim():
-    # from EntryGuidance.ParamtrizedPlanner import HEPBankReducedSmooth
+
     sim = Simulation(cycle=Cycle(1),**SRP())
-    # f = lambda T: HEPBankReducedSmooth(T, 106,133)
     f = lambda **d: 0
-    f2 = lambda **d: (1,3.04)
+    f2 = lambda **d: (1,2.88)
     c = [f,f,f2]
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   780e3)
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
     sim.run(x0,c)
     return sim
-    
+ 
+ 
 # #########################
 # Visualization Extension #           
 # #########################
@@ -305,3 +338,55 @@ def fsmGif(states = range(4) ):
         image.thumbnail(size,Image.ANTIALIAS)
     output = 'SimulationFSM.gif'
     writeGif(output,images,duration=1)
+    
+    
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    import multiprocessing as mp
+    import chaospy as cp
+    import os
+    from Simulation import Simulation, SRP
+    from functools import partial
+    from scipy.io import savemat, loadmat
+    import JBG
+    from ParametrizedPlanner import HEPBankReducedSmooth
+    import matplotlib.pyplot as plt
+    
+    # Parse Arguments and Setup Pool Environment
+    mp.freeze_support()
+    # pool = mp.Pool(mp.cpu_count()/2.)
+    pool = mp.Pool(4)     
+        
+    # Define Uncertainty Joint PDF
+    CD          = cp.Uniform(-0.10, 0.10)   # CD
+    CL          = cp.Uniform(-0.10, 0.10)   # CL
+    rho0        = cp.Normal(0, 0.0333)      # rho0
+    scaleHeight = cp.Uniform(-0.05,0.05)    # scaleheight
+    pdf         = cp.J(CD,CL,rho0,scaleHeight)
+    
+    n = 30
+    samples = pdf.sample(n)    
+    p = pdf.pdf(samples)
+
+    sim = Simulation(cycle=Cycle(1),**SRP())
+    f = lambda **d: 0
+    f1 = lambda **d: HEPBankReducedSmooth(d['time'], t1=30, t2=100)
+    # f2 = lambda **d: (1,2.87)
+    f2 = JBG.controller
+    c = [f,f1,f2]
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   935e3)
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    sim.run(x0,c)
+    sim.plot()
+    # mc = partial(sim.run, x0, c, output=False)
+    
+    # for s in samples.T:
+        # sim.run(x0,c,s)
+        # sim.plot()
+    plt.show()
+
+    # stateTensor = pool.map(mc,samples.T)
+    # stateTensor = [mc(s) for s in samples.T]
+    saveDir = './data/'
+    # savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})
