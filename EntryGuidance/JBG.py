@@ -8,7 +8,7 @@ from EntryVehicle import EntryVehicle
 # Fuel optimal guidance with a constant throttle, constant thrust angle, and unconstrained downrange
 
 def controller(**d):
-''' Wraps the solve function to accept the Simulation input dict '''
+    ''' Wraps the solve function to accept the Simulation input dict '''
 
     fpa = d['fpa']
     v = d['velocity']
