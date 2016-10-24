@@ -3,7 +3,7 @@ from EntryEquations import Entry
 from Triggers import DeployParachute, findTriggerPoint
 from Target import Target
 from scipy.integrate import odeint
-from Utils.redirect import stdout_redirected
+# from Utils.redirect import stdout_redirected
 from functools import partial
 
 def HEPBankReduced(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians(85.)):
@@ -81,7 +81,14 @@ def HEPBankReducedSmooth(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians
         else:
             bank.append(minBank)
         
-    return bank
+    if isScalar:
+        try:
+            return bank[0]
+        except:
+            print "Bank angle comp failed"
+            return -1.
+    else:
+        return bank
         
 def HEPBank(T,t1,t2,t3,minBank = np.radians(15.), maxBank = np.radians(85.)):
 
@@ -128,30 +135,30 @@ def checkFeasibility(T,sign=-1):
     else:
         return 0
         
-def HEPCost(T, x0, entry = Entry(Trigger = partial(DeployParachute,{'velBias':30})), target = Target(), bank = HEPBank, getIV = (lambda x,t: t), check=checkFeasibility):
+# def HEPCost(T, x0, entry = Entry(Trigger = partial(DeployParachute,{'velBias':30})), target = Target(), bank = HEPBank, getIV = (lambda x,t: t), check=checkFeasibility):
     
-    J = check(T)
-    if J > 300:
-        return J
+    # J = check(T)
+    # if J > 300:
+        # return J
         
-    hep = lambda x,t: bank(getIV(x,t),*T)
+    # hep = lambda x,t: bank(getIV(x,t),*T)
 
         
-    time = np.linspace(0,450,1000)
+    # time = np.linspace(0,450,1000)
 
 
-    with stdout_redirected():
-        X = odeint(entry.dynamics(hep), x0, time)
+    # with stdout_redirected():
+        # X = odeint(entry.dynamics(hep), x0, time)
 
 
-    idx = findTriggerPoint(X,time)-1
-    h     = entry.altitude(X[idx,0], km=True)
-    dr,cr = entry.planet.range(*x0[[1,2,5]], lonc = X[idx,1], latc = X[idx,2],km=True)
+    # idx = findTriggerPoint(X,time)-1
+    # h     = entry.altitude(X[idx,0], km=True)
+    # dr,cr = entry.planet.range(*x0[[1,2,5]], lonc = X[idx,1], latc = X[idx,2],km=True)
 
-    Wh = 0.8*1e-6
-    J = -h*Wh + ((target.DR-dr)**2 + (target.CR-cr)**2)**0.5
+    # Wh = 0.8*1e-6
+    # J = -h*Wh + ((target.DR-dr)**2 + (target.CR-cr)**2)**0.5
 
-    return J
+    # return J
 
     
 def Optimize(x0,n=3,iv='time'):
