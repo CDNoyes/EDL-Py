@@ -12,8 +12,8 @@ def testFilters():
     perturb = getUncertainty()['parametric']
     sample = perturb.sample()
     
-    sample[2] = 0
-    sample[3] = 0
+    # sample[2] = 0
+    # sample[3] = 0
     print sample
     system = System(sample)
     
@@ -35,23 +35,36 @@ def testFilters():
     u = 0,0,0
     
     X = odeint(system.dynamics(u), X0, time)
+    
+    Ltrue,Dtrue     = system.truth.aeroforces(X[:,8],X[:,11])
+    Lmodel,Dmodel   = system.model.aeroforces(X[:,8], X[:,11])
+    L = Lmodel*X[:,16]
+    D = Dmodel*X[:,17]
     # for i,x in enumerate(X0):
         # print "state {}: {}".format(i,x)
     
-    print "delta CL: {}".format(sample[1])
-    print "delta CD: {}".format(sample[0])
+    # print "delta CL: {}".format(sample[1])
+    # print "delta CD: {}".format(sample[0])
+    
+    # plt.figure()
+    # plt.plot(time,X[:,16],label = 'RL')
+    # plt.plot(time,X[:,17],label = 'RD')
+    # plt.plot(time,(1+sample[1])*np.ones_like(time),label = 'RL true')
+    # plt.plot(time,(1+sample[0])*np.ones_like(time),label = 'RD true')
+    
+    # plt.legend(loc='best')
     
     plt.figure()
-    plt.plot(time,X[:,16],label = 'RL')
-    plt.plot(time,X[:,17],label = 'RD')
-    plt.plot(time,(1+sample[1])*np.ones_like(time),label = 'RL true')
-    plt.plot(time,(1+sample[0])*np.ones_like(time),label = 'RD true')
-    
+    plt.plot(time,Ltrue, label='Lift, Truth Model')
+    plt.plot(time,L,'--',label='Lift model corrected')
+    plt.plot(time,Lmodel,label='Uncorrected model')
+    # plt.plot(time,Dtrue, label='Drag, Truth Model')
+    # plt.plot(time,D,'--',label='Drag model corrected by filter')
     plt.legend(loc='best')
-    
-    plt.figure()
-    plt.plot(X[:,3],X[:,0])
-    plt.plot(X[:,11],X[:,8])
+
+    # plt.figure()
+    # plt.plot(X[:,3],X[:,0])
+    # plt.plot(X[:,11],X[:,8])
     
     plt.show()
     
