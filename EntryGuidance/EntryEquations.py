@@ -2,7 +2,7 @@ from numpy import sin, cos, tan
 import numpy as np
 from EntryVehicle import EntryVehicle
 from Planet import Planet
-from Triggers import AltitudeTrigger
+from Filter import FadingMemory
 from functools import partial
 
 class Entry:
@@ -27,17 +27,17 @@ class Entry:
         self.powered = True
             
     
-    def dynamics(self, u):
+    def dynamics(self, u, RL=1,RD=1):
         if self.powered:
-            return lambda x,t: self.dyn_model(x, t, u)+self.__thrust_3dof(x, u)
+            return lambda x,t: self.dyn_model(x, t, u, RL, RD)+self.__thrust_3dof(x, u)
 
         else:
-            return lambda x,t: self.dyn_model(x, t, u)
+            return lambda x,t: self.dyn_model(x, t, u, RL, RD)
     
     # Dynamic Models
     
     #3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
-    def __entry_3dof(self, x, t, u):
+    def __entry_3dof(self, x, t, u, RL, RD):
         
         r,theta,phi,v,gamma,psi,s,m = x
         sigma,throttle,mu = u
@@ -50,8 +50,8 @@ class Entry:
         M = v/a
         cD,cL = self.vehicle.aerodynamic_coefficients(M)
         f = 0.5*rho*self.vehicle.area*v**2/self.vehicle.mass
-        L = f*cL
-        D = f*cD
+        L = f*cL*RL
+        D = f*cD*RD
                 
         dh = v*sin(gamma)
         dtheta = v*cos(gamma)*cos(psi)/r/cos(phi)
@@ -66,7 +66,7 @@ class Entry:
 
         
     #3DOF, Rotating Planet Model - Highest fidelity
-    def __entry_vinhs(self, x, t, u):
+    def __entry_vinhs(self, x, t, u, RL, RD):
         r,theta,phi,v,gamma,psi,s,m = x
         
         #Coriolis contributions to derivatives:
@@ -79,7 +79,7 @@ class Entry:
         ds = 0
         dm = 0
         
-        return self.__entry_3dof(x, t, control_fun) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi,ds,dm])
+        return self.__entry_3dof(x, t, control_fun, RL, RD) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi,ds,dm])
         
     #2DOF, Longitudinal Model
     # def __entry_2dof(self, x, t, control_fun):
@@ -122,7 +122,7 @@ class Entry:
         else:
             return E
             
-    def aeroforces(self,r,v):
+    def aeroforces(self, r, v, RL=1, RD=1):
  
         g = self.planet.mu/r**2
         h = r - self.planet.radius
@@ -136,3 +136,35 @@ class Entry:
             L[i] = f*cL
             D[i] = f*cD
         return L,D
+        
+def EDL(InputSample = np.zeros(4)):
+    ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
+    
+    CD,CL,rho0,sh = InputSample
+    return Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL))  
+        
+class System(object):
+
+    def __init__(self, InputSample):
+
+        self.model = EDL()
+        self.truth = EDL(InputSample=InputSample)
+        self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
+        
+    def dynamics(self, u):
+        return lambda x,t: np.hstack( (self.truth.dynamics(u)(x[0:8],t), self.nav.dynamics(u)(x[8:16],t), self.filterUpdate(x,t)) )
+    
+    def filterUpdate(self,x,t):
+    
+        RL = x[16]
+        RD = x[17]
+        
+        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]))
+        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]))
+        
+        gain = 0.9
+        dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=gain)
+        dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=gain)
+        
+        return np.array([dRL,dRD])
+        
