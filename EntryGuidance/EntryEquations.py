@@ -150,21 +150,24 @@ class System(object):
         self.model = EDL()
         self.truth = EDL(InputSample=InputSample)
         self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
-        
+        self.gain  = 0.8
     def dynamics(self, u):
         return lambda x,t: np.hstack( (self.truth.dynamics(u)(x[0:8],t), self.nav.dynamics(u)(x[8:16],t), self.filterUpdate(x,t)) )
     
     def filterUpdate(self,x,t):
-    
+            
         RL = x[16]
         RD = x[17]
         
         L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]))
         Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]))
         
-        gain = 0.9
-        dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=gain)
-        dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=gain)
+        dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=self.gain)
+        dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=self.gain)
         
         return np.array([dRL,dRD])
         
+    def setFilterGain(gain):
+        self.gain = gain
+    
+    
