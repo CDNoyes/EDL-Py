@@ -167,7 +167,7 @@ class System(object):
         
         return np.array([dRL,dRD])
         
-    def setFilterGain(gain):
+    def setFilterGain(self,gain):
         self.gain = gain
     
     
