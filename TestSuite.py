@@ -4,16 +4,15 @@ import numpy as np
 from scipy.integrate import odeint, trapz
 from scipy.optimize import minimize, differential_evolution
 import chaospy as cp
-from cubature import cubature as cuba
 
-from EntryGuidance.EntryEquations import Entry, System, EDL
+from EntryGuidance.EntryEquations import System
 from EntryGuidance.Uncertainty import getUncertainty
 
+
 def Optimize():
+
     ''' Optimizes filter gain of a 1st order fading memory filter in an RSOCP formulation '''
-    
-    
-    
+
     perturb = getUncertainty()['parametric']
 
     bounds = [(0,1)]
@@ -53,8 +52,10 @@ def OptCost(sample, gain):
     err = (D-Dtrue)**2
 
     return trapz(err, time) 
-    
+
+
 def OptCostRS(gain, pdf):
+    from cubature import cubature as cuba # Move this out of here once these functions get moved into an appropriate module
 
     polynomials = cp.orth_ttr(order=2, dist=pdf)
     samples,weights = cp.generate_quadrature(order=2, domain=pdf, rule="Gaussian")
@@ -62,22 +63,23 @@ def OptCostRS(gain, pdf):
     # stateTensor = pool.map(OptCost,samples.T)
     PCE = cp.fit_quadrature(polynomials,samples,weights,stateTensor)
     
-    x0 = np.array([-0.10,-0.10,-0.2,-0.05])
-    xf = np.array([0.10,0.10,0.2,0.05])
-    P,err = cuba(PCE,ndim=4,fdim=1,xmin=x0,xmax=xf,vectorized=True, adaptive='p')
-    
-    return P
+    print "\nGain = {}".format(gain)
+    print "PCE Expectation: {} ".format(cp.E(poly=PCE,dist=pdf))
+    return cp.E(poly=PCE,dist=pdf)
+
+
+def IntegrandRS(samples,pce,pdf):
+    return pce(*samples.T)*pdf(samples.T)
+
 
 def testFilters(sample=None):
     if sample is None:
         perturb = getUncertainty()['parametric']
         sample = perturb.sample()
+        print sample
     
-    # sample[2] = 0
-    # sample[3] = 0
-    # sample = [s*10 for s in sample]
-    print sample
     system = System(sample)
+    system.setFilterGain(0.9)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   780e3)
@@ -92,7 +94,7 @@ def testFilters(sample=None):
     
     X0 = np.hstack((x0_true, x0_nav, RL, RD))
         
-    time = np.linspace(0,250,1500)
+    time = np.linspace(0,200,150)
     
     u = 0,0,0
     
@@ -118,10 +120,14 @@ def testFilters(sample=None):
     
     plt.figure()
     plt.plot(time,Ltrue, label='Lift, Truth Model')
-    plt.plot(time,L,'--',label='Lift model corrected')
-    plt.plot(time,Lmodel,label='Uncorrected model')
-    # plt.plot(time,Dtrue, label='Drag, Truth Model')
-    # plt.plot(time,D,'--',label='Drag model corrected by filter')
+    plt.plot(time,L,'o',label='Lift model corrected')
+    plt.plot(time,Lmodel,label='Uncorrected lift model')
+    plt.legend(loc='best')
+
+    plt.figure()
+    plt.plot(time,Dtrue, label='Drag, Truth Model')
+    plt.plot(time,D,'o',label='Drag model corrected by filter')
+    plt.plot(time,Dmodel,label='Uncorrected drag model')
     plt.legend(loc='best')
 
     # plt.figure()
@@ -133,7 +139,7 @@ def testFilters(sample=None):
     return
 
 def testCuba():    
-    # from cubature import cubature as cuba
+    from cubature import cubature as cuba
 
 
     CD          = cp.Uniform(-0.10, 0.10)   # CD
@@ -145,17 +151,21 @@ def testCuba():
     def PDF(x,*args,**kwargs):
         return pdf.pdf(np.array(x).T)
 
-    x0 = np.array([-0.10,-0.10,-0.2,-0.05])
-    xf = np.array([0.10,0.10,0.2,0.05])
+    x0 = np.array([-0.10,-0.10,-0.5,-0.05])
+    xf = np.array([0.10,0.10,0.5,0.05])
     P,err = cuba(PDF,ndim=4,fdim=1,xmin=x0,xmax=xf,vectorized=True, adaptive='p')
 
-    print P
-    print err
+    print "Multi-dimensional integral of the PDF over its support = {}".format(P[0])
+    print "Total error in integration = {}".format(err[0])
     
 if __name__ == '__main__':
     perturb = getUncertainty()['parametric']
-    sample = perturb.sample()
-    
-    # print OptCost(sample)
-    print OptCostRS(1, perturb)
-    # testFilters(sample)
+    sample = [10*s for s in perturb.sample()]
+
+    # gains = np.linspace(-1., 0.99, 25)
+    # JRS = [OptCostRS(gain, perturb) for gain in gains]
+
+    # plt.plot(gains,JRS)
+    # plt.show()
+
+    testFilters(sample)
