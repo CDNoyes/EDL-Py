@@ -150,7 +150,8 @@ class System(object):
         self.model = EDL()
         self.truth = EDL(InputSample=InputSample)
         self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
-        self.gain  = 0.8
+        self.gain  = 0.0
+        
     def dynamics(self, u):
         return lambda x,t: np.hstack( (self.truth.dynamics(u)(x[0:8],t), self.nav.dynamics(u)(x[8:16],t), self.filterUpdate(x,t)) )
     
