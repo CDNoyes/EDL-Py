@@ -198,15 +198,25 @@ class Simulation(Machine):
         plt.xlabel('Velocity (m/s)')
         plt.ylabel('Range to Target (km)')
         
-        # plt.figure(4)
-        # plt.plot(self.times, np.degrees(self.control_history[:,0]))
-        # for i in self.ie:
-            # plt.plot(self.times[i], np.degrees(self.control_history[i,0]),'o',label = self.__states[self.ie.index(i)])
-        # plt.legend(loc='best')   
-        # plt.xlabel('Time (s)')
-        # plt.ylabel('Bank Angle (deg)')
+        plt.figure(4)
+        plt.plot(self.times, np.degrees(self.control_history[:,0]))
+        for i in self.ie:
+            plt.plot(self.times[i], np.degrees(self.control_history[i,0]),'o',label = self.__states[self.ie.index(i)])
+        plt.legend(loc='best')   
+        plt.xlabel('Time (s)')
+        plt.ylabel('Bank Angle (deg)')
         
-
+        plt.figure(5)
+        plt.plot(self.output[:,11], self.output[:,10])
+        for i in self.ie:
+            plt.plot(self.output[i,11], self.output[i,10],'o',label = self.__states[self.ie.index(i)])
+        plt.legend(loc='best')   
+        plt.xlabel('Cross Range (km)')
+        plt.ylabel('Down Range (km)')
+        
+    def show(self):
+        import matplotlib.pyplot as plt
+        plt.show()
         
     # def analyze(self):
     
@@ -233,7 +243,8 @@ class Simulation(Machine):
         return data
         
     def reset(self):
-        print "Resetting simulation states.\n"
+        if self.__output:
+            print "Resetting simulation states.\n"
         self.set_state(self.__states[0])
         self.time = 0.0
         self.times = []
@@ -255,6 +266,7 @@ class Simulation(Machine):
 
 
 def SRP():
+    """ Defines states and conditions for a trajectory from Pre-Entry through SRP-based EDL """
     from Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
     states = ['PreEntry','Entry','SRP']
     def combo(inputs):
@@ -265,7 +277,14 @@ def SRP():
               'conditions' : conditions }
 
     return input
-              
+
+def EntrySim():
+    ''' Defines conditions for a simple one phase guided entry '''
+    from Triggers import VelocityTrigger
+    states = ['Entry']
+    trigger = [VelocityTrigger(500)]
+    return {'states':states, 'conditions':trigger}
+    
 def testSim():
 
     sim = Simulation(cycle=Cycle(1),**SRP())

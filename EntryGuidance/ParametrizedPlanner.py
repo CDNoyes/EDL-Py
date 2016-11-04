@@ -6,6 +6,7 @@ from scipy.integrate import odeint
 # from Utils.redirect import stdout_redirected
 from functools import partial
 
+
 def HEPBankReduced(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians(85.)):
     maxRate = np.radians(20.)
     ti1 = t1 + 2*(maxBank)/maxRate
@@ -135,7 +136,7 @@ def checkFeasibility(T,sign=-1):
     else:
         return 0
         
-# def HEPCost(T, x0, entry = Entry(Trigger = partial(DeployParachute,{'velBias':30})), target = Target(), bank = HEPBank, getIV = (lambda x,t: t), check=checkFeasibility):
+# def HEPCost(T, x0, Simulation, target = Target(), bank = HEPBank, getIV = (lambda x,t: t), check=checkFeasibility):
     
     # J = check(T)
     # if J > 300:
@@ -206,18 +207,66 @@ def OptimizeSmooth(x0):
     
     
     bounds = [(0,250),(100,350)]
-    # bounds = [(0,250),(0,250),(100,350)]
-    # constraints = [{'type':'ineq','fun': (lambda T:T[1]-T[0]-12) },{'type':'ineq','fun': (lambda T:T[0]) }]
-    
-    # sol = minimize(HEPCost,np.array(guess),args = (x0, entry, Target(), bankFun, getIV, check),bounds=bounds, method='SLSQP', constraints=constraints, tol=1e-5,options={'disp':True}) # SLSQP
-    # sol = minimize(HEPCost,np.array(guess),args = (x0, entry, Target(), bankFun, getIV, check), method='COBYLA', constraints=constraints, tol=1e-5,options={'disp':True}) #COBYLA doesn't handle bounds
     sol = differential_evolution(HEPCost,args = (x0, entry, Target(), bankFun, getIV, check),bounds=bounds, tol=1e-1, disp=True)
 
     print "The 2 switching times are {} with final cost {}".format(sol.x,sol.fun)
 
     return (lambda x,t: bankFun(getIV(x,t),*sol.x)), sol
 
-   
+def OptimizeSRP():
+    from scipy.optimize import differential_evolution
+    from Simulation import Simulation, Cycle, EntrySim
+
+    # bounds = [(0,250),(100,350)]
+    bounds = [(0,250),(100,350),(100,450)]
+    sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    sol = differential_evolution(SRPCost,args = [sim],bounds=bounds, tol=1e-1, disp=True,polish=False)
+    
+    # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*sol.x)
+    bankProfile = lambda **d: HEPBank(d['time'],*sol.x)
+    
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   780e3)
+                                             
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    output = sim.run(x0,[bankProfile])
+    
+    sim.plot()
+    sim.show()
+    
+    return sim,sol
+    
+def SRPCost(p, sim):
+
+    dr_target = 850
+    cr_target = -2
+    h_target = 4.5
+
+    
+    J = checkFeasibility(p)
+    if J > 300:
+        return J
+    
+    # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*p)
+    bankProfile = lambda **d: HEPBank(d['time'],*p)
+    
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
+                                             
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    output = sim.run(x0,[bankProfile])
+
+    Xf = output[-1,:]
+    # data = np.c_[self.times, energy, bank, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D]
+    hf = Xf[3]
+    # fpaf = Xf[8]
+    dr = Xf[10]
+    cr = Xf[11]
+    
+    J = 0.1*((h_target-hf)**2)**0.5 + ((dr_target-dr)**2 + (cr_target-cr)**2)**0.5
+
+    return J
+ 
 
 def ExpandBank():
     import chaospy as cp
