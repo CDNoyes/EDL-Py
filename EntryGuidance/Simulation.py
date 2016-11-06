@@ -270,7 +270,7 @@ def SRP():
     from Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
     states = ['PreEntry','Entry','SRP']
     def combo(inputs):
-        return (AltitudeTrigger(2)(inputs) or MassTrigger(1000)(inputs))
+        return (AltitudeTrigger(2)(inputs) or MassTrigger(6400)(inputs))
     combo.dump = AltitudeTrigger(2).dump    
     conditions = [AccelerationTrigger('drag',2), VelocityTrigger(700), VelocityTrigger(50)]
     input = { 'states' : states,
@@ -293,7 +293,7 @@ def testSim():
     c = [f,f,f2]
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     sim.run(x0,c)
     return sim
  
