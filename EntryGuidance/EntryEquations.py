@@ -1,16 +1,21 @@
 from numpy import sin, cos, tan
 import numpy as np
+from functools import partial
+
 from EntryVehicle import EntryVehicle
 from Planet import Planet
 from Filter import FadingMemory
-from functools import partial
 
 class Entry:
+    """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
     
     def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, DegFreedom = 3, Powered = False):
+    
         self.planet = PlanetModel
         self.vehicle = VehicleModel
         self.powered = Powered
+        self.drag_ratio = 1
+        self.lift_ratio = 1
         
         if DegFreedom == 2:
             self.dyn_model = self.__entry_2dof
@@ -22,8 +27,15 @@ class Entry:
         else:
             print 'Inapproriate number of degrees of freedom.'
             
+    
+    def update_ratios(LR,DR):
+        self.drag_ratio = DR
+        self.lift_ratio = LR
         
+    
     def ignite(self):
+        """ Ignites the engines to begin powered flight. """
+        
         self.powered = True
             
     
@@ -110,12 +122,16 @@ class Entry:
     
     # Utilities
     def altitude(self, r, km=False):
+        """ Computes the altitude from radius """
+        
         if km:
             return (r-self.planet.radius)/1000.
         else:
             return r-self.planet.radius
             
     def energy(self, r, v, Normalized=True):
+        """ Computes the current energy at a given altitude and velocity. """
+        
         E = 0.5*v**2 + self.planet.mu/self.planet.radius-self.planet.mu/r**2
         if Normalized:
             return (E-E[0])/(E[-1]-E[0])
@@ -123,7 +139,8 @@ class Entry:
             return E
             
     def aeroforces(self, r, v, RL=1, RD=1):
- 
+        """  Returns the aerodynamic forces acting on the vehicle at a given altitude and velocity. """
+        
         g = self.planet.mu/r**2
         h = r - self.planet.radius
         L = np.zeros_like(h)
@@ -142,9 +159,20 @@ def EDL(InputSample = np.zeros(4)):
     
     CD,CL,rho0,sh = InputSample
     return Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL))  
+    
+    
         
 class System(object):
-
+    
+    """ 
+     
+     A more complete EDL system with:
+        - truth states
+        - integrated navigated state, 
+        - first order filters for lift and drag correction ratios        
+        
+    """
+    
     def __init__(self, InputSample):
 
         self.model = EDL()
@@ -153,10 +181,12 @@ class System(object):
         self.gain  = 0.0
         
     def dynamics(self, u):
-        return lambda x,t: np.hstack( (self.truth.dynamics(u)(x[0:8],t), self.nav.dynamics(u)(x[8:16],t), self.filterUpdate(x,t)) )
+        """ Returns an function integrable by odeint """
+        return lambda x,t: np.hstack( (self.truth.dynamics(u)(x[0:8],t), self.nav.dynamics(u)(x[8:16],t), self.__filterUpdate(x,t)) )
+        
     
-    def filterUpdate(self,x,t):
-            
+    def __filterUpdate(self,x,t):
+        """ Computes the derivatives of the aerodynamic ratios. """
         RL = x[16]
         RD = x[17]
         
@@ -168,7 +198,8 @@ class System(object):
         
         return np.array([dRL,dRD])
         
+        
     def setFilterGain(self,gain):
+        """ Sets the gain used in the first order lift and drag filters. """
         self.gain = gain
-    
     
