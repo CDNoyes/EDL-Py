@@ -1,3 +1,6 @@
+""" Fuel optimal guidance with a constant throttle, constant thrust angle, and unconstrained downrange """
+
+
 from numpy import sin, cos, arctan2
 from numpy.linalg import norm
 import numpy as np
@@ -5,7 +8,6 @@ import numpy as np
 from EntryVehicle import EntryVehicle
 
 
-# Fuel optimal guidance with a constant throttle, constant thrust angle, and unconstrained downrange
 
 def controller(**d):
     ''' Wraps the solve function to accept the Simulation input dict '''
