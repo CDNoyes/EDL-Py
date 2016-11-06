@@ -214,6 +214,8 @@ def OptimizeSmooth(x0):
     return (lambda x,t: bankFun(getIV(x,t),*sol.x)), sol
 
 def OptimizeSRP():
+    """ Not named very well. Computes the three switch bank profile that delivers the entry vehicle to a prescribed altitude, downrange, crossrange at a given velocity trigger point. """
+    
     from scipy.optimize import differential_evolution
     from Simulation import Simulation, Cycle, EntrySim
 
@@ -226,9 +228,9 @@ def OptimizeSRP():
     bankProfile = lambda **d: HEPBank(d['time'],*sol.x)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   780e3)
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
                                              
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     output = sim.run(x0,[bankProfile])
     
     sim.plot()
@@ -238,9 +240,9 @@ def OptimizeSRP():
     
 def SRPCost(p, sim):
 
-    dr_target = 850
-    cr_target = -2
-    h_target = 4.5
+    dr_target = 1000
+    cr_target = 0
+    h_target = 5
 
     
     J = checkFeasibility(p)
@@ -251,9 +253,9 @@ def SRPCost(p, sim):
     bankProfile = lambda **d: HEPBank(d['time'],*p)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   dr_target*1e3)
                                              
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     output = sim.run(x0,[bankProfile])
 
     Xf = output[-1,:]

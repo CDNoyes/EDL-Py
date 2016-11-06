@@ -55,7 +55,6 @@ def OptCost(sample, gain):
 
 
 def OptCostRS(gain, pdf):
-    from cubature import cubature as cuba # Move this out of here once these functions get moved into an appropriate module
 
     polynomials = cp.orth_ttr(order=2, dist=pdf)
     samples,weights = cp.generate_quadrature(order=2, domain=pdf, rule="Gaussian")
@@ -66,10 +65,6 @@ def OptCostRS(gain, pdf):
     print "\nGain = {}".format(gain)
     print "PCE Expectation: {} ".format(cp.E(poly=PCE,dist=pdf))
     return cp.E(poly=PCE,dist=pdf)
-
-
-def IntegrandRS(samples,pce,pdf):
-    return pce(*samples.T)*pdf(samples.T)
 
 
 def testFilters(sample=None):
