@@ -58,6 +58,14 @@ class MassTrigger(Trigger):
         self.__mt = massTrigger
         super(MassTrigger,self).__init__(self.__Trigger, 'Mass <= {} kg'.format(massTrigger))
 
+class TimeTrigger(Trigger):
+    def __Trigger(self, time, **kwargs):
+        return time >= self.__tt
+        
+    def __init__(self, timeTrigger):
+        self.__tt = timeTrigger
+        super(TimeTrigger,self).__init__(self.__Trigger, 'Time elapsed >= {} s'.format(timeTrigger))        
+        
 # class LogicalTrigger(Trigger):
     # '''
     # A class for combining triggers to form more powerful logics
