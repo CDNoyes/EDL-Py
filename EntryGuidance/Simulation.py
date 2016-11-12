@@ -38,8 +38,9 @@ class Simulation(Machine):
         if len(states) != len(conditions):
             raise ValueError("Number of states must equal number of conditions.")
             
-        if cycle is None and output:
-            print "Simulation using default guidance cycle."
+        if cycle is None:
+            if output:
+                print "Simulation using default guidance cycle."
             cycle = Cycle()
         
         self.__conditions = conditions
@@ -76,9 +77,12 @@ class Simulation(Machine):
     def integrate(self):
     
         while not self.__conditions[self.index](self.triggerInput):
+            if self.__output and not len(self.history)%100:
+                print "current simulation time = {} s".format(self.time)
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
         return True
+    
     
     def __step(self):
         if self.edlModel.powered:
@@ -93,8 +97,8 @@ class Simulation(Machine):
         X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,10))
         #find nearest endpoint here
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
-        # return X
-    
+
+        
     def run(self, InitialState, Controllers, InputSample=None, AeroRatios=(1,1)):
         """ Runs the simulation from a given a initial state, with the specified controllers in each state, and using a chosen sample of the uncertainty space """
         

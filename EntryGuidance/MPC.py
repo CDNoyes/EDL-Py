@@ -104,7 +104,7 @@ def testNMPC():
 
     # Create the controllers
     
-    option_dict = options(N=5,T=15)
+    option_dict = options(N=3,T=15)
     mpc = partial(controller,control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), reference=drag_ref)
     pre = partial(constant,value=bankProfile(time=0))
     controls = [pre,mpc]
