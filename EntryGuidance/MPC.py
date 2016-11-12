@@ -79,6 +79,7 @@ def testNMPC():
     from ParametrizedPlanner import HEPBank
     # from JBG import controller as srp_control
     from Triggers import AccelerationTrigger, VelocityTrigger
+    from Uncertainty import getUncertainty
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
@@ -104,11 +105,16 @@ def testNMPC():
 
     # Create the controllers
     
-    option_dict = options(N=3,T=30)
+    option_dict = options(N=5,T=30)
     mpc = partial(controller,control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), reference=drag_ref)
     pre = partial(constant,value=bankProfile(time=0))
     controls = [pre,mpc]
-    output = sim.run(x0,controls)
+    
+    # Run the off-nominal simulation
+    perturb = getUncertainty()['parametric']
+    sample = perturb.sample()
+    x0 = np.array([r0, theta0, phi0, v0+100, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
+    output = sim.run(x0,controls,sample)
     
     sim.plot()
     sim.show()

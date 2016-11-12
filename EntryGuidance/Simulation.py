@@ -77,8 +77,8 @@ class Simulation(Machine):
     def integrate(self):
     
         while not self.__conditions[self.index](self.triggerInput):
-            if self.__output and not len(self.history)%100:
-                print "current simulation time = {} s".format(self.time)
+            if self.__output and not len(self.history)%10:
+                print "current simulation time = {} s".format(self.time) # Should define a pretty print function and call that here
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
         return True
