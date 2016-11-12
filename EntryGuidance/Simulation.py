@@ -38,7 +38,7 @@ class Simulation(Machine):
         if len(states) != len(conditions):
             raise ValueError("Number of states must equal number of conditions.")
             
-        if cycle is None:
+        if cycle is None and output:
             print "Simulation using default guidance cycle."
             cycle = Cycle()
         
@@ -95,8 +95,9 @@ class Simulation(Machine):
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
         # return X
     
-    def run(self, InitialState, Controllers, InputSample=None):
-    
+    def run(self, InitialState, Controllers, InputSample=None, AeroRatios=(1,1)):
+        """ Runs the simulation from a given a initial state, with the specified controllers in each state, and using a chosen sample of the uncertainty space """
+        
         self.reset()
         
         if InputSample is None:
@@ -105,13 +106,14 @@ class Simulation(Machine):
         
         self.sample = InputSample
         self.edlModel = Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL))
+        self.edlModel.update_ratios(*AeroRatios)
         self.update(np.asarray(InitialState),0.0,None)
         self.control = Controllers
         while not self.is_Complete():
             temp = self.advance()
     
-        self.history = np.vstack(self.history) # So that we can work with the data more easily than a list of arrays
-        self.control_history.append(self.u) # So that the control history has the same length as the data;
+        self.history = np.vstack(self.history)  # So that we can work with the data more easily than a list of arrays
+        self.control_history.append(self.u)     # So that the control history has the same length as the data;
         self.control_history = np.vstack(self.control_history) 
         
         return self.postProcess()
@@ -159,7 +161,8 @@ class Simulation(Machine):
               'rangeToGo': self.x[6],
               'drag'     : D[0],
               'lift'     : L[0],
-              'vehicle'  : self.edlModel.vehicle
+              'vehicle'  : self.edlModel.vehicle,
+              'current_state' : self.x 
               }
         
         return d
@@ -172,7 +175,7 @@ class Simulation(Machine):
         
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
         
-        
+        # Altitude vs Velocity
         plt.figure(1)
         plt.plot(self.history[:,3], self.edlModel.altitude(self.history[:,0],km=True), lw = 3)
         if plotEvents:
@@ -182,13 +185,15 @@ class Simulation(Machine):
         plt.xlabel('Velocity (m/s)')
         plt.ylabel('Altitude (km)')
         
-        plt.figure(2)
-        plt.plot(self.history[:,1]*180/np.pi, self.history[:,2]*180/np.pi)
-        if plotEvents:        
-            for i in self.ie:
-                plt.plot(self.history[i,1]*180/np.pi, self.history[i,2]*180/np.pi,'o',label = self.__states[self.ie.index(i)])
-        # plt.legend()
+        # #Latitude/Longitude
+        # plt.figure(2)
+        # plt.plot(self.history[:,1]*180/np.pi, self.history[:,2]*180/np.pi)
+        # if plotEvents:        
+            # for i in self.ie:
+                # plt.plot(self.history[i,1]*180/np.pi, self.history[i,2]*180/np.pi,'o',label = self.__states[self.ie.index(i)])
+        # # plt.legend()
         
+        # Range vs Velocity
         plt.figure(3)
         plt.plot(self.history[:,3], self.history[:,6]/1000)
         if plotEvents:
@@ -198,6 +203,7 @@ class Simulation(Machine):
         plt.xlabel('Velocity (m/s)')
         plt.ylabel('Range to Target (km)')
         
+        # Bank Angle Profile
         plt.figure(4)
         plt.plot(self.times, np.degrees(self.control_history[:,0]))
         for i in self.ie:
@@ -206,6 +212,7 @@ class Simulation(Machine):
         plt.xlabel('Time (s)')
         plt.ylabel('Bank Angle (deg)')
         
+        # Downrange vs Crossrange
         plt.figure(5)
         plt.plot(self.output[:,11], self.output[:,10])
         for i in self.ie:
@@ -213,6 +220,18 @@ class Simulation(Machine):
         plt.legend(loc='best')   
         plt.xlabel('Cross Range (km)')
         plt.ylabel('Down Range (km)')
+        
+        # Flight path vs Velocity
+        plt.figure(6)
+        plt.plot(self.history[:,3], self.history[:,4]*180/np.pi)
+        if plotEvents:
+            for i in self.ie:
+                plt.plot(self.history[i,3],self.history[i,4]*180/np.pi,'o',label = self.__states[self.ie.index(i)])
+        # plt.legend(loc='upper left')   
+        plt.xlabel('Velocity (m/s)')
+        plt.ylabel('Flight path angle (deg)')
+        
+        
         
     def show(self):
         import matplotlib.pyplot as plt
@@ -249,16 +268,33 @@ class Simulation(Machine):
         self.time = 0.0
         self.times = []
         self.index = 0
-        self.sample = None
-        self.x = None # Current State vector
-        self.history = [] # Collection of State Vectors
+        self.sample = None          # Input uncertainty sample
+        self.x = None               # Current State vector
+        self.history = []           # Collection of State Vectors
         self.u = None
-        self.control_history = [] # Collection of State Vectors
+        self.control_history = []   # Collection of State Vectors
         self.ie = [0]
         self.edlModel = None
         self.triggerInput = None
         self.control = None
         self.output = None
+        
+        
+    def getRef(self):
+        """ Computes a reference object for use in tracking based guidance
+            There are many options for what this could be, and which variables to include.
+            2d array, interp object, functional fit object?
+            drag vs time, energy, velocity?
+            range?
+        
+        """
+        
+        drag = np.flipud(self.output[:,13])
+        vel = np.flipud(self.output[:,7])
+        i_vmax = np.argmax(vel)
+        
+        return interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False)
+        
         
     # def save(self): #Create a .mat file
     
@@ -297,7 +333,33 @@ def testSim():
     sim.run(x0,c)
     return sim
  
- 
+
+def NMPCSim(options):
+    from Triggers import TimeTrigger
+    states = ['State{}'.format(i) for i in range(0,options['N'])]
+    times = np.linspace(0,options['T'],options['N']+1)
+    triggers = [TimeTrigger(t) for t in times[1:]]
+    
+    return {'states':states, 'conditions':triggers}
+
+def testNMPCSim():
+    from functools import partial
+    
+    sim = Simulation(**NMPCSim({'N': 3, 'T' : 120}))
+    
+    vals = [0,1.5,0.25]
+    c = [partial(constant, value=v) for v in vals]
+    
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+    sim.run(x0,c)
+    return sim
+    
+def constant(value, **kwargs):
+    return value
+    
+    
 # #########################
 # Visualization Extension #           
 # #########################
