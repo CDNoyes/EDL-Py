@@ -28,7 +28,7 @@ class Entry:
             print 'Inapproriate number of degrees of freedom.'
             
     
-    def update_ratios(LR,DR):
+    def update_ratios(self,LR,DR):
         self.drag_ratio = DR
         self.lift_ratio = LR
         
@@ -39,17 +39,17 @@ class Entry:
         self.powered = True
             
     
-    def dynamics(self, u, RL=1,RD=1):
+    def dynamics(self, u):
         if self.powered:
-            return lambda x,t: self.dyn_model(x, t, u, RL, RD)+self.__thrust_3dof(x, u)
+            return lambda x,t: self.dyn_model(x, t, u)+self.__thrust_3dof(x, u)
 
         else:
-            return lambda x,t: self.dyn_model(x, t, u, RL, RD)
+            return lambda x,t: self.dyn_model(x, t, u)
     
     # Dynamic Models
     
     #3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
-    def __entry_3dof(self, x, t, u, RL, RD):
+    def __entry_3dof(self, x, t, u):
         
         r,theta,phi,v,gamma,psi,s,m = x
         sigma,throttle,mu = u
@@ -62,8 +62,8 @@ class Entry:
         M = v/a
         cD,cL = self.vehicle.aerodynamic_coefficients(M)
         f = 0.5*rho*self.vehicle.area*v**2/self.vehicle.mass
-        L = f*cL*RL
-        D = f*cD*RD
+        L = f*cL*self.lift_ratio
+        D = f*cD*self.drag_ratio
                 
         dh = v*sin(gamma)
         dtheta = v*cos(gamma)*cos(psi)/r/cos(phi)
@@ -78,7 +78,7 @@ class Entry:
 
         
     #3DOF, Rotating Planet Model - Highest fidelity
-    def __entry_vinhs(self, x, t, u, RL, RD):
+    def __entry_vinhs(self, x, t, u):
         r,theta,phi,v,gamma,psi,s,m = x
         
         #Coriolis contributions to derivatives:
@@ -91,28 +91,8 @@ class Entry:
         ds = 0
         dm = 0
         
-        return self.__entry_3dof(x, t, control_fun, RL, RD) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi,ds,dm])
+        return self.__entry_3dof(x, t, control_fun) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi,ds,dm])
         
-    #2DOF, Longitudinal Model
-    # def __entry_2dof(self, x, t, control_fun):
-        # r,s,v,gamma = x
-        
-        # g = self.planet.mu/r**2
-        # h = r - self.planet.radius
-        # rho,a = self.planet.atmosphere(h)
-        # M = v/a
-        # cD,cL = self.vehicle.aerodynamic_coefficients(M)
-        # f = 0.5*rho*self.vehicle.area*v**2/self.vehicle.mass
-        # L = f*cL
-        # D = f*cD
-        # sigma = control_fun(x,t)
-        
-        # dh = v*sin(gamma)
-        # ds = v*cos(gamma)
-        # dv = -D - g*sin(gamma)
-        # dgamma = L/v*cos(sigma) + cos(gamma)*(v/r - g/v)
-    
-        # return np.array([dh,ds,dv,dgamma])
     
     def __thrust_3dof(self, x, u):
         r,theta,phi,v,gamma,psi,s,m = x
@@ -138,7 +118,7 @@ class Entry:
         else:
             return E
             
-    def aeroforces(self, r, v, RL=1, RD=1):
+    def aeroforces(self, r, v):
         """  Returns the aerodynamic forces acting on the vehicle at a given altitude and velocity. """
         
         g = self.planet.mu/r**2
@@ -167,10 +147,10 @@ class System(object):
     """ 
      
      A more complete EDL system with:
-        - truth states
-        - integrated navigated state, 
-        - first order filters for lift and drag correction ratios        
-        
+        - truth states                                                      0:8
+        - integrated navigated state                                        8:16 
+        - first order filters for lift and drag correction ratios           16,17
+        - integration of the bank angle system (TODO)                       18,19
     """
     
     def __init__(self, InputSample):
