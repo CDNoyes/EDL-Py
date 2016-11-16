@@ -14,7 +14,7 @@ Model Predictive Controllers
 #       iteration to improve control sequence until convergence - need a reliable optimization routine (although with smaller parametrizations, brute force could even be used)
 
 from scipy.integrate import odeint, trapz
-from scipy.optimize import minimize, differential_evolution
+from scipy.optimize import minimize, differential_evolution, minimize_scalar
 from functools import partial
 from numpy import pi
 import numpy as np
@@ -34,13 +34,15 @@ def options(N,T):
     return opt
 
 
-def controller(control_options, control_bounds, aero_ratios, reference, **kwargs):
+def controller(control_options, control_bounds, aero_ratios, references, **kwargs):
 
     bounds = [control_bounds]*control_options['N']    
     
-    sol = optimize(kwargs['current_state'], control_options, bounds, aero_ratios, reference)
-
-    return sol.x[0]
+    sol = optimize(kwargs['current_state'], control_options, bounds, aero_ratios, references)
+    if control_options['N'] > 1:
+        return sol.x[0]*np.sign(references['bank'](kwargs['current_state'][3]))
+    else:
+        return sol.x*np.sign(references['bank'](kwargs['current_state'][3]))
     
 def optimize(current_state, control_options, control_bounds, aero_ratios, reference):
     from Simulation import Simulation, NMPCSim
@@ -49,27 +51,35 @@ def optimize(current_state, control_options, control_bounds, aero_ratios, refere
     sim = Simulation(output=False, **NMPCSim(control_options))
 
     guess = [pi/6]*control_options['N']
-    # sol = minimize(cost, guess, args=(sim, current_state, aero_ratios, reference), 
-                   # method='L-BFGS-B', bounds=control_bounds, tol=1e-2, options={'disp':False}) # Seems to work okay!
-    sol = minimize(cost, guess, args=(sim, current_state, aero_ratios, reference), 
-                   method='SLSQP', bounds=control_bounds, tol=1e-4, options={'disp':False}) # Seems to work okay!               
+    if control_options['N'] > 1:
+        scalar = False
+        # sol = minimize(cost, guess, args=(sim, current_state, aero_ratios, reference), 
+                       # method='L-BFGS-B', bounds=control_bounds, tol=1e-2, options={'disp':False}) # Seems to work okay!
+        sol = minimize(cost, guess, args=(sim, current_state, aero_ratios, reference, scalar), 
+                       method='SLSQP', bounds=control_bounds, tol=1e-4, options={'disp':False}) # Seems to work okay!               
     # sol = differential_evolution(cost, args=(sim, x0), bounds=bounds, tol=1e-1, disp=True)
-    
+    else:
+        scalar = True
+        sol = minimize_scalar(cost, method='Bounded', bounds=control_bounds[0], args=(sim, current_state, aero_ratios, reference, scalar))
     
     return sol
     
-def cost(u, sim, state, ratios, reference):
-
-    controls = [partial(constant, value=v) for v in u]
+def cost(u, sim, state, ratios, reference, scalar):
+    if scalar:
+        controls = [partial(constant,value=u)]
+    else:
+        controls = [partial(constant, value=v) for v in u]
     output = sim.run(state, controls, None, ratios)
     time = output[:,0]
     drag = output[:,13]
     vel = output[:,7]
+    range = output[:,10]
     # lift = output[:,12]
     
-    drag_ref = reference(vel)
+    drag_ref = reference['drag'](vel)
+    rtg_ref = reference['range'](vel)/1000
     
-    integrand = (drag-drag_ref)**2
+    integrand = 1*(drag-drag_ref)**2 + 0*((range-rtg_ref))**2
     return trapz(integrand, time)
     
     
@@ -91,7 +101,8 @@ def testNMPC():
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     output = reference_sim.run(x0,[bankProfile])
 
-    drag_ref = reference_sim.getRef()['drag']
+    references = reference_sim.getRef()
+    drag_ref = references['drag']
     
     
     # Create the simulation model:
@@ -106,7 +117,7 @@ def testNMPC():
     # Create the controllers
     
     option_dict = options(N=1,T=30)
-    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2+0.1), aero_ratios=(1,1), reference=drag_ref)
+    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
     pre = partial(constant, value=bankProfile(time=0))
     controls = [pre,mpc]
     
@@ -115,6 +126,16 @@ def testNMPC():
     sample = None #perturb.sample()
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
     output = sim.run(x0,controls,sample)
+    
+    Dref = drag_ref(output[:,7])
+    D = output[:,13]
+    Derr = D-Dref
+    DerrPer = 100*Derr/Dref
+    
+    plt.figure(666)
+    plt.plot(output[:,7],DerrPer)
+    plt.ylabel('Drag Error (%)')
+    plt.xlabel('Velocity (m/s)')
     
     sim.plot()
     sim.show()

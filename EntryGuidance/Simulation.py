@@ -290,15 +290,16 @@ class Simulation(Machine):
             range?
         
         """
-        
+        ref = {}
         vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
-        range = np.flipud(self.output[:,10]*1e3)
+        range = np.flipud(self.output[:,10]*1e3) 
         drag = np.flipud(self.output[:,13])
-        
+        bank = np.flipud(self.output[:,2])
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum so the reference is monotonic
         
-        ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False)
+        ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['range'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
+        ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
         return ref
         
         
