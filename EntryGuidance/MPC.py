@@ -48,11 +48,11 @@ def optimize(current_state, control_options, control_bounds, aero_ratios, refere
     
     sim = Simulation(output=False, **NMPCSim(control_options))
 
-    guess = [pi/4]*control_options['N']
+    guess = [pi/6]*control_options['N']
+    # sol = minimize(cost, guess, args=(sim, current_state, aero_ratios, reference), 
+                   # method='L-BFGS-B', bounds=control_bounds, tol=1e-2, options={'disp':False}) # Seems to work okay!
     sol = minimize(cost, guess, args=(sim, current_state, aero_ratios, reference), 
-                   method='L-BFGS-B', bounds=control_bounds, tol=1e-2, options={'disp':False}) # Seems to work okay!
-                   
-    # sol = minimize(cost, guess, args=(sim, x0), method='SLSQP', bounds=bounds, tol=1e-2, options={'disp':True}) # Seems to work okay, but not as well as BFGS
+                   method='SLSQP', bounds=control_bounds, tol=1e-4, options={'disp':False}) # Seems to work okay!               
     # sol = differential_evolution(cost, args=(sim, x0), bounds=bounds, tol=1e-1, disp=True)
     
     
@@ -91,13 +91,13 @@ def testNMPC():
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     output = reference_sim.run(x0,[bankProfile])
 
-    drag_ref = reference_sim.getRef()
+    drag_ref = reference_sim.getRef()['drag']
     
     
     # Create the simulation model:
         
     states = ['PreEntry','Entry']
-    conditions = [AccelerationTrigger('drag',2), VelocityTrigger(500)]
+    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
     input = { 'states' : states,
               'conditions' : conditions }
               
@@ -105,15 +105,15 @@ def testNMPC():
 
     # Create the controllers
     
-    option_dict = options(N=5,T=30)
-    mpc = partial(controller,control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), reference=drag_ref)
-    pre = partial(constant,value=bankProfile(time=0))
+    option_dict = options(N=1,T=30)
+    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2+0.1), aero_ratios=(1,1), reference=drag_ref)
+    pre = partial(constant, value=bankProfile(time=0))
     controls = [pre,mpc]
     
     # Run the off-nominal simulation
     perturb = getUncertainty()['parametric']
-    sample = perturb.sample()
-    x0 = np.array([r0, theta0, phi0, v0+100, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
+    sample = None #perturb.sample()
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
     output = sim.run(x0,controls,sample)
     
     sim.plot()

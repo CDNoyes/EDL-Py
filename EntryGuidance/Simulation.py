@@ -144,7 +144,6 @@ class Simulation(Machine):
         if self.__output:
             print('Transitioning from state {} to {} because the following condition was met:'.format(self.__states[self.index],self.state))
             print(self.__conditions[self.index].dump())
-            # print('t = {}: {}\n'.format(self.time,self.x))
             for key,value in self.triggerInput.items():
                 print '{} : {}\n'.format(key,value)
         self.index += 1
@@ -155,18 +154,18 @@ class Simulation(Machine):
         L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]))
 
         d =  {
-              'time'     : self.time,
-              'altitude' : self.edlModel.altitude(self.x[0]),
-              'longitude': self.x[1],
-              'latitude' : self.x[2],
-              'velocity' : self.x[3],
-              'fpa'      : self.x[4],
-              'mass'     : self.x[7],
-              'rangeToGo': self.x[6],
-              'drag'     : D[0],
-              'lift'     : L[0],
-              'vehicle'  : self.edlModel.vehicle,
-              'current_state' : self.x 
+              'time'            : self.time,
+              'altitude'        : self.edlModel.altitude(self.x[0]),
+              'longitude'       : self.x[1],
+              'latitude'        : self.x[2],
+              'velocity'        : self.x[3],
+              'fpa'             : self.x[4],
+              'mass'            : self.x[7],
+              'rangeToGo'       : self.x[6],
+              'drag'            : D[0],
+              'lift'            : L[0],
+              'vehicle'         : self.edlModel.vehicle,
+              'current_state'   : self.x 
               }
         
         return d
@@ -241,7 +240,6 @@ class Simulation(Machine):
         import matplotlib.pyplot as plt
         plt.show()
         
-    # def analyze(self):
     
     def postProcess(self, dict=False):
 
@@ -293,11 +291,15 @@ class Simulation(Machine):
         
         """
         
+        vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
+        range = np.flipud(self.output[:,10]*1e3)
         drag = np.flipud(self.output[:,13])
-        vel = np.flipud(self.output[:,7])
-        i_vmax = np.argmax(vel)
         
-        return interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False)
+        i_vmax = np.argmax(vel)             # Only interpolate from the maximum so the reference is monotonic
+        
+        ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False)
+        ref['range'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
+        return ref
         
         
     # def save(self): #Create a .mat file
@@ -430,48 +432,46 @@ if __name__ == '__main__':
     import multiprocessing as mp
     import chaospy as cp
     import os
-    from Simulation import Simulation, SRP
+    from Simulation import Simulation, SRP, EntrySim
     from functools import partial
     from scipy.io import savemat, loadmat
     import JBG
-    from ParametrizedPlanner import HEPBankReducedSmooth
+    from ParametrizedPlanner import HEPBankReducedSmooth, HEPBank
+    from Uncertainty import getUncertainty
     import matplotlib.pyplot as plt
     
     # Parse Arguments and Setup Pool Environment
-    mp.freeze_support()
+    # mp.freeze_support()
     # pool = mp.Pool(mp.cpu_count()/2.)
-    pool = mp.Pool(4)     
+    # pool = mp.Pool(4)     
         
     # Define Uncertainty Joint PDF
-    CD          = cp.Uniform(-0.10, 0.10)   # CD
-    CL          = cp.Uniform(-0.10, 0.10)   # CL
-    rho0        = cp.Normal(0, 0.0333)      # rho0
-    scaleHeight = cp.Uniform(-0.05,0.05)    # scaleheight
-    pdf         = cp.J(CD,CL,rho0,scaleHeight)
+    pdf = getUncertainty()['parametric']
     
-    n = 30
+    n = 2000
     samples = pdf.sample(n)    
     p = pdf.pdf(samples)
 
-    sim = Simulation(cycle=Cycle(1),**SRP())
-    f = lambda **d: 0
-    f1 = lambda **d: HEPBankReducedSmooth(d['time'], t1=30, t2=100)
-    # f2 = lambda **d: (1,2.87)
-    f2 = JBG.controller
-    c = [f,f1,f2]
+    # sim = Simulation(cycle=Cycle(1),**SRP())
+    sim = Simulation(cycle=Cycle(1), output=False, **EntrySim())
+    # f0 = lambda **d: 0
+    f1 = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904]) # Nominal
+    # f1 = lambda **d: HEPBank(d['time'],*[ 162.4368125,   294.35875742,  461.31910219])   # RS
+    # f2 = JBG.controller
+    # c = [f0,f1,f2]
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   935e3)
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
-    sim.run(x0,c)
-    sim.plot()
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+    # sim.run(x0,c)
+    # sim.plot()
     # mc = partial(sim.run, x0, c, output=False)
     
     # for s in samples.T:
         # sim.run(x0,c,s)
         # sim.plot()
-    plt.show()
+    # plt.show()
 
     # stateTensor = pool.map(mc,samples.T)
-    # stateTensor = [mc(s) for s in samples.T]
+    stateTensor = [sim.run(x0,[f1],s) for s in samples.T]
     saveDir = './data/'
-    # savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})
+    savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})

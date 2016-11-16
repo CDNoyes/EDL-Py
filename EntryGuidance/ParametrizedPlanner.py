@@ -301,7 +301,9 @@ def OptimizeSRPRS():
     sim.plot()
     sim.show()
     
-    return # Optimal came out to be [ 162.43219422  294.49990189  429.22841173] using Nelder-Mead with nominal optimal and with differential evolution
+    return # Optimal came out to be 
+    # [ 162.43219422  294.49990189  429.22841173] using Nelder-Mead with nominal optimal as guess and 
+    # [ 162.4368125   294.35875742  461.31910219] with differential evolution, each with a cost of 43.8 roughly. Nominal solution has a cost of 44.6
     
 def SRPCostRS(p, sim, pdf):
 

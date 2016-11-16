@@ -185,7 +185,7 @@ ylabel('Error (%)')
 % samp = 1 + mc.samples;
 % dcd = samp(1,:).*(samp(3,:)-samp(4,:));
 % dcl = samp(2,:).*(samp(3,:)-samp(4,:));
-% 
+%
 % figure
 % scatter(dcd,dcl,[],errPer)
 % title('Error in Cost Function')
@@ -193,3 +193,51 @@ ylabel('Error (%)')
 % ylabel('CL offset (%)')
 
 histogram(err)
+
+%%
+clear
+% addpath('C:\Users\cdnoyes\Documents\Experimental\Matlab')
+dtr = pi/180;
+data(1) = load('E:\Documents\EDL\data\MC_nominalHEP_small.mat');
+data(2) =  load('E:\Documents\EDL\data\MC_RSHEP_small.mat');
+data(3) =  load('E:\Documents\EDL\data\MC_smallLD.mat');
+% data(4) =  load('E:\Documents\EDL\data\MC_smalllift.mat');
+
+% data(3) = load('E:\Documents\EDL\data\MC_nominalHEP.mat');
+% data(4) =  load('E:\Documents\EDL\data\MC_RSHEP.mat');
+
+final = zeros(length(data),2000,14);
+label = {'Nom','RS'};
+colors = {'r','b','g','m'};
+for d = 1:length(data)
+    states = data(d).states;
+    samples = data(d).samples;
+    pdf(d,:) = data(d).pdf;
+    %     figure(1)
+    %     plot(0,1000,'kx','MarkerSize',20)
+    %     hold on
+    for i = 1:length(states)
+        %        plot(states{i}(end,12),states{i}(end,11), [colors{d},'o'])
+        final(d,i,:) = states{i}(end,:);
+        
+    end
+    
+    
+end
+
+figure
+for d = 1:length(data)
+    figure(1)
+    hold all
+    plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
+    
+    figure(2)
+    hold all
+    plot(final(d,:,12),(final(d,:,11)), 'o')
+    
+end
+
+figure
+scatter(final(1,:,12),final(1,:,11),[],1-pdf(1,:)/max(pdf(1,:)))
+figure
+scatter(final(1,:,8),final(1,:,5),[],1-pdf(1,:)/max(pdf(1,:)))
