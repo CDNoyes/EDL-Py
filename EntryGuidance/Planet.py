@@ -89,3 +89,37 @@ class Planet:
         lat = arcsin(cos(zeta-heading0+pi/2.)*cos(lat0)*sin(LF)+sin(lat0)*cos(LF))
         lon = lon0 + arcsin(sin(zeta-heading0+pi/2)*sin(LF)/cos(lat))
         return lon,lat
+        
+def getDifference(rho0, scaleHeight):
+    import numpy as np
+    
+    nominal = Planet()
+    dispersed = Planet(rho0=rho0,scaleHeight=scaleHeight)
+    
+    h = np.linspace(0,127e3,1000) # meters
+    rho_nom = [nominal.atmosphere(H)[0] for H in h]
+    rho_dis = [dispersed.atmosphere(H)[0] for H in h]
+    diff = np.array(rho_dis)-np.array(rho_nom)
+    perdiff = 100*diff/np.array(rho_nom)
+    return perdiff
+    
+def compare():
+    from itertools import product
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    n = 2
+    rho0 = np.linspace(-0.20,0.20,n)
+    sh = np.linspace(-0.025,0.01,n)
+    h = np.linspace(0,127,1000) # kmeters
+    plt.figure()
+    for rho,s in product(rho0,sh):
+        perDiff = getDifference(rho,s)
+        plt.plot(h,perDiff,label="\rho={}, \hs={}".format(rho,s))
+    plt.legend(loc='best')
+    plt.xlabel('Altitude (km)')
+    plt.ylabel('Density variation (%)')
+    plt.show()
+    
+if __name__ == "__main__":
+    compare()

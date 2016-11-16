@@ -16,8 +16,8 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
         # Define Uncertainty Joint PDF
         CD          = cp.Uniform(-0.10, 0.10)   # CD
         CL          = cp.Uniform(-0.10, 0.10)   # CL
-        rho0        = cp.Normal(0, 0.0333)      # rho0
-        scaleHeight = cp.Uniform(-0.05,0.05)    # scaleheight        
+        rho0        = cp.Normal(0, 0.0333*1.5)      # rho0
+        scaleHeight = cp.Uniform(-0.025,0.01)    # scaleheight        
         perturbations['parametric'] = cp.J(CD,CL,rho0,scaleHeight)
         
     if knowledge:
