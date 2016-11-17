@@ -148,6 +148,7 @@ class System(object):
         - integrated navigated state                                        8:16 
         - first order filters for lift and drag correction ratios           16,17
         - integration of the bank angle system                              18,19
+        
     """
     
     def __init__(self, InputSample):
@@ -179,12 +180,16 @@ class System(object):
         return np.array([dRL,dRD])
         
         
-    def setFilterGain(self,gain):
+    def setFilterGain(self, gain):
         """ Sets the gain used in the first order lift and drag filters. """
-        self.gain = gain
-
+        self.filter_gain = gain
+        
+        
 def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank=np.pi/2, max_rate=np.radians(20), max_accel=np.radians(5)):
-    
+    """ 
+        Constrained second order system subjected to minimum and maximum bank angles, max bank rate, and max acceleration.
+        May cause stiffness in numerical integration, consider replacing Saturate with a smoother function like Erf
+    """
     bank,rate = bank_state
     bank = np.sign(bank)*Saturate(np.abs(bank), min_bank, max_bank)
     
@@ -195,3 +200,20 @@ def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank
     
 def Saturate(value,min_value,max_value):
     return np.max( (np.min( (value, max_value) ), min_value))
+    
+def Erf(value, min_value, max_value):
+    from scipy.special import erf
+    input_value = (value-(max_value+min_value)*0.5)/((max_value-min_value)*0.5)
+    unscaled_output = erf(np.sqrt(np.pi)/1.75*input_value)
+    return unscaled_output*((max_value-min_value)*0.5) + (max_value+min_value)*0.5
+    
+def CompareSaturation():
+    import matplotlib.pyplot as plt
+    x = np.linspace(-2,2)
+    
+    plt.plot(x,Erf(x,-1.5,1))
+    plt.plot(x,[Saturate(xx,-1.5,1) for xx in x])        
+    plt.show()
+    
+if __name__ == "__main__":
+    CompareSaturation()
