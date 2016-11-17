@@ -9,7 +9,7 @@ from Filter import FadingMemory
 class Entry:
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
     
-    def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, DegFreedom = 3, Powered = False):
+    def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, Powered = False):
     
         self.planet = PlanetModel
         self.vehicle = VehicleModel
@@ -17,15 +17,12 @@ class Entry:
         self.drag_ratio = 1
         self.lift_ratio = 1
         
-        if DegFreedom == 2:
-            self.dyn_model = self.__entry_2dof
-        elif DegFreedom == 3:
-            if Coriolis:
-                self.dyn_model = self.__entry_vinhs
-            else:
-                self.dyn_model = self.__entry_3dof
+
+        if Coriolis:
+            self.dyn_model = self.__entry_vinhs
         else:
-            print 'Inapproriate number of degrees of freedom.'
+            self.dyn_model = self.__entry_3dof
+
             
     
     def update_ratios(self,LR,DR):
