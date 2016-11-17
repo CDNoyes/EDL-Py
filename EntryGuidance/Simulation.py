@@ -30,6 +30,10 @@ class Simulation(Machine):
     '''
         Defines a simulation class. The class is initialized to create its finite-state machine. 
         
+        Methods:
+            getRef - Returns a dictionary of interpolation objects
+            
+        Members:
         
     '''
     
@@ -315,7 +319,12 @@ class Simulation(Machine):
         
     # def save(self): #Create a .mat file
     
+class EDLSimulation(Simulation):
+    """ Subclasses Simulation, but with a full System as the edl model. This provides a familiar interface but will need to overload most methods:
     
+    
+    
+    """
 
 
 def SRP():
