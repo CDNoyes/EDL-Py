@@ -150,7 +150,7 @@ class System(object):
         - truth states                                                      0:8
         - integrated navigated state                                        8:16 
         - first order filters for lift and drag correction ratios           16,17
-        - integration of the bank angle system (TODO)                       18,19
+        - integration of the bank angle system                              18,19
     """
     
     def __init__(self, InputSample):
@@ -158,12 +158,15 @@ class System(object):
         self.model = EDL()
         self.truth = EDL(InputSample=InputSample)
         self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
-        self.gain  = 0.0
+        self.filter_gain  = 0.0
         
     def dynamics(self, u):
         """ Returns an function integrable by odeint """
-        return lambda x,t: np.hstack( (self.truth.dynamics(u)(x[0:8],t), self.nav.dynamics(u)(x[8:16],t), self.__filterUpdate(x,t)) )
-        
+        return lambda x,t: np.hstack( (self.truth.dynamics(x[18])(x[0:8],t), 
+                                       self.nav.dynamics(x[18])(x[8:16],t), 
+                                       self.__filterUpdate(x,t),
+                                       BankAngleDynamics(x[18:20], u),
+                                       ) ) 
     
     def __filterUpdate(self,x,t):
         """ Computes the derivatives of the aerodynamic ratios. """
@@ -173,8 +176,8 @@ class System(object):
         L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]))
         Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]))
         
-        dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=self.gain)
-        dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=self.gain)
+        dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=self.filter_gain)
+        dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=self.filter_gain)
         
         return np.array([dRL,dRD])
         
@@ -182,4 +185,16 @@ class System(object):
     def setFilterGain(self,gain):
         """ Sets the gain used in the first order lift and drag filters. """
         self.gain = gain
+
+def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank=np.pi/2, max_rate=np.radians(20), max_accel=np.radians(5)):
     
+    bank,rate = bank_state
+    bank = np.sign(bank)*Saturate(np.abs(bank), min_bank, max_bank)
+    
+    bank_dot = Saturate(rate, -max_rate, max_rate)
+    rate_dot = Saturate(kp*(command-bank)-kd*rate, -max_accel, max_accel)
+
+    return np.array([bank_dot, rate_dot])
+    
+def Saturate(value,min_value,max_value):
+    return np.max( (np.min( (value, max_value) ), min_value))
