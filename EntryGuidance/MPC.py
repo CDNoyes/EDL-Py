@@ -74,12 +74,18 @@ def cost(u, sim, state, ratios, reference, scalar):
     drag = output[:,13]
     vel = output[:,7]
     range = output[:,10]
+    fpa = np.radians(output[:,8])
     # lift = output[:,12]
     
-    drag_ref = reference['drag'](vel)
-    rtg_ref = reference['range'](vel)/1000
+    if 1:                                   # Pure drag tracking
+        drag_ref = reference['drag'](vel)
+        integrand = 1*(drag-drag_ref)**2
+    else:
+        drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
+        integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
     
-    integrand = 1*(drag-drag_ref)**2 + 0*((range-rtg_ref))**2
+    # rtg_ref = reference['range'](vel)/1000
+    
     return trapz(integrand, time)
     
     
@@ -116,14 +122,16 @@ def testNMPC():
 
     # Create the controllers
     
-    option_dict = options(N=1,T=30)
+    option_dict = options(N=1,T=5)
     mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
     pre = partial(constant, value=bankProfile(time=0))
     controls = [pre,mpc]
     
     # Run the off-nominal simulation
     perturb = getUncertainty()['parametric']
-    sample = None #perturb.sample()
+    # sample = None 
+    # sample = perturb.sample()
+    sample = [ 0.0619597,   0.06117027,  0.03798111, -0.02972741]
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
     output = sim.run(x0,controls,sample)
     
@@ -131,6 +139,18 @@ def testNMPC():
     D = output[:,13]
     Derr = D-Dref
     DerrPer = 100*Derr/Dref
+    Ddotref = np.diff(Dref)/np.diff(output[:,0])
+    Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
+
+    # plt.figure(665)
+    # plt.plot(output[2:,7],Dddotref)
+    # plt.ylabel('Drag Double Dot (m/s^4)')
+    # plt.xlabel('Velocity (m/s)')    
+    
+    # plt.figure(60)
+    # plt.plot(output[1:,7],np.diff(output[:,7]))
+    # plt.ylabel('Velocity Rate (m/s^3)')
+    # plt.xlabel('Velocity (m/s)')
     
     plt.figure(666)
     plt.plot(output[:,7],DerrPer)

@@ -215,6 +215,14 @@ class Simulation(Machine):
         plt.xlabel('Time (s)')
         plt.ylabel('Bank Angle (deg)')
         
+        plt.figure(7)
+        plt.plot(self.history[:,3], np.degrees(self.control_history[:,0]))
+        for i in self.ie:
+            plt.plot(self.history[i,3], np.degrees(self.control_history[i,0]),'o',label = self.__states[self.ie.index(i)])
+        plt.legend(loc='best')   
+        plt.xlabel('Velocity (m/s)')
+        plt.ylabel('Bank Angle (deg)')
+        
         # Downrange vs Crossrange
         plt.figure(5)
         plt.plot(self.output[:,11], self.output[:,10])
@@ -294,10 +302,12 @@ class Simulation(Machine):
         vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
         range = np.flipud(self.output[:,10]*1e3) 
         drag = np.flipud(self.output[:,13])
+        dragcos = np.flipud(self.output[:,13]/np.cos(np.radians(self.output[:,8])))
         bank = np.flipud(self.output[:,2])
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum so the reference is monotonic
         
         ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
+        ref['dragcos'] = interp1d(vel[:i_vmax],dragcos[:i_vmax], fill_value=(dragcos[0],dragcos[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['range'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
         return ref
@@ -439,40 +449,48 @@ if __name__ == '__main__':
     import JBG
     from ParametrizedPlanner import HEPBankReducedSmooth, HEPBank
     from Uncertainty import getUncertainty
+    from Triggers import AccelerationTrigger,VelocityTrigger
     import matplotlib.pyplot as plt
-    
-    # Parse Arguments and Setup Pool Environment
-    # mp.freeze_support()
-    # pool = mp.Pool(mp.cpu_count()/2.)
-    # pool = mp.Pool(4)     
-        
+    from MPC import controller,options
+    from numpy import pi
+
     # Define Uncertainty Joint PDF
     pdf = getUncertainty()['parametric']
     
     n = 2000
     samples = pdf.sample(n)    
     p = pdf.pdf(samples)
-
-    # sim = Simulation(cycle=Cycle(1),**SRP())
-    sim = Simulation(cycle=Cycle(1), output=False, **EntrySim())
-    # f0 = lambda **d: 0
-    f1 = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904]) # Nominal
-    # f1 = lambda **d: HEPBank(d['time'],*[ 162.4368125,   294.35875742,  461.31910219])   # RS
-    # f2 = JBG.controller
-    # c = [f0,f1,f2]
-    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   935e3)
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
-    # sim.run(x0,c)
-    # sim.plot()
-    # mc = partial(sim.run, x0, c, output=False)
     
-    # for s in samples.T:
-        # sim.run(x0,c,s)
-        # sim.plot()
-    # plt.show()
+    reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
+    
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
+                                             
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+    output = reference_sim.run(x0,[bankProfile])
 
-    # stateTensor = pool.map(mc,samples.T)
-    stateTensor = [sim.run(x0,[f1],s) for s in samples.T]
+    references = reference_sim.getRef()
+    drag_ref = references['drag']
+    
+    
+    # Create the simulation model:
+        
+    states = ['PreEntry','Entry']
+    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
+    input = { 'states' : states,
+              'conditions' : conditions }
+              
+    sim = Simulation(cycle=Cycle(1),output=False,**input)
+
+    # Create the controllers
+    
+    option_dict = options(N=1,T=5)
+    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
+    pre = partial(constant, value=bankProfile(time=0))
+    controls = [pre,mpc]
+    
+    # Run the off-nominal simulations
+    stateTensor = [sim.run(x0,controls,s) for s in samples.T]
     saveDir = './data/'
     savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})
