@@ -39,11 +39,18 @@ def controller(control_options, control_bounds, references, **kwargs):
     bounds = [control_bounds]*control_options['N']    
     
     sol = optimize(kwargs['current_state'], control_options, bounds, kwargs['aero_ratios'], references)
-    if control_options['N'] > 1:
-        return sol.x[0]*np.sign(references['bank'](kwargs['current_state'][3]))
-    else:
-        return sol.x*np.sign(references['bank'](kwargs['current_state'][3]))
     
+    vf = lateral(kwargs['velocity'], kwargs['drag'],kwargs['fpa'],control_options['T'])
+    if control_options['N'] > 1:
+        return sol.x[0]*np.sign(references['bank'](vf))
+    else:
+        return sol.x*np.sign(references['bank'](vf))
+
+def lateral(velocity,drag,fpa,T):
+    vdot = drag*np.sin(fpa)-3.7
+    vf = velocity + T*vdot
+    return vf
+        
 def optimize(current_state, control_options, control_bounds, aero_ratios, reference):
     from Simulation import Simulation, NMPCSim
     
@@ -69,7 +76,7 @@ def cost(u, sim, state, ratios, reference, scalar):
         controls = [partial(constant,value=u)]
     else:
         controls = [partial(constant, value=v) for v in u]
-    output = sim.run(state, controls)
+    output = sim.run(state, controls, AeroRatios=ratios)
     time = output[:,0]
     drag = output[:,13]
     vel = output[:,7]
@@ -94,7 +101,7 @@ def testNMPC():
     import matplotlib.pyplot as plt
     from ParametrizedPlanner import HEPBank
     # from JBG import controller as srp_control
-    from Triggers import AccelerationTrigger, VelocityTrigger
+    from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger
     from Uncertainty import getUncertainty
     
     # Plan the nominal profile:
@@ -114,7 +121,8 @@ def testNMPC():
     # Create the simulation model:
         
     states = ['PreEntry','Entry']
-    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
+    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
+    conditions = [AccelerationTrigger('drag',4), RangeToGoTrigger(0)]
     input = { 'states' : states,
               'conditions' : conditions }
               
@@ -131,9 +139,16 @@ def testNMPC():
     perturb = getUncertainty()['parametric']
     sample = None 
     # sample = perturb.sample()
-    # sample = [ 0.0619597,   0.06117027,  0.03798111, -0.02972741]
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
-    output = sim.run(x0,controls,sample)
+    # sample = [ 0.0319597,   -0.01117027,  0.0, 0.0]
+    x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0] # Errors in velocity and mass
+    x0_full = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0] + x0_nav + [1,1] + [np.radians(-15),0])
+
+    if 1:
+        output = sim.run(x0, controls, sample, FullEDL=False)
+        reference_sim.plot()
+        
+    else:
+        output = sim.run(x0_full, controls, sample, FullEDL=True)
     
     Dref = drag_ref(output[:,7])
     D = output[:,13]
@@ -141,17 +156,7 @@ def testNMPC():
     DerrPer = 100*Derr/Dref
     Ddotref = np.diff(Dref)/np.diff(output[:,0])
     Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
-
-    # plt.figure(665)
-    # plt.plot(output[2:,7],Dddotref)
-    # plt.ylabel('Drag Double Dot (m/s^4)')
-    # plt.xlabel('Velocity (m/s)')    
-    
-    # plt.figure(60)
-    # plt.plot(output[1:,7],np.diff(output[:,7]))
-    # plt.ylabel('Velocity Rate (m/s^3)')
-    # plt.xlabel('Velocity (m/s)')
-    
+   
     plt.figure(666)
     plt.plot(output[:,7],DerrPer)
     plt.ylabel('Drag Error (%)')
