@@ -157,13 +157,20 @@ class System(object):
         self.truth = EDL(InputSample=InputSample)
         self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
         self.filter_gain  = 0.0
+        self.powered = False
+    
+    def ignite(self):
+        self.model.ignite()
+        self.truth.ignite()
+        self.nav.ignite()
+        self.powered = True
         
     def dynamics(self, u):
         """ Returns an function integrable by odeint """
-        return lambda x,t: np.hstack( (self.truth.dynamics(x[18])(x[0:8],t), 
-                                       self.nav.dynamics(x[18])(x[8:16],t), 
+        return lambda x,t: np.hstack( (self.truth.dynamics((x[18],u[1],u[2]))(x[0:8],t), 
+                                       self.nav.dynamics((x[18],u[1],u[2]))(x[8:16],t), 
                                        self.__filterUpdate(x,t),
-                                       BankAngleDynamics(x[18:20], u),
+                                       BankAngleDynamics(x[18:20], u[0]),
                                        ) ) 
     
     def __filterUpdate(self,x,t):
