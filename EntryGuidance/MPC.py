@@ -34,11 +34,11 @@ def options(N,T):
     return opt
 
 
-def controller(control_options, control_bounds, aero_ratios, references, **kwargs):
+def controller(control_options, control_bounds, references, **kwargs):
 
     bounds = [control_bounds]*control_options['N']    
     
-    sol = optimize(kwargs['current_state'], control_options, bounds, aero_ratios, references)
+    sol = optimize(kwargs['current_state'], control_options, bounds, kwargs['aero_ratios'], references)
     if control_options['N'] > 1:
         return sol.x[0]*np.sign(references['bank'](kwargs['current_state'][3]))
     else:
@@ -69,7 +69,7 @@ def cost(u, sim, state, ratios, reference, scalar):
         controls = [partial(constant,value=u)]
     else:
         controls = [partial(constant, value=v) for v in u]
-    output = sim.run(state, controls, None, ratios)
+    output = sim.run(state, controls)
     time = output[:,0]
     drag = output[:,13]
     vel = output[:,7]
@@ -123,15 +123,15 @@ def testNMPC():
     # Create the controllers
     
     option_dict = options(N=1,T=5)
-    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
+    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), references=references)
     pre = partial(constant, value=bankProfile(time=0))
     controls = [pre,mpc]
     
     # Run the off-nominal simulation
     perturb = getUncertainty()['parametric']
-    # sample = None 
+    sample = None 
     # sample = perturb.sample()
-    sample = [ 0.0619597,   0.06117027,  0.03798111, -0.02972741]
+    # sample = [ 0.0619597,   0.06117027,  0.03798111, -0.02972741]
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]) # Errors in velocity and mass
     output = sim.run(x0,controls,sample)
     
