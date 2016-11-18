@@ -192,13 +192,13 @@ class System(object):
         self.filter_gain = gain
         
         
-def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank=np.pi/2, max_rate=np.radians(20), max_accel=np.radians(5)):
+def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank=np.pi/2, max_rate=np.radians(20), max_accel=np.radians(10)):
     """ 
         Constrained second order system subjected to minimum and maximum bank angles, max bank rate, and max acceleration.
         May cause stiffness in numerical integration, consider replacing Saturate with a smoother function like Erf
     """
     bank,rate = bank_state
-    bank = np.sign(bank)*Saturate(np.abs(bank), min_bank, max_bank)
+    # bank = np.sign(bank)*Saturate(np.abs(bank), min_bank, max_bank)
     
     bank_dot = Saturate(rate, -max_rate, max_rate)
     rate_dot = Saturate(kp*(command-bank)-kd*rate, -max_accel, max_accel)
