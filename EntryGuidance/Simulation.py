@@ -7,7 +7,7 @@ from scipy.io import savemat, loadmat
     
 import logging
 from transitions import Machine, State, logger
-from EntryEquations import Entry
+from EntryEquations import Entry, System
 from Planet import Planet
 from EntryVehicle import EntryVehicle
 
@@ -31,7 +31,9 @@ class Simulation(Machine):
         Defines a simulation class. The class is initialized to create its finite-state machine. 
         
         Methods:
+            run    - Runs the current simulation from a given state acting under a series of controllers and a realization of the uncertainty space.
             getRef - Returns a dictionary of interpolation objects
+            plot   - Plots a set of standard graphs. Does not show them, use Simulation.show() to bring them up. This can be useful to plot multiple trajectories before calling show.
             
         Members:
         
@@ -60,8 +62,9 @@ class Simulation(Machine):
         self.history = []           # Collection of state vectors
         self.u = None               # Previous controls
         self.control_history = []   # Collection of controls
-        self.ie = [0]                # Indices of event transitions
+        self.ie = [0]               # Indices of event transitions
         self.edlModel = None        # The dynamics and other functions associated with EDL
+        self.fullEDL = None         # The type of edl model used - "ideal" with perfect knowledge and no bank angle constraints, or "full" truth/nav/constraints/filters etc
         self.triggerInput = None    # An input to triggers and controllers
         
         states.append('Complete')
@@ -103,8 +106,8 @@ class Simulation(Machine):
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
 
         
-    def run(self, InitialState, Controllers, InputSample=None, AeroRatios=(1,1)):
-        """ Runs the simulation from a given a initial state, with the specified controllers in each state, and using a chosen sample of the uncertainty space """
+    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False):
+        """ Runs the simulation from a given a initial state, with the specified controllers in each phase, and using a chosen sample of the uncertainty space """
         
         self.reset()
         
@@ -113,15 +116,19 @@ class Simulation(Machine):
         CD,CL,rho0,sh = InputSample
         
         self.sample = InputSample
-        self.edlModel = Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL))
-        self.edlModel.update_ratios(*AeroRatios)
+        self.fullEDL = FullEDL
+        if self.fullEDL:
+            self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
+        else:
+            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL))
+            
         self.update(np.asarray(InitialState),0.0,None)
         self.control = Controllers
         while not self.is_Complete():
             temp = self.advance()
     
-        self.history = np.vstack(self.history)  # So that we can work with the data more easily than a list of arrays
-        self.control_history.append(self.u)     # So that the control history has the same length as the data;
+        self.history = np.vstack(self.history)                  # So that we can work with the data more easily than a list of arrays
+        self.control_history.append(self.u)                     # So that the control history has the same length as the data;
         self.control_history = np.vstack(self.control_history) 
         
         return self.postProcess()
@@ -155,97 +162,61 @@ class Simulation(Machine):
     
     
     def getDict(self):
-        L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]))
+        if self.fullEDL:
+            L,D = self.edlModel.nav.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]))
 
-        d =  {
-              'time'            : self.time,
-              'altitude'        : self.edlModel.altitude(self.x[0]),
-              'longitude'       : self.x[1],
-              'latitude'        : self.x[2],
-              'velocity'        : self.x[3],
-              'fpa'             : self.x[4],
-              'mass'            : self.x[7],
-              'rangeToGo'       : self.x[6],
-              'drag'            : D[0],
-              'lift'            : L[0],
-              'vehicle'         : self.edlModel.vehicle,
-              'current_state'   : self.x 
-              }
+            d =  {
+                  'time'            : self.time,
+                  'altitude'        : self.edlModel.nav.altitude(self.x[0]),
+                  'longitude'       : self.x[1],
+                  'latitude'        : self.x[2],
+                  'velocity'        : self.x[3],
+                  'fpa'             : self.x[4],
+                  'mass'            : self.x[7],
+                  'rangeToGo'       : self.x[6],
+                  'drag'            : D[0],
+                  'lift'            : L[0],
+                  'vehicle'         : self.edlModel.nav.vehicle,
+                  'current_state'   : self.x, # Should probably just return the current NAV state, since that's what we will propagate with in a controller
+                  'aero_ratios'     : self.x[16:18]
+                  }        
+        else:
+            L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]))
+
+            d =  {
+                  'time'            : self.time,
+                  'altitude'        : self.edlModel.altitude(self.x[0]),
+                  'longitude'       : self.x[1],
+                  'latitude'        : self.x[2],
+                  'velocity'        : self.x[3],
+                  'fpa'             : self.x[4],
+                  'mass'            : self.x[7],
+                  'rangeToGo'       : self.x[6],
+                  'drag'            : D[0],
+                  'lift'            : L[0],
+                  'vehicle'         : self.edlModel.vehicle,
+                  'current_state'   : self.x,
+                  'aero_ratios'     : (1,1),
+                  }
         
         return d
     
     def ignite(self):
         self.edlModel.ignite()
         
-    def plot(self, plotEvents = True):   
+    def plot(self, plotEvents=True, compare=True):   
         import matplotlib.pyplot as plt
         
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
         
-        # Altitude vs Velocity
-        plt.figure(1)
-        plt.plot(self.history[:,3], self.edlModel.altitude(self.history[:,0],km=True), lw = 3)
-        if plotEvents:
-            for i in self.ie:
-                plt.plot(self.history[i,3],self.edlModel.altitude(self.history[i,0],km=True),'o',label = self.__states[self.ie.index(i)], markersize=12)
-        plt.legend(loc='upper left')   
-        plt.xlabel('Velocity (m/s)')
-        plt.ylabel('Altitude (km)')
-        
-        # #Latitude/Longitude
-        # plt.figure(2)
-        # plt.plot(self.history[:,1]*180/np.pi, self.history[:,2]*180/np.pi)
-        # if plotEvents:        
-            # for i in self.ie:
-                # plt.plot(self.history[i,1]*180/np.pi, self.history[i,2]*180/np.pi,'o',label = self.__states[self.ie.index(i)])
-        # # plt.legend()
-        
-        # Range vs Velocity
-        plt.figure(3)
-        plt.plot(self.history[:,3], self.history[:,6]/1000)
-        if plotEvents:
-            for i in self.ie:
-                plt.plot(self.history[i,3],self.history[i,6]/1000,'o',label = self.__states[self.ie.index(i)])
-        # plt.legend(loc='upper left')   
-        plt.xlabel('Velocity (m/s)')
-        plt.ylabel('Range to Target (km)')
-        
-        # Bank Angle Profile
-        plt.figure(4)
-        plt.plot(self.times, np.degrees(self.control_history[:,0]))
-        for i in self.ie:
-            plt.plot(self.times[i], np.degrees(self.control_history[i,0]),'o',label = self.__states[self.ie.index(i)])
-        plt.legend(loc='best')   
-        plt.xlabel('Time (s)')
-        plt.ylabel('Bank Angle (deg)')
-        
-        plt.figure(7)
-        plt.plot(self.history[:,3], np.degrees(self.control_history[:,0]))
-        for i in self.ie:
-            plt.plot(self.history[i,3], np.degrees(self.control_history[i,0]),'o',label = self.__states[self.ie.index(i)])
-        plt.legend(loc='best')   
-        plt.xlabel('Velocity (m/s)')
-        plt.ylabel('Bank Angle (deg)')
-        
-        # Downrange vs Crossrange
-        plt.figure(5)
-        plt.plot(self.output[:,11], self.output[:,10])
-        for i in self.ie:
-            plt.plot(self.output[i,11], self.output[i,10],'o',label = self.__states[self.ie.index(i)])
-        plt.legend(loc='best')   
-        plt.xlabel('Cross Range (km)')
-        plt.ylabel('Down Range (km)')
-        
-        # Flight path vs Velocity
-        plt.figure(6)
-        plt.plot(self.history[:,3], self.history[:,4]*180/np.pi)
-        if plotEvents:
-            for i in self.ie:
-                plt.plot(self.history[i,3],self.history[i,4]*180/np.pi,'o',label = self.__states[self.ie.index(i)])
-        # plt.legend(loc='upper left')   
-        plt.xlabel('Velocity (m/s)')
-        plt.ylabel('Flight path angle (deg)')
-        
+        if self.fullEDL:
+            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)
+            if compare:
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1)             # Use same fignum for comparisons, set fignum > figures for new ones
+            else:
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")             
+        else:
+            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)
         
         
     def show(self):
@@ -253,25 +224,58 @@ class Simulation(Machine):
         plt.show()
         
     
-    def postProcess(self, dict=False):
+    def postProcess(self):
 
-        bank = np.degrees(self.control_history[:,0])
 
-        r,theta,phi = self.history[:,0], np.degrees(self.history[:,1]), np.degrees(self.history[:,2])
-        v,gamma,psi = self.history[:,3], np.degrees(self.history[:,4]), np.degrees(self.history[:,5])
-        s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
-        
-        x0 = self.history[0,:]
-        range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
-        energy = self.edlModel.energy(r,v)
-        # eInterp = np.linspace(0,1,1000)
-        # tInterp = interp1d(energy,time,'cubic')(eInterp)
-        # xInterp = interp1d(energy,self.history[istart:idx,:],'cubic',axis=0)(eInterp)  
+
+        if self.fullEDL:
+            bank_cmd = np.degrees(self.control_history[:,0])
+
+            r,theta,phi = self.history[:,0], np.degrees(self.history[:,1]), np.degrees(self.history[:,2])
+            v,gamma,psi = self.history[:,3], np.degrees(self.history[:,4]), np.degrees(self.history[:,5])
+            s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
             
-        h = [self.edlModel.altitude(R,km=True) for R in r]
-        L,D = self.edlModel.aeroforces(r,v)
+            r_nav,theta_nav,phi_nav = self.history[:,8], np.degrees(self.history[:,9]), np.degrees(self.history[:,10])
+            v_nav,gamma_nav,psi_nav = self.history[:,11], np.degrees(self.history[:,12]), np.degrees(self.history[:,13])
+            s_nav, m_nav         = (self.history[0,14]-self.history[:,14])/1000, self.history[:,15]
+            
+            RL,RD = self.history[:,16], self.history[:,17]
+            
+            bank, bank_rate = np.degrees(self.history[:,18]), np.degrees(self.history[:,19])
+            
+            x0 = self.history[0,:]
+            range = [self.edlModel.truth.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
+            range_nav = [self.edlModel.nav.planet.range(*x0[[9,10,13]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta_nav,phi_nav)]
+            
+            energy = self.edlModel.truth.energy(r,v)
+            energy_nav = self.edlModel.nav.energy(r_nav,v_nav)
 
-        data = np.c_[self.times, energy, bank, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D]
+                
+            h = [self.edlModel.truth.altitude(R,km=True) for R in r]
+            h_nav = [self.edlModel.truth.altitude(R,km=True) for R in r_nav]
+            L,D = self.edlModel.truth.aeroforces(r,v)
+            L_nav,D_nav = self.edlModel.nav.aeroforces(r_nav,v_nav)
+        
+        
+        
+            data = np.c_[self.times, energy, bank_cmd, h,   r,      theta,       phi,      v,         gamma,     psi,       range,     L,      D,
+                                     energy_nav, bank, h_nav, r_nav, theta_nav,  phi_nav,  v_nav,     gamma_nav, psi_nav,   range_nav, L_nav,  D_nav]
+        else:
+            bank_cmd = np.degrees(self.control_history[:,0])
+
+            r,theta,phi = self.history[:,0], np.degrees(self.history[:,1]), np.degrees(self.history[:,2])
+            v,gamma,psi = self.history[:,3], np.degrees(self.history[:,4]), np.degrees(self.history[:,5])
+            s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
+            
+            x0 = self.history[0,:]
+            range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
+            energy = self.edlModel.energy(r,v)
+                
+            h = [self.edlModel.altitude(R,km=True) for R in r]
+            L,D = self.edlModel.aeroforces(r,v)
+            
+            data = np.c_[self.times, energy, bank_cmd, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D]
+            
         self.output = data
         return data
         
@@ -318,15 +322,89 @@ class Simulation(Machine):
         
         
     # def save(self): #Create a .mat file
-    
-class EDLSimulation(Simulation):
-    """ Subclasses Simulation, but with a full System as the edl model. This provides a familiar interface but will need to overload most methods:
-    
-    
-    
-    """
 
+def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie, fignum=1, label=''):
+    import matplotlib.pyplot as plt
 
+    #history = [r, theta, phi, v, gamma, psi, s, m, DR, CR]
+    # Altitude vs Velocity
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,3], edlModel.altitude(history[:,0],km=True), lw = 3)
+    if plotEvents:
+        for i in ie:
+            plt.plot(history[i,3],edlModel.altitude(history[i,0],km=True),'o',label = fsm_states[ie.index(i)], markersize=12)
+    plt.legend(loc='upper left')   
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'Altitude (km)')
+    
+    # #Latitude/Longitude
+    # plt.figure(fignum)
+    # fignum += 1
+    # plt.plot(history[:,1]*180/np.pi, history[:,2]*180/np.pi)
+    # if plotEvents:        
+        # for i in ie:
+            # plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+    # # plt.legend()
+    
+    # Range vs Velocity
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,3], history[:,6]/1000)
+    if plotEvents:
+        for i in ie:
+            plt.plot(history[i,3],history[i,6]/1000,'o',label = fsm_states[ie.index(i)])
+    # plt.legend(loc='upper left')   
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'Range to Target (km)')
+    
+    # Bank Angle Profile
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(time, np.degrees(control_history[:]))
+    for i in ie:
+        plt.plot(time[i], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
+    plt.legend(loc='best')   
+    plt.xlabel(label+'Time (s)')
+    plt.ylabel(label+'Bank Angle (deg)')
+    
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,3], np.degrees(control_history[:]))
+    for i in ie:
+        plt.plot(history[i,3], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
+    plt.legend(loc='best')   
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'Bank Angle (deg)')
+    
+    # Downrange vs Crossrange
+    range = np.array([edlModel.planet.range(*history[0,[1,2,5]],lonc=lon,latc=lat,km=True) for lon,lat in zip(history[:,1],history[:,2])])
+    plt.figure(fignum)
+    fignum += 1        
+    plt.plot(range[:,1], range[:,0])
+    for i in ie:
+        plt.plot(range[i,1], range[i,0],'o',label = fsm_states[ie.index(i)])
+    plt.legend(loc='best')   
+    plt.xlabel(label+'Cross Range (km)')
+    plt.ylabel(label+'Down Range (km)')
+    
+    # Flight path vs Velocity
+    plt.figure(fignum)
+    fignum += 1        
+    plt.plot(history[:,3], history[:,4]*180/np.pi)
+    if plotEvents:
+        for i in ie:
+            plt.plot(history[i,3],history[i,4]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+    # plt.legend(loc='upper left')   
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'Flight path angle (deg)')    
+        
+    return fignum+1
+        
+# ########################################################## #
+# Simple functions to create various simulation combinations #
+# ########################################################## #
+    
 def SRP():
     """ Defines states and conditions for a trajectory from Pre-Entry through SRP-based EDL """
     from Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
@@ -359,6 +437,17 @@ def testSim():
     sim.run(x0,c)
     return sim
  
+def testFullSim():
+
+    sim = Simulation(cycle=Cycle(1),output=True,**EntrySim())
+    f = lambda **d: 0
+    f2 = lambda **d: (1,2.88)
+    c = [f,f,f2]
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]*2 +[1,1] + [0,0])
+    sim.run(x0,c, FullEDL=True)
+    return sim
 
 def NMPCSim(options):
     from Triggers import TimeTrigger
@@ -448,58 +537,64 @@ def fsmGif(states = range(4) ):
     
     
 if __name__ == '__main__':
-    from argparse import ArgumentParser
-    import multiprocessing as mp
-    import chaospy as cp
-    import os
-    from Simulation import Simulation, SRP, EntrySim
-    from functools import partial
-    from scipy.io import savemat, loadmat
-    import JBG
-    from ParametrizedPlanner import HEPBankReducedSmooth, HEPBank
-    from Uncertainty import getUncertainty
-    from Triggers import AccelerationTrigger,VelocityTrigger
-    import matplotlib.pyplot as plt
-    from MPC import controller,options
-    from numpy import pi
 
-    # Define Uncertainty Joint PDF
-    pdf = getUncertainty()['parametric']
+    sim = testFullSim()
+    sim.plot(compare=False)
+    sim.show()
+    # Monte Carlo Stuff:
+
+    # from argparse import ArgumentParser
+    # import multiprocessing as mp
+    # import chaospy as cp
+    # import os
+    # from Simulation import Simulation, SRP, EntrySim
+    # from functools import partial
+    # from scipy.io import savemat, loadmat
+    # import JBG
+    # from ParametrizedPlanner import HEPBankReducedSmooth, HEPBank
+    # from Uncertainty import getUncertainty
+    # from Triggers import AccelerationTrigger,VelocityTrigger
+    # import matplotlib.pyplot as plt
+    # from MPC import controller,options
+    # from numpy import pi
+
+    # # Define Uncertainty Joint PDF
+    # pdf = getUncertainty()['parametric']
     
-    n = 2000
-    samples = pdf.sample(n)    
-    p = pdf.pdf(samples)
+    # n = 2000
+    # samples = pdf.sample(n)    
+    # p = pdf.pdf(samples)
     
-    reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
+    # reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    # bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
     
-    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
+    # r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             # 5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
                                              
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
-    output = reference_sim.run(x0,[bankProfile])
+    # x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+    # output = reference_sim.run(x0,[bankProfile])
 
-    references = reference_sim.getRef()
-    drag_ref = references['drag']
+    # references = reference_sim.getRef()
+    # drag_ref = references['drag']
     
     
-    # Create the simulation model:
+    # # Create the simulation model:
         
-    states = ['PreEntry','Entry']
-    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
-    input = { 'states' : states,
-              'conditions' : conditions }
+    # states = ['PreEntry','Entry']
+    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
+    # input = { 'states' : states,
+              # 'conditions' : conditions }
               
-    sim = Simulation(cycle=Cycle(1),output=False,**input)
+    # sim = Simulation(cycle=Cycle(1),output=False,**input)
 
-    # Create the controllers
+    # # Create the controllers
     
-    option_dict = options(N=1,T=5)
-    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
-    pre = partial(constant, value=bankProfile(time=0))
-    controls = [pre,mpc]
+    # option_dict = options(N=1,T=5)
+    # mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
+    # pre = partial(constant, value=bankProfile(time=0))
+    # controls = [pre,mpc]
     
-    # Run the off-nominal simulations
-    stateTensor = [sim.run(x0,controls,s) for s in samples.T]
-    saveDir = './data/'
-    savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})
+    # # Run the off-nominal simulations
+    # stateTensor = [sim.run(x0,controls,s) for s in samples.T]
+    # saveDir = './data/'
+    # savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})
