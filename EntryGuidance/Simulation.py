@@ -106,7 +106,7 @@ class Simulation(Machine):
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
 
         
-    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False):
+    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1)):
         """ Runs the simulation from a given a initial state, with the specified controllers in each phase, and using a chosen sample of the uncertainty space """
         
         self.reset()
@@ -121,7 +121,7 @@ class Simulation(Machine):
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL))
-            
+            self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
         self.update(np.asarray(InitialState),0.0,None)
         self.control = Controllers
         while not self.is_Complete():
@@ -177,7 +177,7 @@ class Simulation(Machine):
                   'drag'            : D[0],
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.nav.vehicle,
-                  'current_state'   : self.x, # Should probably just return the current NAV state, since that's what we will propagate with in a controller
+                  'current_state'   : self.x[8:16], # Should probably just return the current NAV state, since that's what we will propagate within a controller
                   'aero_ratios'     : self.x[16:18]
                   }        
         else:
@@ -196,7 +196,7 @@ class Simulation(Machine):
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.vehicle,
                   'current_state'   : self.x,
-                  'aero_ratios'     : (1,1),
+                  'aero_ratios'     : (self.edlModel.lift_ratio, self.edlModel.drag_ratio),
                   }
         
         return d
@@ -214,7 +214,13 @@ class Simulation(Machine):
             if compare:
                 fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1)             # Use same fignum for comparisons, set fignum > figures for new ones
             else:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")             
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
+            plt.figure(fignum)        
+            plt.plot(self.times, self.history[:,16],label='Lift')
+            plt.plot(self.times,self.history[:,17], label='Drag')
+            plt.title('Aerodynamic Filter Ratios')
+
+                
         else:
             simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)
         
@@ -252,7 +258,7 @@ class Simulation(Machine):
 
                 
             h = [self.edlModel.truth.altitude(R,km=True) for R in r]
-            h_nav = [self.edlModel.truth.altitude(R,km=True) for R in r_nav]
+            h_nav = [self.edlModel.nav.altitude(R,km=True) for R in r_nav]
             L,D = self.edlModel.truth.aeroforces(r,v)
             L_nav,D_nav = self.edlModel.nav.aeroforces(r_nav,v_nav)
         
@@ -368,14 +374,14 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.xlabel(label+'Time (s)')
     plt.ylabel(label+'Bank Angle (deg)')
     
-    plt.figure(fignum)
-    fignum += 1
-    plt.plot(history[:,3], np.degrees(control_history[:]))
-    for i in ie:
-        plt.plot(history[i,3], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
-    plt.legend(loc='best')   
-    plt.xlabel(label+'Velocity (m/s)')
-    plt.ylabel(label+'Bank Angle (deg)')
+    # plt.figure(fignum)
+    # fignum += 1
+    # plt.plot(history[:,3], np.degrees(control_history[:]))
+    # for i in ie:
+        # plt.plot(history[i,3], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
+    # plt.legend(loc='best')   
+    # plt.xlabel(label+'Velocity (m/s)')
+    # plt.ylabel(label+'Bank Angle (deg)')
     
     # Downrange vs Crossrange
     range = np.array([edlModel.planet.range(*history[0,[1,2,5]],lonc=lon,latc=lat,km=True) for lon,lat in zip(history[:,1],history[:,2])])
