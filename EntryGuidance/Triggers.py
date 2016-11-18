@@ -66,6 +66,14 @@ class TimeTrigger(Trigger):
         self.__tt = timeTrigger
         super(TimeTrigger,self).__init__(self.__Trigger, 'Time elapsed >= {} s'.format(timeTrigger))        
         
+class RangeToGoTrigger(Trigger):
+    def __Trigger(self,rangeToGo, **kwargs):
+        return rangeToGo <= self.__rtg
+        
+    def __init__(self, rtgTrigger):
+        self.__rtg = rtgTrigger
+        super(RangeToGoTrigger,self).__init__(self.__Trigger,'Range to go <= {} m'.format(rtgTrigger))
+        
 # class LogicalTrigger(Trigger):
     # '''
     # A class for combining triggers to form more powerful logics
