@@ -20,8 +20,8 @@ class EntryVehicle:
         
     '''
     
-    def __init__(self, mass = 2804.0, area = 15.8, CD = 0, CL = 0, Thrust = 60375, Isp = 260, ThrustFactor = 1):
-        self.mass = mass
+    def __init__(self, mass = 8500.0, area = 15.8, CD = 0, CL = 0, Thrust = 60375, Isp = 260, ThrustFactor = 1):
+        # self.mass = mass
         self.area = area
         self.CD = CD
         self.CL = CL
