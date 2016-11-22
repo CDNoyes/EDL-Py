@@ -58,7 +58,7 @@ class Entry:
         rho,a = self.planet.atmosphere(h)
         M = v/a
         cD,cL = self.vehicle.aerodynamic_coefficients(M)
-        f = 0.5*rho*self.vehicle.area*v**2/self.vehicle.mass
+        f = 0.5*rho*self.vehicle.area*v**2/m
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
                 
@@ -115,8 +115,8 @@ class Entry:
         else:
             return E
             
-    def aeroforces(self, r, v):
-        """  Returns the aerodynamic forces acting on the vehicle at a given altitude and velocity. """
+    def aeroforces(self, r, v, m):
+        """  Returns the aerodynamic forces acting on the vehicle at a given altitude, velocity and mass. """
         
         g = self.planet.mu/r**2
         h = r - self.planet.radius
@@ -126,7 +126,7 @@ class Entry:
             rho,a = self.planet.atmosphere(hi)
             M = v[i]/a
             cD,cL = self.vehicle.aerodynamic_coefficients(M)
-            f = 0.5*rho*self.vehicle.area*v[i]**2/self.vehicle.mass
+            f = 0.5*rho*self.vehicle.area*v[i]**2/m[i]
             L[i] = f*cL
             D[i] = f*cD
         return L,D
@@ -178,8 +178,8 @@ class System(object):
         RL = x[16]
         RD = x[17]
         
-        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]))
-        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]))
+        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array(x[15]))
+        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array(x[15]))
         
         dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=self.filter_gain)
         dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=self.filter_gain)
