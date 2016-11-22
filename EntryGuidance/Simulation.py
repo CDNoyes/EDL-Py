@@ -163,25 +163,25 @@ class Simulation(Machine):
     
     def getDict(self):
         if self.fullEDL:
-            L,D = self.edlModel.nav.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]))
+            L,D = self.edlModel.nav.aeroforces(np.array([self.x[8]]),np.array([self.x[11]]),np.array([self.x[15]]))
 
             d =  {
                   'time'            : self.time,
-                  'altitude'        : self.edlModel.nav.altitude(self.x[0]),
-                  'longitude'       : self.x[1],
-                  'latitude'        : self.x[2],
-                  'velocity'        : self.x[3],
-                  'fpa'             : self.x[4],
-                  'mass'            : self.x[7],
-                  'rangeToGo'       : self.x[6],
+                  'altitude'        : self.edlModel.nav.altitude(self.x[8]),
+                  'longitude'       : self.x[9],
+                  'latitude'        : self.x[10],
+                  'velocity'        : self.x[11],
+                  'fpa'             : self.x[12],
+                  'mass'            : self.x[15],
+                  'rangeToGo'       : self.x[14],
                   'drag'            : D[0],
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.nav.vehicle,
-                  'current_state'   : self.x[8:16], # Should probably just return the current NAV state, since that's what we will propagate within a controller
+                  'current_state'   : self.x[8:16], 
                   'aero_ratios'     : self.x[16:18]
                   }        
         else:
-            L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]))
+            L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]),np.array([self.x[7]]))
 
             d =  {
                   'time'            : self.time,
@@ -259,8 +259,8 @@ class Simulation(Machine):
                 
             h = [self.edlModel.truth.altitude(R,km=True) for R in r]
             h_nav = [self.edlModel.nav.altitude(R,km=True) for R in r_nav]
-            L,D = self.edlModel.truth.aeroforces(r,v)
-            L_nav,D_nav = self.edlModel.nav.aeroforces(r_nav,v_nav)
+            L,D = self.edlModel.truth.aeroforces(r,v,m)
+            L_nav,D_nav = self.edlModel.nav.aeroforces(r_nav,v_nav,m_nav)
         
         
         
@@ -278,7 +278,7 @@ class Simulation(Machine):
             energy = self.edlModel.energy(r,v)
                 
             h = [self.edlModel.altitude(R,km=True) for R in r]
-            L,D = self.edlModel.aeroforces(r,v)
+            L,D = self.edlModel.aeroforces(r,v,m)
             
             data = np.c_[self.times, energy, bank_cmd, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D]
             
