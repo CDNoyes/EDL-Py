@@ -225,16 +225,16 @@ def OptimizeSRP():
 
     if 1:
         # bounds = [(0,250),(100,350)]
-        bounds = [(0,250),(100,400),(100,450)]
-        sol = differential_evolution(SRPCost,args = (sim,), bounds=bounds, tol=1e-2, disp=True, polish=False)
+        bounds = [(0,250),(100,400),(100,550)]
+        sol = differential_evolution(SRPCost,args = (sim,), bounds=bounds, tol=1e-1, disp=True, polish=False)
     else:
         sol = minimize(SRPCost,[ 165.4159422 ,  308.86420218,  399.53393904], args=(sim,), method='Nelder-Mead', tol=1e-5, options={'disp':True})
         
     # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*sol.x)
-    bankProfile = lambda **d: HEPBank(d['time'], sol.x[0],sol.x[1],400)
+    bankProfile = lambda **d: HEPBank(d['time'], *sol.x)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1200e3)
                                              
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     output = sim.run(x0,[bankProfile])
@@ -242,13 +242,12 @@ def OptimizeSRP():
     sim.plot()
     sim.show()
     
-    return sim,sol # Optimal: 1000 km DR, 0 CR, 5 km altitude np.array([ 165.4159422 ,  308.86420218,  399.53393904])
-    
+    return sim,sol 
 def SRPCost(p, sim, sample=None):
 
-    dr_target = 1000
+    dr_target = 1200
     cr_target = 0
-    h_target = 5
+    h_target = 0
 
     
     J = checkFeasibility(p)
@@ -271,7 +270,7 @@ def SRPCost(p, sim, sample=None):
     dr = Xf[10]
     cr = Xf[11]
     
-    J = 0.1*((h_target-hf)**2)**0.5 + ((dr_target-dr)**2 + (cr_target-cr)**2)**0.5
+    J = -hf + ((dr_target-dr)**2 + (cr_target-cr)**2)**0.5 # 0.01*((h_target-hf)**2)**0.5
 
     return J
 
@@ -286,7 +285,7 @@ def OptimizeSRPRS():
         sol = minimize(SRPCostRS, [ 165.4159422 ,  308.86420218,  399.53393904], args=(sim, perturb), method='Nelder-Mead', tol=1e-2, options={'disp':True})
     else:
         bounds = [(0,250),(100,400),(250,500)]
-        sol = differential_evolution(SRPCostRS, args = (sim, perturb), bounds=bounds, tol=1e-3, disp=True, polish=False)
+        sol = differential_evolution(SRPCostRS, args=(sim, perturb), bounds=bounds, tol=1e-3, disp=True, polish=False)
     
     print sol.x
     
@@ -372,9 +371,10 @@ if __name__ == '__main__':
     from Uncertainty import getUncertainty
     from Simulation import Simulation, Cycle, EntrySim
 
-    sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    
-    perturb = getUncertainty()['parametric']
-    p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
+    # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    sim,sol = OptimizeSRP()
+    print sol.x
+    # perturb = getUncertainty()['parametric']
+    # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
     # print "RS cost of nominal optimized profile: {}".format(SRPCostRS(p, sim, perturb))
-    OptimizeSRPRS()
+    # OptimizeSRPRS()

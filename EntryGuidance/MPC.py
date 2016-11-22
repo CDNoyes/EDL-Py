@@ -48,7 +48,7 @@ def controller(control_options, control_bounds, references, **kwargs):
 
 def lateral(velocity,drag,fpa,T):
     vdot = drag*np.sin(fpa)-3.7
-    vf = velocity + T*vdot
+    vf = velocity + 0*T*vdot
     return vf
         
 def optimize(current_state, control_options, control_bounds, aero_ratios, reference):
@@ -68,7 +68,8 @@ def optimize(current_state, control_options, control_bounds, aero_ratios, refere
     else:
         scalar = True
         sol = minimize_scalar(cost, method='Bounded', bounds=control_bounds[0], args=(sim, current_state, aero_ratios, reference, scalar))
-    
+        plotCost(sim,current_state,reference,sol)
+        
     return sol
     
 def cost(u, sim, state, ratios, reference, scalar):
@@ -96,6 +97,18 @@ def cost(u, sim, state, ratios, reference, scalar):
     return trapz(integrand, time)
     
     
+def plotCost(sim,state,reference,sol):
+    import matplotlib.pyplot as plt
+    
+    U = np.linspace(0,np.pi/2)
+    c = [cost(u, sim, state, (1,1), reference, True) for u in U]
+    plt.plot(np.degrees(U),np.array(c)/np.max(c))
+    # plt.plot(np.degrees(sol.x), sol.fun/np.max(c),'x')
+    plt.xlabel('Bank Angle (deg)')
+    plt.ylabel('Cost Function (Normalized to Max Cost = 1)')
+    plt.title('Cost as a function of constant control over the prediction horizon')
+    # plt.show()
+    
 def testNMPC():
     from Simulation import Simulation, Cycle, EntrySim, SRP
     import matplotlib.pyplot as plt
@@ -106,7 +119,8 @@ def testNMPC():
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
+    # bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
+    bankProfile = lambda **d: np.sin(d['time']/20)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
@@ -121,8 +135,8 @@ def testNMPC():
     # Create the simulation model:
         
     states = ['PreEntry','Entry']
-    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
-    conditions = [AccelerationTrigger('drag',4), RangeToGoTrigger(0)]
+    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
+    # conditions = [AccelerationTrigger('drag',4), RangeToGoTrigger(-300)]
     input = { 'states' : states,
               'conditions' : conditions }
               
@@ -145,23 +159,26 @@ def testNMPC():
 
     if 1:
         output = sim.run(x0, controls, sample, FullEDL=False)
-        reference_sim.plot()
+        plt.show()
         
+        reference_sim.plot()
+
     else:
         output = sim.run(x0_full, controls, sample, FullEDL=True)
     
     Dref = drag_ref(output[:,7])
-    D = output[:,13]
+    D = output[:,13]    
     Derr = D-Dref
     DerrPer = 100*Derr/Dref
     Ddotref = np.diff(Dref)/np.diff(output[:,0])
     Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
    
-    plt.figure(666)
-    plt.plot(output[:,7],DerrPer)
+    iv = np.nonzero(output[:,7]<5000)[0]
+    plt.figure(60)
+    plt.plot(output[iv,7],DerrPer[iv])
     plt.ylabel('Drag Error (%)')
     plt.xlabel('Velocity (m/s)')
-    
+
     sim.plot()
     sim.show()
     
