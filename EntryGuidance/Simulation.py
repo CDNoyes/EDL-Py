@@ -122,14 +122,14 @@ class Simulation(Machine):
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL))
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
-        self.update(np.asarray(InitialState),0.0,None)
+        self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
             temp = self.advance()
     
         self.history = np.vstack(self.history)                  # So that we can work with the data more easily than a list of arrays
         self.control_history.append(self.u)                     # So that the control history has the same length as the data;
-        self.control_history = np.vstack(self.control_history) 
+        self.control_history = np.vstack(self.control_history[1:]) 
         
         return self.postProcess()
 
@@ -178,7 +178,8 @@ class Simulation(Machine):
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.nav.vehicle,
                   'current_state'   : self.x[8:16], 
-                  'aero_ratios'     : self.x[16:18]
+                  'aero_ratios'     : self.x[16:18],
+                  'bank'            : self.u[0] # Should this be the current command or the current state?
                   }        
         else:
             L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]),np.array([self.x[7]]))
@@ -197,6 +198,7 @@ class Simulation(Machine):
                   'vehicle'         : self.edlModel.vehicle,
                   'current_state'   : self.x,
                   'aero_ratios'     : (self.edlModel.lift_ratio, self.edlModel.drag_ratio),
+                  'bank'            : self.u[0]
                   }
         
         return d
@@ -314,7 +316,7 @@ class Simulation(Machine):
         """
         ref = {}
         vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
-        range = np.flipud(self.output[:,10]*1e3) 
+        range = np.flipud(self.output[-1,10]*1e3-self.output[:,10]*1e3) # Should probably be range to go instead, since thats the state the sim has access to
         drag = np.flipud(self.output[:,13])
         dragcos = np.flipud(self.output[:,13]/np.cos(np.radians(self.output[:,8])))
         bank = np.flipud(self.output[:,2])
@@ -322,7 +324,7 @@ class Simulation(Machine):
         
         ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['dragcos'] = interp1d(vel[:i_vmax],dragcos[:i_vmax], fill_value=(dragcos[0],dragcos[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
-        ref['range'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
+        ref['rangeToGo'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
         return ref
         

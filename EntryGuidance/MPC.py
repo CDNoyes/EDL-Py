@@ -35,21 +35,45 @@ def options(N,T):
 
 
 def controller(control_options, control_bounds, references, **kwargs):
-
-    bounds = [control_bounds]*control_options['N']    
+    
+    newSign,clipBounds = lateral(kwargs['velocity'], kwargs['drag'],kwargs['fpa'],control_options['T'],references['bank'])
+    
+    if clipBounds and True:
+        bounds = [(control_bounds[0],np.abs(kwargs['bank']))]*control_options['N']
+    else:
+        bounds = [control_bounds]*control_options['N']    
     
     sol = optimize(kwargs['current_state'], control_options, bounds, kwargs['aero_ratios'], references)
     
-    vf = lateral(kwargs['velocity'], kwargs['drag'],kwargs['fpa'],control_options['T'])
+    
     if control_options['N'] > 1:
-        return sol.x[0]*np.sign(references['bank'](vf))
+        return sol.x[0]*np.sign(references['bank'](kwargs['velocity']))
     else:
-        return sol.x*np.sign(references['bank'](vf))
+        # return sol.x*np.sign(references['bank'](kwargs['velocity']))
+        return sol.x*newSign
 
-def lateral(velocity,drag,fpa,T):
-    vdot = drag*np.sin(fpa)-3.7
-    vf = velocity + 0*T*vdot
-    return vf
+def lateral(velocity, drag, fpa, T, bankRef):
+
+    vdot = -drag-3.7*np.sin(fpa)
+    vf = velocity + T*vdot # Approximation, could also used the actual model to predict
+    dv = velocity-vf
+    
+    bank = bankRef([velocity,vf])
+    if bank[0]*bank[1] < 0: #Sign change occurs within the prediction interval
+        v = np.linspace(velocity,vf)
+        b = bankRef(v)
+        ind = np.where(np.diff(np.sign(b)))[0]
+        vr = v[ind[0]]
+        dvf = velocity-vr
+        factor = (dvf/vf)
+        # factor = 0
+        print "Debug"
+
+        return np.sign(bank[0]), True
+    else:
+        return np.sign(bank[0]), False
+    
+    
         
 def optimize(current_state, control_options, control_bounds, aero_ratios, reference):
     from Simulation import Simulation, NMPCSim
@@ -68,7 +92,8 @@ def optimize(current_state, control_options, control_bounds, aero_ratios, refere
     else:
         scalar = True
         sol = minimize_scalar(cost, method='Bounded', bounds=control_bounds[0], args=(sim, current_state, aero_ratios, reference, scalar))
-        plotCost(sim,current_state,reference,sol)
+        # plotCost(sim,current_state,reference,sol)
+        # plotRTG(sim, current_state, reference, sol.x)
         
     return sol
     
@@ -81,7 +106,8 @@ def cost(u, sim, state, ratios, reference, scalar):
     time = output[:,0]
     drag = output[:,13]
     vel = output[:,7]
-    range = output[:,10]
+    # range = output[:,10]
+    rangeToGo = sim.history[:,6]/1000.
     fpa = np.radians(output[:,8])
     # lift = output[:,12]
     
@@ -92,9 +118,28 @@ def cost(u, sim, state, ratios, reference, scalar):
         drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
         integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
     
-    # rtg_ref = reference['range'](vel)/1000
+    if  vel[0]<5300:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
+        rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
+        integrand += .1*(rangeToGo-rtg_ref)**2
     
     return trapz(integrand, time)
+ 
+def plotRTG(sim,state,reference,sol): 
+    import matplotlib.pyplot as plt
+    
+    controls = [partial(constant,value=sol)]
+    output = sim.run(state, controls, AeroRatios=(1,1))
+    time = output[:,0]
+    drag = output[:,13]
+    vel = output[:,7]
+    rangeToGo = sim.history[:,6]/1000.
+
+    
+    rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
+    
+    plt.plot(vel, rangeToGo,label='MPC')
+    plt.plot(vel, rtg_ref,label='Ref')
+    plt.show()
     
     
 def plotCost(sim,state,reference,sol):
@@ -112,18 +157,19 @@ def plotCost(sim,state,reference,sol):
 def testNMPC():
     from Simulation import Simulation, Cycle, EntrySim, SRP
     import matplotlib.pyplot as plt
-    from ParametrizedPlanner import HEPBank
+    from ParametrizedPlanner import HEPBank,HEPBankReducedSmooth
     # from JBG import controller as srp_control
     from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger
     from Uncertainty import getUncertainty
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    # bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
-    bankProfile = lambda **d: np.sin(d['time']/20)
+    # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*[ 165.4159422 ,  308.86420218])
+    bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
+    # bankProfile = lambda **d: np.sin(d['time']/20)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1086.3e3)
                                              
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
     output = reference_sim.run(x0,[bankProfile])
@@ -173,7 +219,17 @@ def testNMPC():
     Ddotref = np.diff(Dref)/np.diff(output[:,0])
     Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
    
+    Sref = references['rangeToGo'](output[:,7])
+    # Sref = (Sref[0]-Sref)/1000.
     iv = np.nonzero(output[:,7]<5000)[0]
+
+    
+    plt.figure(59)
+    plt.plot(output[:,7], Sref/1000, label='Reference')
+    plt.plot(output[:,7], output[-1,10]-output[:,10], label='MPC')
+    plt.xlabel('Velocity (m/s)')
+    plt.legend()
+    
     plt.figure(60)
     plt.plot(output[iv,7],DerrPer[iv])
     plt.ylabel('Drag Error (%)')
