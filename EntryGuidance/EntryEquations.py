@@ -127,8 +127,8 @@ class Entry:
             M = v[i]/a
             cD,cL = self.vehicle.aerodynamic_coefficients(M)
             f = 0.5*rho*self.vehicle.area*v[i]**2/m[i]
-            L[i] = f*cL
-            D[i] = f*cD
+            L[i] = f*cL*self.lift_ratio
+            D[i] = f*cD*self.drag_ratio
         return L,D
         
 def EDL(InputSample = np.zeros(4)):
@@ -156,7 +156,7 @@ class System(object):
         self.model = EDL()
         self.truth = EDL(InputSample=InputSample)
         self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
-        self.filter_gain  = 0.0
+        self.filter_gain  = -10.0
         self.powered = False
     
     def ignite(self):
@@ -178,8 +178,8 @@ class System(object):
         RL = x[16]
         RD = x[17]
         
-        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array(x[15]))
-        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array(x[15]))
+        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array([x[15]]))
+        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array([x[15]]))
         
         dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=self.filter_gain)
         dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=self.filter_gain)

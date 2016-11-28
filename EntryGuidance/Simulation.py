@@ -172,8 +172,8 @@ class Simulation(Machine):
                   'latitude'        : self.x[10],
                   'velocity'        : self.x[11],
                   'fpa'             : self.x[12],
-                  'mass'            : self.x[15],
                   'rangeToGo'       : self.x[14],
+                  'mass'            : self.x[15],
                   'drag'            : D[0],
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.nav.vehicle,
@@ -191,8 +191,8 @@ class Simulation(Machine):
                   'latitude'        : self.x[2],
                   'velocity'        : self.x[3],
                   'fpa'             : self.x[4],
-                  'mass'            : self.x[7],
                   'rangeToGo'       : self.x[6],
+                  'mass'            : self.x[7],
                   'drag'            : D[0],
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.vehicle,
@@ -219,7 +219,7 @@ class Simulation(Machine):
                 fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
             plt.figure(fignum)        
             plt.plot(self.times, self.history[:,16],label='Lift')
-            plt.plot(self.times,self.history[:,17], label='Drag')
+            plt.plot(self.times, self.history[:,17], label='Drag')
             plt.title('Aerodynamic Filter Ratios')
 
                 
@@ -347,13 +347,13 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.ylabel(label+'Altitude (km)')
     
     # #Latitude/Longitude
-    # plt.figure(fignum)
-    # fignum += 1
-    # plt.plot(history[:,1]*180/np.pi, history[:,2]*180/np.pi)
-    # if plotEvents:        
-        # for i in ie:
-            # plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
-    # # plt.legend()
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,1]*180/np.pi, history[:,2]*180/np.pi)
+    if plotEvents:        
+        for i in ie:
+            plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+    # plt.legend()
     
     # Range vs Velocity
     plt.figure(fignum)

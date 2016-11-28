@@ -36,7 +36,7 @@ def options(N,T):
 
 def controller(control_options, control_bounds, references, **kwargs):
     
-    newSign,clipBounds = lateral(kwargs['velocity'], kwargs['drag'],kwargs['fpa'],control_options['T'],references['bank'])
+    newSign,clipBounds = lateral(kwargs['velocity'], kwargs['drag'], kwargs['fpa'], control_options['T'], references['bank'])
     
     if clipBounds and True:
         bounds = [(control_bounds[0],np.abs(kwargs['bank']))]*control_options['N']
@@ -45,11 +45,10 @@ def controller(control_options, control_bounds, references, **kwargs):
     
     sol = optimize(kwargs['current_state'], control_options, bounds, kwargs['aero_ratios'], references)
     
-    
+    # print "Aero ratios used in controller: {},{}".format(*kwargs['aero_ratios'])
     if control_options['N'] > 1:
         return sol.x[0]*np.sign(references['bank'](kwargs['velocity']))
     else:
-        # return sol.x*np.sign(references['bank'](kwargs['velocity']))
         return sol.x*newSign
 
 def lateral(velocity, drag, fpa, T, bankRef):
@@ -60,14 +59,14 @@ def lateral(velocity, drag, fpa, T, bankRef):
     
     bank = bankRef([velocity,vf])
     if bank[0]*bank[1] < 0: #Sign change occurs within the prediction interval
-        v = np.linspace(velocity,vf)
-        b = bankRef(v)
-        ind = np.where(np.diff(np.sign(b)))[0]
-        vr = v[ind[0]]
-        dvf = velocity-vr
-        factor = (dvf/vf)
+        # v = np.linspace(velocity,vf)
+        # b = bankRef(v)
+        # ind = np.where(np.diff(np.sign(b)))[0]
+        # vr = v[ind[0]]
+        # dvf = velocity-vr
+        # factor = (dvf/vf)
         # factor = 0
-        print "Debug"
+        print "Anticipating bank reversal"
 
         return np.sign(bank[0]), True
     else:
@@ -158,7 +157,7 @@ def testNMPC():
     from Simulation import Simulation, Cycle, EntrySim, SRP
     import matplotlib.pyplot as plt
     from ParametrizedPlanner import HEPBank,HEPBankReducedSmooth
-    # from JBG import controller as srp_control
+    import HeadingAlignment as headAlign
     from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger
     from Uncertainty import getUncertainty
     
@@ -171,7 +170,7 @@ def testNMPC():
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   1086.3e3)
                                              
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2800.0])
     output = reference_sim.run(x0,[bankProfile])
 
     references = reference_sim.getRef()
@@ -180,9 +179,9 @@ def testNMPC():
     
     # Create the simulation model:
         
-    states = ['PreEntry','Entry']
-    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
-    # conditions = [AccelerationTrigger('drag',4), RangeToGoTrigger(-300)]
+    states = ['PreEntry','RangeControl','Heading']
+    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1000), VelocityTrigger(500)]
+    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
     input = { 'states' : states,
               'conditions' : conditions }
               
@@ -190,20 +189,23 @@ def testNMPC():
 
     # Create the controllers
     
-    option_dict = options(N=1,T=5)
-    mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), references=references)
+    option_dict = options(N=1,T=20)
+    get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]),lon_target=np.radians(output[-1,5]))
+    mpc_heading = partial(headAlign.controller, control_options=option_dict, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
+    mpc_range = partial(controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references)
     pre = partial(constant, value=bankProfile(time=0))
-    controls = [pre,mpc]
+    controls = [pre,mpc_range,mpc_heading]
     
     # Run the off-nominal simulation
     perturb = getUncertainty()['parametric']
     sample = None 
     # sample = perturb.sample()
-    # sample = [ 0.0319597,   -0.01117027,  0.0, 0.0]
-    x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0] # Errors in velocity and mass
-    x0_full = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0] + x0_nav + [1,1] + [np.radians(-15),0])
+    # sample = [ 0.05,  -0.01,  0.0, 0.0]
+    sample = [ 0.0, 0.0, 0.15, 0.0]
+    x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 2800.0] # Errors in velocity and mass
+    x0_full = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2800.0] + x0_nav + [1,1] + [np.radians(-15),0])
 
-    if 1:
+    if 0:
         output = sim.run(x0, controls, sample, FullEDL=False)
         plt.show()
         
@@ -211,7 +213,10 @@ def testNMPC():
 
     else:
         output = sim.run(x0_full, controls, sample, FullEDL=True)
-    
+        plt.show()
+
+        reference_sim.plot()
+
     Dref = drag_ref(output[:,7])
     D = output[:,13]    
     Derr = D-Dref
@@ -219,22 +224,16 @@ def testNMPC():
     Ddotref = np.diff(Dref)/np.diff(output[:,0])
     Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
    
-    Sref = references['rangeToGo'](output[:,7])
-    # Sref = (Sref[0]-Sref)/1000.
-    iv = np.nonzero(output[:,7]<5000)[0]
-
+    iv = np.nonzero(output[:,7]<5400)[0]
     
-    plt.figure(59)
-    plt.plot(output[:,7], Sref/1000, label='Reference')
-    plt.plot(output[:,7], output[-1,10]-output[:,10], label='MPC')
+    plt.figure(60)
+    # plt.plot(output[iv,7],DerrPer[iv])
+    plt.plot(output[iv,7],D[iv],label='Actual')
+    plt.plot(output[iv,7],Dref[iv],label='Reference')
+    plt.ylabel('Drag Error (m/s^2)')
     plt.xlabel('Velocity (m/s)')
     plt.legend()
     
-    plt.figure(60)
-    plt.plot(output[iv,7],DerrPer[iv])
-    plt.ylabel('Drag Error (%)')
-    plt.xlabel('Velocity (m/s)')
-
     sim.plot()
     sim.show()
     
