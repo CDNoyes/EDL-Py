@@ -67,19 +67,48 @@ class TimeTrigger(Trigger):
         super(TimeTrigger,self).__init__(self.__Trigger, 'Time elapsed >= {} s'.format(timeTrigger))        
         
 class RangeToGoTrigger(Trigger):
-    def __Trigger(self,rangeToGo, **kwargs):
+    def __Trigger(self, rangeToGo, **kwargs):
         return rangeToGo <= self.__rtg
         
     def __init__(self, rtgTrigger):
         self.__rtg = rtgTrigger
         super(RangeToGoTrigger,self).__init__(self.__Trigger,'Range to go <= {} m'.format(rtgTrigger))
         
+class EnergyTrigger(Trigger):
+    def __Trigger(self, energy, **kwargs):
+        return energy <= self.__eTrigger
+        
+    def __init__(self, energyTrigger):
+        self.__eTrigger = energyTrigger
+        super(EnergyTrigger,self).__init__(self.__Trigger,'Energy <- {}'.format(energyTrigger))
+        
+        
+class SRPTrigger(Trigger):
+
+    def __init__(self, minAltitude, maxVelocity, rangeToGo=0):
+        self.__vt = maxVelocity
+        self.__at = minAltitude
+        self.__rtg = rangeToGo
+        super(SRPTrigger,self).__init__(self.__Trigger,'SRP phase triggered')
+        
+    def __Trigger(self, altitude, velocity, rangeToGo, **kwargs):
+        if altitude <= self.__at: # Force ignition if too low
+            return True
+        if rangeToGo <= self.__rtg and velocity<=self.__vt: # Ignite if slow enough and we reached the target DR
+            return True
+        return False
+        
 # class LogicalTrigger(Trigger):
     # '''
     # A class for combining triggers to form more powerful logics
     # bools - links between triggers, 0 for OR, 1 for AND
     # '''
+    
+    # def __
+    
     # def __init__(self, Triggers, Bools):
+        # if len(Triggers) != (len(Bools)+1):
+            # raise AssertionError
         # self.__triggers = Triggers
         # self.__bools = Bools
         

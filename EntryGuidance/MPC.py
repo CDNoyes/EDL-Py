@@ -34,15 +34,19 @@ def options(N,T):
     return opt
 
 
-def controller(control_options, control_bounds, references, **kwargs):
+def controller(control_options, control_bounds, references, desired_heading, **kwargs):
     
-    newSign,clipBounds = lateral(kwargs['velocity'], kwargs['drag'], kwargs['fpa'], control_options['T'], references['bank'])
+    newSign,clipBounds = lateral(np.sign(kwargs['bank']), kwargs['velocity'], kwargs['drag'], kwargs['fpa'], kwargs['heading'], kwargs['latitude'], kwargs['longitude'], control_options['T'], references['bank'], desired_heading)
     
     if clipBounds and True:
         bounds = [(control_bounds[0],np.abs(kwargs['bank']))]*control_options['N']
     else:
         bounds = [control_bounds]*control_options['N']    
     
+    if True:
+        control_options['T'] = np.round(15/(np.log(kwargs['drag'])/2-0.3)) # Schedule this by dynamic pressure
+        print "Predict horizon = {}".format(control_options['T'])
+        
     sol = optimize(kwargs['current_state'], control_options, bounds, kwargs['aero_ratios'], references)
     
     # print "Aero ratios used in controller: {},{}".format(*kwargs['aero_ratios'])
@@ -51,14 +55,14 @@ def controller(control_options, control_bounds, references, **kwargs):
     else:
         return sol.x*newSign
 
-def lateral(velocity, drag, fpa, T, bankRef):
+def lateral(bank_sign, velocity, drag, fpa, heading, latitude, longitude, T, bankRef, compute_heading):
 
     vdot = -drag-3.7*np.sin(fpa)
     vf = velocity + T*vdot # Approximation, could also used the actual model to predict
     dv = velocity-vf
     
     bank = bankRef([velocity,vf])
-    if bank[0]*bank[1] < 0: #Sign change occurs within the prediction interval
+    if False and bank[0]*bank[1] < 0: #Sign change occurs within the prediction interval
         # v = np.linspace(velocity,vf)
         # b = bankRef(v)
         # ind = np.where(np.diff(np.sign(b)))[0]
@@ -68,9 +72,14 @@ def lateral(velocity, drag, fpa, T, bankRef):
         # factor = 0
         print "Anticipating bank reversal"
 
-        return np.sign(bank[0]), True
+        return bank_sign, True
     else:
-        return np.sign(bank[0]), False
+        heading_desired = compute_heading(longitude,latitude)
+        # print "Heading error: {} deg".format(np.degrees(heading-heading_desired))
+        if np.abs(heading-heading_desired)>.07:
+            return np.sign(heading-heading_desired), False # Any reason to clip if we're commanding a change already?
+        else:        
+            return bank_sign, False
     
     
         
@@ -105,6 +114,7 @@ def cost(u, sim, state, ratios, reference, scalar):
     time = output[:,0]
     drag = output[:,13]
     vel = output[:,7]
+    alt = output[:,3]
     # range = output[:,10]
     rangeToGo = sim.history[:,6]/1000.
     fpa = np.radians(output[:,8])
@@ -113,13 +123,17 @@ def cost(u, sim, state, ratios, reference, scalar):
     if 1:                                   # Pure drag tracking
         drag_ref = reference['drag'](vel)
         integrand = 1*(drag-drag_ref)**2
-    else:
-        drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
-        integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
+    # else:
+        # drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
+        # integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
     
-    if  vel[0]<5300:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
+    if  vel[0]<5300 and True:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
         rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
         integrand += .1*(rangeToGo-rtg_ref)**2
+    
+    if 0:
+        alt_ref = reference['altitude'](vel)
+        integrand = (alt-alt_ref)**2
     
     return trapz(integrand, time)
  
@@ -158,17 +172,17 @@ def testNMPC():
     import matplotlib.pyplot as plt
     from ParametrizedPlanner import HEPBank,HEPBankReducedSmooth
     import HeadingAlignment as headAlign
-    from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger
+    from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger, SRPTrigger
     from Uncertainty import getUncertainty
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
     # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*[ 165.4159422 ,  308.86420218])
-    bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
+    bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904], minBank=np.radians(35))
     # bankProfile = lambda **d: np.sin(d['time']/20)
     
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1086.3e3)
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
                                              
     x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2800.0])
     output = reference_sim.run(x0,[bankProfile])
@@ -180,8 +194,9 @@ def testNMPC():
     # Create the simulation model:
         
     states = ['PreEntry','RangeControl','Heading']
-    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1000), VelocityTrigger(500)]
+    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), VelocityTrigger(500)]
     # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
+    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), SRPTrigger(2,700)]
     input = { 'states' : states,
               'conditions' : conditions }
               
@@ -189,19 +204,20 @@ def testNMPC():
 
     # Create the controllers
     
-    option_dict = options(N=1,T=20)
+    option_dict = options(N=1,T=5)
     get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]),lon_target=np.radians(output[-1,5]))
     mpc_heading = partial(headAlign.controller, control_options=option_dict, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
-    mpc_range = partial(controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references)
+    mpc_range = partial(controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
     pre = partial(constant, value=bankProfile(time=0))
     controls = [pre,mpc_range,mpc_heading]
     
     # Run the off-nominal simulation
     perturb = getUncertainty()['parametric']
-    sample = None 
+    # sample = None 
     # sample = perturb.sample()
-    # sample = [ 0.05,  -0.01,  0.0, 0.0]
-    sample = [ 0.0, 0.0, 0.15, 0.0]
+    # print sample
+    sample = [ -0.05,  0.01,  -0.02, -0.004]
+    s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
     x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 2800.0] # Errors in velocity and mass
     x0_full = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2800.0] + x0_nav + [1,1] + [np.radians(-15),0])
 
@@ -234,7 +250,7 @@ def testNMPC():
     plt.xlabel('Velocity (m/s)')
     plt.legend()
     
-    sim.plot()
+    sim.plot(compare=False)
     sim.show()
     
     

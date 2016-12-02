@@ -172,6 +172,7 @@ class Simulation(Machine):
                   'latitude'        : self.x[10],
                   'velocity'        : self.x[11],
                   'fpa'             : self.x[12],
+                  'heading'         : self.x[13],
                   'rangeToGo'       : self.x[14],
                   'mass'            : self.x[15],
                   'drag'            : D[0],
@@ -179,7 +180,8 @@ class Simulation(Machine):
                   'vehicle'         : self.edlModel.nav.vehicle,
                   'current_state'   : self.x[8:16], 
                   'aero_ratios'     : self.x[16:18],
-                  'bank'            : self.u[0] # Should this be the current command or the current state?
+                  'bank'            : self.u[0], # Should this be the current command or the current state?
+                  'energy'          : self.edlModel.nav.energy(self.x[8],self.x[11],Normalized=False), # Estimated energy                 
                   }        
         else:
             L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]),np.array([self.x[7]]))
@@ -191,6 +193,7 @@ class Simulation(Machine):
                   'latitude'        : self.x[2],
                   'velocity'        : self.x[3],
                   'fpa'             : self.x[4],
+                  'heading'         : self.x[5],
                   'rangeToGo'       : self.x[6],
                   'mass'            : self.x[7],
                   'drag'            : D[0],
@@ -198,7 +201,8 @@ class Simulation(Machine):
                   'vehicle'         : self.edlModel.vehicle,
                   'current_state'   : self.x,
                   'aero_ratios'     : (self.edlModel.lift_ratio, self.edlModel.drag_ratio),
-                  'bank'            : self.u[0]
+                  'bank'            : self.u[0],
+                  'energy'          : self.edlModel.energy(self.x[0],self.x[3],Normalized=False),
                   }
         
         return d
@@ -212,11 +216,11 @@ class Simulation(Machine):
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
         
         if self.fullEDL:
-            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)
+            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1)
             if compare:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1)             # Use same fignum for comparisons, set fignum > figures for new ones
-            else:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.history[:,18], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)             # Use same fignum for comparisons, set fignum > figures for new ones
+            # else:
+                # fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
             plt.figure(fignum)        
             plt.plot(self.times, self.history[:,16],label='Lift')
             plt.plot(self.times, self.history[:,17], label='Drag')
@@ -316,6 +320,7 @@ class Simulation(Machine):
         """
         ref = {}
         vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
+        alt = np.flipud(self.output[:,3]) 
         range = np.flipud(self.output[-1,10]*1e3-self.output[:,10]*1e3) # Should probably be range to go instead, since thats the state the sim has access to
         drag = np.flipud(self.output[:,13])
         dragcos = np.flipud(self.output[:,13]/np.cos(np.radians(self.output[:,8])))
@@ -323,6 +328,7 @@ class Simulation(Machine):
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum so the reference is monotonic
         
         ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
+        ref['altitude'] = interp1d(vel[:i_vmax],alt[:i_vmax], fill_value=(alt[0],alt[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['dragcos'] = interp1d(vel[:i_vmax],dragcos[:i_vmax], fill_value=(dragcos[0],dragcos[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['rangeToGo'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
@@ -458,6 +464,7 @@ def testFullSim():
     return sim
 
 def NMPCSim(options):
+    # Move this to MPC.py
     from Triggers import TimeTrigger
     states = ['State{}'.format(i) for i in range(0,options['N'])]
     times = np.linspace(0,options['T'],options['N']+1)
