@@ -206,7 +206,7 @@ dtr = pi/180;
 % data(3) = load('E:\Documents\EDL\data\MC_nominalHEP.mat');
 % data(4) =  load('E:\Documents\EDL\data\MC_RSHEP.mat');
 data(1) = load('E:\Documents\EDL\data\MC_MPC.mat');
-final = zeros(length(data),2000,14);
+final = zeros(length(data),500,27);
 label = {'Nom','RS'};
 colors = {'r','b','g','m'};
 for d = 1:length(data)
@@ -225,17 +225,17 @@ for d = 1:length(data)
     
 end
 
-% figure
-% for d = 1:length(data)
-%     figure(1)
-%     hold all
-%     plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
-%     
-%     figure(2)
-%     hold all
-%     plot(final(d,:,12),(final(d,:,11)), 'o')
-%     
-% end
+figure
+for d = 1:length(data)
+    figure(1)
+    hold all
+    plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
+    
+    figure(2)
+    hold all
+    plot(final(d,:,12),(final(d,:,11)), 'o')
+    
+end
 
 figure
 scatter(final(1,:,12),final(1,:,11),[],1-pdf(1,:)/max(pdf(1,:)))
