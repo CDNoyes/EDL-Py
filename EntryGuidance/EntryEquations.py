@@ -16,14 +16,14 @@ class Entry:
         self.powered = Powered
         self.drag_ratio = 1
         self.lift_ratio = 1
-        
-
+        self.nx = 8 # [r,lon,lat,v,gamma,psi,s,m]
+        self.nu = 3 # bank command, throttle, thrust angle
+        self.__jacobian = None # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
         if Coriolis:
             self.dyn_model = self.__entry_vinhs
         else:
             self.dyn_model = self.__entry_3dof
 
-            
     
     def update_ratios(self,LR,DR):
         self.drag_ratio = DR
@@ -114,6 +114,20 @@ class Entry:
             return (E-E[0])/(E[-1]-E[0])
         else:
             return E
+            
+    def jacobian(self, x, u):
+        ''' Returns the full jacobian of the entry dynamics model. The dimension will be [nx, nx+nu].'''
+        if self.__jacobian is None:
+            from numdifftools import Jacobian
+            self.__jacobian = Jacobian(self.__dynamics(), method='complex')            
+        return self.__jacobian(np.concatenate((x,u)))
+        
+    def __dynamics(self):
+        ''' Used in jacobian. Returns an object callable with a single combined state '''
+        if self.powered:
+            return lambda xu: self.dyn_model(xu[0:self.nx], 0, xu[self.nx:self.nx+self.nu])+self.__thrust_3dof(xu[0:self.nx], xu[self.nx:self.nx+self.nu])
+        else:
+            return lambda xu: self.dyn_model(xu[0:self.nx], 0, xu[self.nx:self.nx+self.nu])
             
     def aeroforces(self, r, v, m):
         """  Returns the aerodynamic forces acting on the vehicle at a given altitude, velocity and mass. """
