@@ -39,10 +39,10 @@ class Simulation(Machine):
         
     '''
     
-    def __init__(self, states, conditions, cycle=None, output=True):
+    def __init__(self, states, conditions, cycle=None, output=True, find_transitions=True):
 
         if len(states) != len(conditions):
-            raise ValueError("Number of states must equal number of conditions.")
+            raise ValueError("Number of fsm states must equal number of transition conditions.")
             
         if cycle is None:
             if output:
@@ -52,6 +52,7 @@ class Simulation(Machine):
         self.__conditions = conditions
         self.__states = states
         self.__output = output
+        self.__find_transitions = find_transitions
         
         self.cycle = cycle          # The guidance cycle governing the simulation. Data logging and control updates occur every cycle.duration seconds while trigger checking happens 10x per cycle
         self.time = 0.0             # Current simulation time
@@ -76,10 +77,6 @@ class Simulation(Machine):
             pass
         Machine.__init__(self, model=None, states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
-        
-    # def dump(self):
-
-    # def __call__(self):
     
     def integrate(self):
     
@@ -102,7 +99,6 @@ class Simulation(Machine):
             
             
         X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,10))
-        #find nearest endpoint here
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
 
         
@@ -151,7 +147,9 @@ class Simulation(Machine):
 
         
     def printState(self):        
-        
+        #find nearest endpoint here - the trigger was met in the last ten steps
+        if self.__find_transitions:
+            self.findTransition()
         if self.__output:
             print('Transitioning from state {} to {} because the following condition was met:'.format(self.__states[self.index],self.state))
             print(self.__conditions[self.index].dump())
@@ -225,8 +223,7 @@ class Simulation(Machine):
             plt.plot(self.times, self.history[:,16],label='Lift')
             plt.plot(self.times, self.history[:,17], label='Drag')
             plt.title('Aerodynamic Filter Ratios')
-
-                
+       
         else:
             simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)
         
@@ -237,8 +234,6 @@ class Simulation(Machine):
         
     
     def postProcess(self):
-
-
 
         if self.fullEDL:
             bank_cmd = np.degrees(self.control_history[:,0])
@@ -339,7 +334,41 @@ class Simulation(Machine):
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
         return ref
         
-        
+    def findTransition(self):
+        print "DEBUG> Finding transition point"
+        n = len(self.times)
+
+        for i in range(n-2,n-12,-1):
+            self.time = self.times[i]
+            self.x = self.history[i]
+            self.u = self.control_history[i]
+            self.triggerInput = self.getDict()
+            if not self.__conditions[self.index](self.triggerInput): # Interpolate between i and i+1 states
+                for j in np.linspace(0.05,0.95,20): # The number of points used here will determinte the accuracy of the final state
+                    # Find a better state:
+                    self.time = ((1-j)*self.times[i] + j*self.times[i+1])
+                    self.x = ((1-j)*self.history[i] + j*self.history[i+1])
+                    self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
+                    self.triggerInput = self.getDict()
+                    if self.__conditions[self.index](self.triggerInput):
+                        break
+
+                
+                # Remove the extra states:
+                self.history = self.history[0:i+1]
+                self.times = self.times[0:i+1]
+                self.control_history = self.control_history[0:i+1]
+
+                # Update the final point
+                self.history.append(self.x)
+                self.control_history.append(self.u)
+                self.times.append(self.time)
+
+                return
+        if self.__output:        
+            print "No better endpoint found"
+        return
+ 
     # def save(self): #Create a .mat file
 
 def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie, fignum=1, label=''):
@@ -439,9 +468,10 @@ def SRP():
 
 def EntrySim():
     ''' Defines conditions for a simple one phase guided entry '''
-    from Triggers import VelocityTrigger
+    from Triggers import VelocityTrigger,AltitudeTrigger
     states = ['Entry']
     trigger = [VelocityTrigger(500)]
+    # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
     
 def testSim():
