@@ -1,4 +1,4 @@
-""" Heading Alignment via MPC """
+""" Heading Alignment Controllers """
 
 from numpy import sin, cos, arcsin, arccos, sqrt, pi, radians
 import numpy as np
@@ -7,22 +7,7 @@ from scipy.integrate import trapz
 from MPC import constant
 from functools import partial 
 
-def controller(control_options, control_bounds, get_heading, **kwargs):
-    
-    sol = optimize(kwargs['current_state'], control_options, control_bounds, kwargs['aero_ratios'], get_heading)
-    return sol.x
 
-        
-def optimize(current_state, control_options, control_bounds, aero_ratios, get_heading):
-    from Simulation import Simulation, NMPCSim
-    
-    sim = Simulation(output=False, **NMPCSim(control_options))
-
-    guess = [-pi/2]
-    sol = minimize_scalar(cost, method='Bounded', bounds=control_bounds, args=(sim, current_state, aero_ratios, get_heading))
-    
-    return sol
-    
 def desiredHeading(lon_current, lat_current, lon_target, lat_target):
 
     # delta = 2*arcsin( sqrt( sin(0.5*(lat_current-lat_target))**2 + cos(lat_current)*cos(lat_target)*sin(0.5*(lon_current-lon_target))**2 ) )
@@ -38,10 +23,30 @@ def desiredHeading(lon_current, lat_current, lon_target, lat_target):
         PHI = np.sign(lon_target-lon_current)*arccos( (sin(lat_target)-sin(lat_current)*cos(d))/(cos(lat_current)*sin(d)) )
     heading = pi/2-PHI    
     return heading
-    
-    
-def cost(u, sim, state, ratios, get_heading):
 
+def controller(control_options, control_bounds, get_heading, **kwargs):
+    ''' Model predictive controller for heading alignment '''
+    if kwargs['rangeToGo'] < 0:
+        return 0
+    else:
+        sol = optimize(kwargs['current_state'], control_options, control_bounds, kwargs['aero_ratios'], get_heading)
+        return sol.x
+
+        
+def optimize(current_state, control_options, control_bounds, aero_ratios, get_heading):
+    ''' Optimization routine used in MPC form of heading alignment controller '''
+    from Simulation import Simulation, NMPCSim
+    
+    sim = Simulation(output=False, find_transitions=False, **NMPCSim(control_options))
+
+    guess = [-pi/2]
+    sol = minimize_scalar(cost, method='Bounded', bounds=control_bounds, args=(sim, current_state, aero_ratios, get_heading))
+    
+    return sol
+    
+
+def cost(u, sim, state, ratios, get_heading):
+    ''' Cost function used in MPC optimization '''
     controls = [partial(constant,value=u)]
         
     output = sim.run(state, controls, AeroRatios=ratios)
