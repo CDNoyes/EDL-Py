@@ -87,14 +87,16 @@ class SRPTrigger(Trigger):
 
     def __init__(self, minAltitude, maxVelocity, rangeToGo=0):
         self.__vt = maxVelocity
-        self.__at = minAltitude
+        self.__at = minAltitude*1000
         self.__rtg = rangeToGo
         super(SRPTrigger,self).__init__(self.__Trigger,'SRP phase triggered')
         
     def __Trigger(self, altitude, velocity, rangeToGo, **kwargs):
         if altitude <= self.__at: # Force ignition if too low
+            self.__info = 'SRP phase triggered due to altitude constraint'
             return True
         if rangeToGo <= self.__rtg and velocity<=self.__vt: # Ignite if slow enough and we reached the target DR
+            self.__info = 'SRP phase triggered due because range to go is 0 and velocity is slow enough'
             return True
         return False
         
