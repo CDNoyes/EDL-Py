@@ -87,7 +87,7 @@ def optimize(current_state, control_options, control_bounds, aero_ratios, refere
     from Simulation import Simulation, NMPCSim
     
     
-    sim = Simulation(output=False, **NMPCSim(control_options))
+    sim = Simulation(output=False, find_transitions=False, **NMPCSim(control_options))
 
     guess = [pi/6]*control_options['N']
     if control_options['N'] > 1:
@@ -196,86 +196,87 @@ def testNMPC():
 
     references = reference_sim.getRef()
     drag_ref = references['drag']
-    
-    
-    # Create the simulation model:
+
+    if 1:
+        # Create the simulation model:
+            
+        states = ['PreEntry','RangeControl','HeadingAlign']
+        # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), VelocityTrigger(500)]
+        # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
+        conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1500), SRPTrigger(3,700)]
+        input = { 'states' : states,
+                  'conditions' : conditions }
+                  
+        sim = Simulation(cycle=Cycle(1), output=True, **input)
+
+        # Create the controllers
         
-    states = ['PreEntry','RangeControl','Heading']
-    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), VelocityTrigger(500)]
-    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
-    conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), SRPTrigger(4,700)]
-    input = { 'states' : states,
-              'conditions' : conditions }
-              
-    sim = Simulation(cycle=Cycle(1),output=True,**input)
-
-    # Create the controllers
-    
-    option_dict = options(N=1,T=15)
-    option_dict_heading = options(N=1,T=1)
-    get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]),lon_target=np.radians(output[-1,5]))
-    mpc_heading = partial(headAlign.controller, control_options=option_dict_heading, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
-    mpc_range = partial(controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
-    pre = partial(constant, value=bankProfile(time=0))
-    controls = [pre,mpc_range,mpc_heading]
-    
-    # Run the off-nominal simulation
-    perturb = getUncertainty()['parametric']
-    # sample = None 
-    # sample = perturb.sample()
-    # print sample
-    sample = [ 0.05,  -0.01,  -0.06, -0.002]
-    # samples = perturb.sample(500).T
-    # p = perturb.pdf(samples.T)
-    s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
-    x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] # Errors in velocity and mass
-    x0_full = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] + x0_nav + [1,1] + [np.radians(-15),0])
-
-    if 0:
-        output = sim.run(x0, controls, sample, FullEDL=False)
-        plt.show()
+        option_dict = options(N=1,T=8)
+        option_dict_heading = options(N=1,T=4)
+        get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]), lon_target=np.radians(output[-1,5]))
         
-        reference_sim.plot()
+        mpc_heading = partial(headAlign.controller, control_options=option_dict_heading, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
+        mpc_range = partial(controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
+        pre = partial(constant, value=bankProfile(time=0))
+        controls = [pre, mpc_range, mpc_heading]
+        
+        # Run the off-nominal simulation
+        perturb = getUncertainty()['parametric']
+        # sample = None 
+        # sample = perturb.sample()
+        # print sample
+        sample = [ 0.05,  0.08,  -0.06, -0.002]
+        # samples = perturb.sample(500).T
+        # p = perturb.pdf(samples.T)
+        s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
+        x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] # Errors in velocity and mass
+        x0_full = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] + x0_nav + [1,1] + [np.radians(-15),0])
 
-    else:
-        reference_sim.plot()
+        if 0:
+            output = sim.run(x0, controls, sample, FullEDL=False)
+            plt.show()
+            
+            reference_sim.plot()
 
-        output = sim.run(x0_full, controls, sample, FullEDL=True)
-        sim.plot(compare=False)
-        # for sample in samples:
-            # output = 
-            # stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples]
-            # saveDir = './data/'
-            # savemat(saveDir+'MC_MPC',{'states':stateTensor, 'samples':samples, 'pdf':p})
-            # sim.plot(compare=False)
-        # plt.show()
+        else:
+            reference_sim.plot()
+
+            output = sim.run(x0_full, controls, sample, FullEDL=True)
+            sim.plot(compare=False)
+            # for sample in samples:
+                # output = 
+                # stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples]
+                # saveDir = './data/'
+                # savemat(saveDir+'MC_MPC',{'states':stateTensor, 'samples':samples, 'pdf':p})
+                # sim.plot(compare=False)
+            # plt.show()
 
 
-    Dref = drag_ref(output[:,7])
-    D = output[:,13]    
-    Derr = D-Dref
-    DerrPer = 100*Derr/Dref
-    Ddot = np.insert(np.diff(D)/np.diff(output[:,0]),0,0)
-    Ddotref = references['drag_rate'](output[:,7])
-    # Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
-   
-    iv = np.nonzero(output[:,7]<5400)[0]
-    
-    plt.figure(60)
-    plt.plot(output[iv,7],D[iv],label='Actual')
-    plt.plot(output[iv,7],Dref[iv],label='Reference')
-    plt.ylabel('Drag (m/s^2)')
-    plt.xlabel('Velocity (m/s)')
-    plt.legend()
-    
-    plt.figure(61)
-    plt.plot(output[iv,7],Ddot[iv],label='Actual')
-    plt.plot(output[iv,7],Ddotref[iv],label='Reference')
-    plt.ylabel('Drag rate (m/s^3)')
-    plt.xlabel('Velocity (m/s)')
-    plt.legend()
-    
-    sim.show()
+        Dref = drag_ref(output[:,7])
+        D = output[:,13]    
+        Derr = D-Dref
+        DerrPer = 100*Derr/Dref
+        Ddot = np.insert(np.diff(D)/np.diff(output[:,0]),0,0)
+        Ddotref = references['drag_rate'](output[:,7])
+        # Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
+       
+        iv = np.nonzero(output[:,7]<5400)[0]
+        
+        plt.figure(60)
+        plt.plot(output[iv,7],D[iv],label='Actual')
+        plt.plot(output[iv,7],Dref[iv],label='Reference')
+        plt.ylabel('Drag (m/s^2)')
+        plt.xlabel('Velocity (m/s)')
+        plt.legend()
+        
+        plt.figure(61)
+        plt.plot(output[iv,7],Ddot[iv],label='Actual')
+        plt.plot(output[iv,7],Ddotref[iv],label='Reference')
+        plt.ylabel('Drag rate (m/s^3)')
+        plt.xlabel('Velocity (m/s)')
+        plt.legend()
+        
+        sim.show()
     
     
 if __name__ == '__main__':
