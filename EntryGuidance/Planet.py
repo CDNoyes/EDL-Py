@@ -25,10 +25,15 @@ class Planet:
             self.radius = 3397e3    
             self.omega = 7.095e-5     
             self.mu = 4.2830e13
-            self.rho0 = (1+rho0)*0.0158
-            self.scaleHeight = (1+scaleHeight)*9345.5
+            
             if model is 'exp':
+                self.rho0 = (1+rho0)*0.0158
+                self.scaleHeight = (1+scaleHeight)*9345.5
                 self.atmosphere = self.__exp_model_mars            
+        
+            else:
+                # Sample MG and store interpolators for density and speed of sound
+                self.atmosphere = self.__MG_model_mars
         
         elif self.name == 'Saturn':
             self.radius = float('nan')    
@@ -54,7 +59,7 @@ class Planet:
             print 'Input planet name, '+ self.name +', is not valid'
         
 
-    def __exp_model_mars(self,h):
+    def __exp_model_mars(self, h):
         ''' Defines an exponential model of the atmospheric density and local speed of sound as a function of altitude. '''
         #Density computation:
         rho = self.rho0*exp(-h/self.scaleHeight)
@@ -63,10 +68,14 @@ class Planet:
         a = sum([c*h**i for i,c in enumerate(coeff)])
         return rho,a    
      
-    def __MG_model_mars(self,h):
-        ''' Calls MG2010 '''
+    def __MG_model_mars(self, h):
+        ''' Interpolates data from an MG profile '''
+        return self.density(h),self.speed_of_sound(h)
+    
+    def updateMG(date=[10,29,2018], latitude=0, longitude=0, dustTau=0, rpscale=0):
+        ''' Calls MG '''
         return
-     
+        
     def range(self,lon0,lat0,heading0,lonc,latc,km=False):
         '''Computes the downrange and crossrange between two lat/lon pairs with a given initial heading.'''
         from numpy import arccos, arcsin, sin, cos, pi, nan_to_num, zeros_like
