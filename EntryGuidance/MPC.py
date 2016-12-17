@@ -13,7 +13,7 @@ Model Predictive Controllers
 #       computation of some cost function (generally difference between predicted states and reference states) - controller needs reference data in some format, or possibly just pass a cost function that takes standard arguments
 #       iteration to improve control sequence until convergence - need a reliable optimization routine (although with smaller parametrizations, brute force could even be used)
 
-from scipy.integrate import odeint, trapz
+from scipy.integrate import trapz
 from scipy.optimize import minimize, differential_evolution, minimize_scalar
 from functools import partial
 from numpy import pi
@@ -120,25 +120,28 @@ def cost(u, sim, state, ratios, reference, scalar):
     fpa = np.radians(output[:,8])
     # lift = output[:,12]
     
-    if 1:                                   # Pure drag tracking
-        drag_ref = reference['drag'](vel)
-        integrand = 1*(drag-drag_ref)**2
+    # if 1:                                   # Pure drag tracking
+        # drag_ref = reference['drag'](vel)
+        # integrand = 1*(drag-drag_ref)**2
     # else:
         # drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
         # integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
     
-    if vel[0]<5300 and True:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
-        rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
-        integrand += .1*(rangeToGo-rtg_ref)**2
+    # if vel[0]<5300 and True:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
+        # rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
+        # integrand += .1*(rangeToGo-rtg_ref)**2
         
-    if vel[0]<5300 and True:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
-        drag_rate_ref = reference['drag_rate'](vel)
-        drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
-        integrand += 40*(drag_rate-drag_rate_ref)**2    
+    # if vel[0]<5300 and True:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
+        # drag_rate_ref = reference['drag_rate'](vel)
+        # drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
+        # integrand += 40*(drag_rate-drag_rate_ref)**2    
     
-    if 0:
-        alt_ref = reference['altitude'](vel)
-        integrand = (alt-alt_ref)**2
+    # if 0:
+        # alt_ref = reference['altitude'](vel)
+        # integrand = (alt-alt_ref)**2
+    if 1:
+        alt_ref = reference['altitude_range'](rangeToGo*1000)
+        integrand = (alt-alt_ref)**2        
     
     return trapz(integrand, time)
  
@@ -196,7 +199,11 @@ def testNMPC():
 
     references = reference_sim.getRef()
     drag_ref = references['drag']
-
+    # rtg = (output[-1,10]-output[:,10])*1e3
+    # plt.figure()
+    # plt.plot(output[:,10],output[:,3])
+    # plt.plot(output[:,10],references['altitude_range'](rtg),'o')
+    # plt.show()
     if 1:
         # Create the simulation model:
             
