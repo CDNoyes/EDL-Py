@@ -316,8 +316,8 @@ class Simulation(Machine):
         ref = {}
         
         vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
-        alt = np.flipud(self.output[:,3]) 
-        range = np.flipud(self.output[-1,10]*1e3-self.output[:,10]*1e3) # Should probably be range to go instead, since thats the state the sim has access to
+        alt = np.flipud(self.output[:,3]) # km
+        range = np.flipud(self.output[-1,10]*1e3-self.output[:,10]*1e3) # Range to go
         drag = np.flipud(self.output[:,13])
         drag_rate = np.flipud(np.diff(self.output[:,13])/np.diff(self.output[:,0]))
         dragcos = np.flipud(self.output[:,13]/np.cos(np.radians(self.output[:,8])))
@@ -326,12 +326,17 @@ class Simulation(Machine):
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum downward so the reference is monotonic
         
         # Should probably use a loop or comprehension at this point...
+        # Velocity as independent variable
         ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['drag_rate'] = interp1d(vel[:i_vmax],drag_rate[:i_vmax], fill_value=(drag_rate[0],drag_rate[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['altitude'] = interp1d(vel[:i_vmax],alt[:i_vmax], fill_value=(alt[0],alt[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['dragcos'] = interp1d(vel[:i_vmax],dragcos[:i_vmax], fill_value=(dragcos[0],dragcos[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['rangeToGo'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
+        
+        # Range as independent variable
+        ref['altitude_range'] = interp1d(range, alt, fill_value=(alt[0],alt[-1]), assume_sorted=True, bounds_error=False, kind='cubic')
+
         return ref
         
     def findTransition(self):
