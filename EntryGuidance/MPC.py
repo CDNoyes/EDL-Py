@@ -120,28 +120,29 @@ def cost(u, sim, state, ratios, reference, scalar):
     fpa = np.radians(output[:,8])
     # lift = output[:,12]
     
-    # if 1:                                   # Pure drag tracking
-        # drag_ref = reference['drag'](vel)
-        # integrand = 1*(drag-drag_ref)**2
+    if 1:                                   # Pure drag tracking
+        drag_ref = reference['drag'](vel)
+        integrand = 1*(drag-drag_ref)**2
     # else:
         # drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
         # integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
     
-    # if vel[0]<5300 and True:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
-        # rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
-        # integrand += .1*(rangeToGo-rtg_ref)**2
+    if vel[0]<5300 and False:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
+        rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
+        integrand += .1/vel[0]*(rangeToGo-rtg_ref)**2
         
-    # if vel[0]<5300 and True:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
-        # drag_rate_ref = reference['drag_rate'](vel)
-        # drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
-        # integrand += 40*(drag_rate-drag_rate_ref)**2    
+    if vel[0]<5300 and True:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
+        drag_rate_ref = reference['drag_rate'](vel)
+        drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
+        integrand += 40/vel[0]*(drag_rate-drag_rate_ref)**2    
     
     # if 0:
         # alt_ref = reference['altitude'](vel)
         # integrand = (alt-alt_ref)**2
-    if 1:
+        
+    if 0:
         alt_ref = reference['altitude_range'](rangeToGo*1000)
-        integrand = (alt-alt_ref)**2        
+        integrand = 1*(alt-alt_ref)**2        
     
     return trapz(integrand, time)
  
@@ -210,7 +211,7 @@ def testNMPC():
         states = ['PreEntry','RangeControl','HeadingAlign']
         # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), VelocityTrigger(500)]
         # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
-        conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1500), SRPTrigger(3,700)]
+        conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1400), SRPTrigger(3,700,1000)]
         input = { 'states' : states,
                   'conditions' : conditions }
                   
@@ -218,8 +219,8 @@ def testNMPC():
 
         # Create the controllers
         
-        option_dict = options(N=1,T=8)
-        option_dict_heading = options(N=1,T=4)
+        option_dict = options(N=1,T=10)
+        option_dict_heading = options(N=1,T=10)
         get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]), lon_target=np.radians(output[-1,5]))
         
         mpc_heading = partial(headAlign.controller, control_options=option_dict_heading, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
@@ -232,7 +233,7 @@ def testNMPC():
         # sample = None 
         # sample = perturb.sample()
         # print sample
-        sample = [ 0.05,  0.08,  -0.06, -0.002]
+        sample = [ 0.05,  0.03,  -0.06, -0.002]
         # samples = perturb.sample(500).T
         # p = perturb.pdf(samples.T)
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation

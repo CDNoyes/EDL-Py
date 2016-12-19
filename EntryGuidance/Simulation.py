@@ -306,12 +306,7 @@ class Simulation(Machine):
         
         
     def getRef(self):
-        """ Computes a reference object for use in tracking based guidance
-            There are many options for what this could be, and which variables to include.
-            2d array, interp object, functional fit object?
-            drag vs time, energy, velocity?
-            range?
-        
+        """ Computes a reference object for use in tracking based guidance      
         """
         ref = {}
         
@@ -349,7 +344,7 @@ class Simulation(Machine):
             self.u = self.control_history[i]
             self.triggerInput = self.getDict()
             if not self.__conditions[self.index](self.triggerInput): # Interpolate between i and i+1 states
-                for j in np.linspace(0.05,0.95,20): # The number of points used here will determinte the accuracy of the final state
+                for j in np.linspace(0.01,0.99,20): # The number of points used here will determinte the accuracy of the final state
                     # Find a better state:
                     self.time = ((1-j)*self.times[i] + j*self.times[i+1])
                     self.x = ((1-j)*self.history[i] + j*self.history[i+1])
@@ -398,6 +393,8 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if plotEvents:        
         for i in ie:
             plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+    plt.xlabel(label+'Longitude (deg)')        
+    plt.ylabel(label+'Latitude (deg)')        
     # plt.legend()
     
     # Range vs Velocity
