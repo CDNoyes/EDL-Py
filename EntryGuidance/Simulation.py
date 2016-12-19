@@ -254,8 +254,8 @@ class Simulation(Machine):
             range = [self.edlModel.truth.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
             range_nav = [self.edlModel.nav.planet.range(*x0[[9,10,13]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta_nav,phi_nav)]
             
-            energy = self.edlModel.truth.energy(r,v)
-            energy_nav = self.edlModel.nav.energy(r_nav,v_nav)
+            energy = self.edlModel.truth.energy(r, v, Normalized=False)
+            energy_nav = self.edlModel.nav.energy(r_nav, v_nav, Normalized=False)
 
                 
             h = [self.edlModel.truth.altitude(R,km=True) for R in r]
@@ -276,7 +276,7 @@ class Simulation(Machine):
             
             x0 = self.history[0,:]
             range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
-            energy = self.edlModel.energy(r,v)
+            energy = self.edlModel.energy(r,v,Normalized=False)
                 
             h = [self.edlModel.altitude(R,km=True) for R in r]
             L,D = self.edlModel.aeroforces(r,v,m)
@@ -312,6 +312,7 @@ class Simulation(Machine):
         
         vel = np.flipud(self.output[:,7]) # Flipped to be increasing for interp1d limitation
         alt = np.flipud(self.output[:,3]) # km
+        radius = np.flipud(self.output[:,4]) # m
         range = np.flipud(self.output[-1,10]*1e3-self.output[:,10]*1e3) # Range to go
         drag = np.flipud(self.output[:,13])
         drag_rate = np.flipud(np.diff(self.output[:,13])/np.diff(self.output[:,0]))
@@ -320,22 +321,27 @@ class Simulation(Machine):
         
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum downward so the reference is monotonic
         
+        energy = np.flipud(self.output[:,1])
+        i_emax = np.argmax(energy)
         # Should probably use a loop or comprehension at this point...
+        
         # Velocity as independent variable
         ref['drag'] = interp1d(vel[:i_vmax],drag[:i_vmax], fill_value=(drag[0],drag[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['drag_rate'] = interp1d(vel[:i_vmax],drag_rate[:i_vmax], fill_value=(drag_rate[0],drag_rate[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['altitude'] = interp1d(vel[:i_vmax],alt[:i_vmax], fill_value=(alt[0],alt[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
-        ref['dragcos'] = interp1d(vel[:i_vmax],dragcos[:i_vmax], fill_value=(dragcos[0],dragcos[i_vmax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['rangeToGo'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
         
         # Range as independent variable
         ref['altitude_range'] = interp1d(range, alt, fill_value=(alt[0],alt[-1]), assume_sorted=True, bounds_error=False, kind='cubic')
+        
+        # Energy as independent variable
+        ref['dragcos'] = interp1d(energy[:i_emax],dragcos[:i_emax], fill_value=(dragcos[0],dragcos[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
+        ref['drag_energy'] = interp1d(energy[:i_emax], drag[:i_emax], fill_value=(drag[0],drag[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
 
         return ref
         
     def findTransition(self):
-        print "DEBUG> Finding transition point"
         n = len(self.times)
 
         for i in range(n-2,n-12,-1):
