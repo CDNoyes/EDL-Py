@@ -43,9 +43,9 @@ def controller(control_options, control_bounds, references, desired_heading, **k
     else:
         bounds = [control_bounds]*control_options['N']    
     
-    # if True:
-        # control_options['T'] = np.round(15/(np.log(kwargs['drag'])/2-0.3)) # Schedule this by dynamic pressure
-        # print "Predict horizon = {}".format(control_options['T'])
+    if True:
+        control_options['T'] = np.round(15/(np.log(kwargs['drag'])/2-0.3)) # Schedule this by dynamic pressure
+        print "Predict horizon = {}".format(control_options['T'])
         
     sol = optimize(kwargs['current_state'], control_options, bounds, kwargs['aero_ratios'], references)
     
@@ -115,32 +115,38 @@ def cost(u, sim, state, ratios, reference, scalar):
     drag = output[:,13]
     vel = output[:,7]
     alt = output[:,3]
+    radius = output[:,4]
+    energy = output[:,1]
+    # dE = energy[0]-energy[-1]
     # range = output[:,10]
     rangeToGo = sim.history[:,6]/1000.
     fpa = np.radians(output[:,8])
     # lift = output[:,12]
     
-    if 1:                                   # Pure drag tracking
-        drag_ref = reference['drag'](vel)
-        integrand = 1*(drag-drag_ref)**2
-    # else:
-        # drag_ref = reference['dragcos'](vel) # Tracking D/cos(fpa) - which is the true integrand in energy integral
-        # integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
-    
-    if vel[0]<5300 and False:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
-        rtg_ref = reference['rangeToGo'](vel)/1000. # Meters to Km
-        integrand += .1/vel[0]*(rangeToGo-rtg_ref)**2
+    if 1:
+        if 0:                                                     
+            drag_ref = reference['drag'](vel)                     # Pure drag tracking as function of velocity
+            integrand = 1*(drag-drag_ref)**2
+        elif 1:
+            drag_ref = reference['drag_energy'](energy)
+            integrand = 1*(drag-drag_ref)**2
+        else:
+            drag_ref = reference['dragcos'](energy)               # Tracking D/cos(fpa) - which is the true integrand in energy integral
+            integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
         
-    if vel[0]<5300 and True:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
-        drag_rate_ref = reference['drag_rate'](vel)
-        drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
-        integrand += 40/vel[0]*(drag_rate-drag_rate_ref)**2    
+        if vel[0]<5300 and True:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
+            rtg_ref = reference['rangeToGo'](vel)/1000.           # Meters to Km
+            integrand += .1*(rangeToGo-rtg_ref)**2
+            
+        if vel[0]<5300 and False:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
+            drag_rate_ref = reference['drag_rate'](vel)
+            drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
+            integrand += 40/vel[0]*(drag_rate-drag_rate_ref)**2    
     
     # if 0:
         # alt_ref = reference['altitude'](vel)
         # integrand = (alt-alt_ref)**2
-        
-    if 0:
+    else:    
         alt_ref = reference['altitude_range'](rangeToGo*1000)
         integrand = 1*(alt-alt_ref)**2        
     
@@ -200,9 +206,10 @@ def testNMPC():
 
     references = reference_sim.getRef()
     drag_ref = references['drag']
+    
     # rtg = (output[-1,10]-output[:,10])*1e3
     # plt.figure()
-    # plt.plot(output[:,10],output[:,3])
+    # plt.plot(output[:,10],output[:,1])
     # plt.plot(output[:,10],references['altitude_range'](rtg),'o')
     # plt.show()
     if 1:
@@ -211,7 +218,7 @@ def testNMPC():
         states = ['PreEntry','RangeControl','HeadingAlign']
         # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), VelocityTrigger(500)]
         # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
-        conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1400), SRPTrigger(3,700,1000)]
+        conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1400), SRPTrigger(3,700,500)]
         input = { 'states' : states,
                   'conditions' : conditions }
                   
@@ -233,7 +240,7 @@ def testNMPC():
         # sample = None 
         # sample = perturb.sample()
         # print sample
-        sample = [ 0.05,  0.03,  -0.06, -0.002]
+        samples = [[ d,  d,  d, 0] for d in np.linspace(-0.05,0.05,6)]
         # samples = perturb.sample(500).T
         # p = perturb.pdf(samples.T)
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
@@ -249,40 +256,41 @@ def testNMPC():
         else:
             reference_sim.plot()
 
-            output = sim.run(x0_full, controls, sample, FullEDL=True)
-            sim.plot(compare=False)
-            # for sample in samples:
-                # output = 
+            # output = sim.run(x0_full, controls, sample, FullEDL=True)
+            # sim.plot(compare=False)
+            
+            for sample in samples:
+                output = sim.run(x0_full, controls, sample, FullEDL=True)
                 # stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples]
                 # saveDir = './data/'
                 # savemat(saveDir+'MC_MPC',{'states':stateTensor, 'samples':samples, 'pdf':p})
-                # sim.plot(compare=False)
-            # plt.show()
+                sim.plot(compare=False, legend=False)
+            plt.show()
 
 
-        Dref = drag_ref(output[:,7])
-        D = output[:,13]    
-        Derr = D-Dref
-        DerrPer = 100*Derr/Dref
-        Ddot = np.insert(np.diff(D)/np.diff(output[:,0]),0,0)
-        Ddotref = references['drag_rate'](output[:,7])
-        # Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
+        # Dref = drag_ref(output[:,7])
+        # D = output[:,13]    
+        # Derr = D-Dref
+        # DerrPer = 100*Derr/Dref
+        # Ddot = np.insert(np.diff(D)/np.diff(output[:,0]),0,0)
+        # Ddotref = references['drag_rate'](output[:,7])
+        # # Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
        
-        iv = np.nonzero(output[:,7]<5400)[0]
+        # iv = np.nonzero(output[:,7]<5400)[0]
         
-        plt.figure(60)
-        plt.plot(output[iv,7],D[iv],label='Actual')
-        plt.plot(output[iv,7],Dref[iv],label='Reference')
-        plt.ylabel('Drag (m/s^2)')
-        plt.xlabel('Velocity (m/s)')
-        plt.legend()
+        # plt.figure(60)
+        # plt.plot(output[iv,7],D[iv],label='Actual')
+        # plt.plot(output[iv,7],Dref[iv],label='Reference')
+        # plt.ylabel('Drag (m/s^2)')
+        # plt.xlabel('Velocity (m/s)')
+        # plt.legend()
         
-        plt.figure(61)
-        plt.plot(output[iv,7],Ddot[iv],label='Actual')
-        plt.plot(output[iv,7],Ddotref[iv],label='Reference')
-        plt.ylabel('Drag rate (m/s^3)')
-        plt.xlabel('Velocity (m/s)')
-        plt.legend()
+        # plt.figure(61)
+        # plt.plot(output[iv,7],Ddot[iv],label='Actual')
+        # plt.plot(output[iv,7],Ddotref[iv],label='Reference')
+        # plt.ylabel('Drag rate (m/s^3)')
+        # plt.xlabel('Velocity (m/s)')
+        # plt.legend()
         
         sim.show()
     
