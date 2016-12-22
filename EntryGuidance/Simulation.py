@@ -208,20 +208,22 @@ class Simulation(Machine):
     def ignite(self):
         self.edlModel.ignite()
         
-    def plot(self, plotEvents=True, compare=True):   
+    def plot(self, plotEvents=True, compare=True, legend=True):   
         import matplotlib.pyplot as plt
         
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
         
         if self.fullEDL:
-            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1)
+            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1, legend=legend)
             if compare:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)             # Use same fignum for comparisons, set fignum > figures for new ones
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, legend=legend)  # Use same fignum for comparisons, set fignum > figures for new ones
             # else:
                 # fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
             plt.figure(fignum)        
             plt.plot(self.times, self.history[:,16],label='Lift')
             plt.plot(self.times, self.history[:,17], label='Drag')
+            if legend:
+                plt.legend(loc='best')
             plt.title('Aerodynamic Filter Ratios')
        
         else:
@@ -377,7 +379,7 @@ class Simulation(Machine):
  
     # def save(self): #Create a .mat file
 
-def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie, fignum=1, label=''):
+def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie, fignum=1, label='', legend=True):
     import matplotlib.pyplot as plt
 
     #history = [r, theta, phi, v, gamma, psi, s, m, DR, CR]
@@ -388,7 +390,8 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if plotEvents:
         for i in ie:
             plt.plot(history[i,3],edlModel.altitude(history[i,0],km=True),'o',label = fsm_states[ie.index(i)], markersize=12)
-    plt.legend(loc='upper left')   
+    if legend:
+        plt.legend(loc='upper left')   
     plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Altitude (km)')
     
@@ -399,6 +402,8 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if plotEvents:        
         for i in ie:
             plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+    if legend:
+        plt.legend(loc='best')             
     plt.xlabel(label+'Longitude (deg)')        
     plt.ylabel(label+'Latitude (deg)')        
     # plt.legend()
@@ -410,8 +415,9 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if plotEvents:
         for i in ie:
             plt.plot(history[i,3],history[i,6]/1000,'o',label = fsm_states[ie.index(i)])
-    # plt.legend(loc='upper left')   
-    plt.xlabel(label+'Velocity (m/s)')
+    if legend:
+        plt.legend(loc='best')
+        plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Range to Target (km)')
     
     # Bank Angle Profile
@@ -420,18 +426,11 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.plot(time, np.degrees(control_history[:]))
     for i in ie:
         plt.plot(time[i], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
-    plt.legend(loc='best')   
+    if legend:
+        plt.legend(loc='best')  
     plt.xlabel(label+'Time (s)')
     plt.ylabel(label+'Bank Angle (deg)')
     
-    # plt.figure(fignum)
-    # fignum += 1
-    # plt.plot(history[:,3], np.degrees(control_history[:]))
-    # for i in ie:
-        # plt.plot(history[i,3], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
-    # plt.legend(loc='best')   
-    # plt.xlabel(label+'Velocity (m/s)')
-    # plt.ylabel(label+'Bank Angle (deg)')
     
     # Downrange vs Crossrange
     range = np.array([edlModel.planet.range(*history[0,[1,2,5]],lonc=lon,latc=lat,km=True) for lon,lat in zip(history[:,1],history[:,2])])
@@ -440,7 +439,8 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.plot(range[:,1], range[:,0])
     for i in ie:
         plt.plot(range[i,1], range[i,0],'o',label = fsm_states[ie.index(i)])
-    plt.legend(loc='best')   
+    if legend:
+        plt.legend(loc='best')  
     plt.xlabel(label+'Cross Range (km)')
     plt.ylabel(label+'Down Range (km)')
     
@@ -451,7 +451,8 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if plotEvents:
         for i in ie:
             plt.plot(history[i,3],history[i,4]*180/np.pi,'o',label = fsm_states[ie.index(i)])
-    # plt.legend(loc='upper left')   
+    if legend:
+        plt.legend(loc='best')
     plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Flight path angle (deg)')    
         
