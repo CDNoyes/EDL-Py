@@ -107,9 +107,9 @@ class Entry:
             return r-self.planet.radius
             
     def energy(self, r, v, Normalized=True):
-        """ Computes the current energy at a given altitude and velocity. """
+        """ Computes the current energy at a given radius and velocity. """
         
-        E = 0.5*v**2 + self.planet.mu/self.planet.radius-self.planet.mu/r**2
+        E = 0.5*v**2 + self.planet.mu/self.planet.radius-self.planet.mu/r
         if Normalized:
             return (E-E[0])/(E[-1]-E[0])
         else:
@@ -130,7 +130,7 @@ class Entry:
             return lambda xu: self.dyn_model(xu[0:self.nx], 0, xu[self.nx:self.nx+self.nu])
             
     def aeroforces(self, r, v, m):
-        """  Returns the aerodynamic forces acting on the vehicle at a given altitude, velocity and mass. """
+        """  Returns the aerodynamic forces acting on the vehicle at a given radius, velocity and mass. """
         
         g = self.planet.mu/r**2
         h = r - self.planet.radius
