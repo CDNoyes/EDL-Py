@@ -208,15 +208,15 @@ class Simulation(Machine):
     def ignite(self):
         self.edlModel.ignite()
         
-    def plot(self, plotEvents=True, compare=True, legend=True):   
+    def plot(self, plotEvents=True, compare=True, legend=True, plotEnergy=False):   
         import matplotlib.pyplot as plt
         
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
         
         if self.fullEDL:
-            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1, legend=legend)
+            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1, legend=legend, plotEnergy=plotEnergy)
             if compare:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, legend=legend)  # Use same fignum for comparisons, set fignum > figures for new ones
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, legend=legend, plotEnergy=False)  # Use same fignum for comparisons, set fignum > figures for new ones
             # else:
                 # fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
             plt.figure(fignum)        
@@ -379,7 +379,7 @@ class Simulation(Machine):
  
     # def save(self): #Create a .mat file
 
-def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie, fignum=1, label='', legend=True):
+def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie, fignum=1, label='', legend=True, plotEnergy=False):
     import matplotlib.pyplot as plt
 
     #history = [r, theta, phi, v, gamma, psi, s, m, DR, CR]
@@ -395,6 +395,18 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Altitude (km)')
     
+
+    if plotEnergy: # Draw constant energy contours
+        V,R = np.meshgrid(history[:,3], history[:,0])
+        e = edlModel.energy(history[:,0],history[:,3],Normalized=False)
+        E = (np.array([edlModel.energy(r,V[0],Normalized=False) for r in R])-np.max(e))/(np.min(e)-np.max(e))
+        
+        V,H = np.meshgrid(history[:,3], edlModel.altitude(history[:,0],km=True))
+        levels = (np.linspace(0,1.05,200))
+        CS = plt.contourf(V,H,(E),levels=levels,cmap='RdBu')
+        plt.colorbar(format="%.2f")
+        # plt.clabel(CS, inline=1, fontsize=10)
+        
     # #Latitude/Longitude
     plt.figure(fignum)
     fignum += 1
@@ -455,7 +467,20 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
         plt.legend(loc='best')
     plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Flight path angle (deg)')    
-        
+    
+    
+    L,D = edlModel.aeroforces(history[:,0],history[:,3],history[:,7])    
+    
+    plt.figure(fignum)
+    fignum += 1        
+    plt.plot(history[:,3],D)
+    if plotEvents:
+        for i in ie:
+            plt.plot(history[i,3], D[i],'o',label = fsm_states[ie.index(i)])    
+    plt.ylabel('Drag (m/s^2)')
+    plt.xlabel('Velocity (m/s)')
+    if legend:
+        plt.legend(loc='best')    
     return fignum+1
         
 # ########################################################## #
