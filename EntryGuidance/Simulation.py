@@ -227,7 +227,7 @@ class Simulation(Machine):
             plt.title('Aerodynamic Filter Ratios')
        
         else:
-            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1)
+            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, plotEnergy=plotEnergy)
         
         
     def show(self):
@@ -402,11 +402,37 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
         E = (np.array([edlModel.energy(r,V[0],Normalized=False) for r in R])-np.max(e))/(np.min(e)-np.max(e))
         
         V,H = np.meshgrid(history[:,3], edlModel.altitude(history[:,0],km=True))
-        levels = (np.linspace(0,1.05,200))
-        CS = plt.contourf(V,H,(E),levels=levels,cmap='RdBu')
+        levels = (np.linspace(0,1,101))
+        CS = plt.contour(V,H,(E),levels=levels,cmap='RdBu')
         plt.colorbar(format="%.2f")
         # plt.clabel(CS, inline=1, fontsize=10)
         
+    if True: # Draw constant drag contours  
+        V,R = np.meshgrid(history[:,3], history[:,0])
+        D_matrix = []
+        for r in R:
+            L,D = edlModel.aeroforces(r,V[0],history[:,7])   
+            D_matrix.append(D)
+        levels = np.logspace(-5,2.4,11, endpoint=True)    
+        CS = plt.contour(V,H,(D_matrix),levels=levels,colors='k')
+        # plt.clabel(CS, inline=1, fontsize=10)
+        plt.clabel(CS)
+
+
+
+        
+    en = edlModel.energy(history[:,0],history[:,3],Normalized=True)
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,3], en, lw = 3)
+    if plotEvents:
+        for i in ie:
+            plt.plot(history[i,3],en[i],'o',label = fsm_states[ie.index(i)], markersize=12)
+    if legend:
+        plt.legend(loc='upper left')   
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'Energy (-)')
+    
     # #Latitude/Longitude
     plt.figure(fignum)
     fignum += 1
