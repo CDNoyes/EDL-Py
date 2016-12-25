@@ -60,4 +60,4 @@ class EntryVehicle:
         return cD*(1+self.CD), cL*(1+self.CL)
     
     def BC(self, mass, Mach=24):
-        return mass*self.aerodynamic_coefficients(Mach)/self.area
+        return mass/self.area/self.aerodynamic_coefficients(Mach)[0]
