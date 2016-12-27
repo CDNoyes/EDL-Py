@@ -145,7 +145,7 @@ class Entry:
             D[i] = f*cD*self.drag_ratio
         return L,D
         
-def EDL(InputSample = np.zeros(4)):
+def EDL(InputSample=np.zeros(4)):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
     
     CD,CL,rho0,sh = InputSample
@@ -211,15 +211,13 @@ def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank
         Constrained second order system subjected to minimum and maximum bank angles, max bank rate, and max acceleration.
         May cause stiffness in numerical integration, consider replacing Saturate with a smoother function like Erf
     """
-    bank,rate = bank_state
-    # bank = np.sign(bank)*Saturate(np.abs(bank), min_bank, max_bank)
-    
+    bank,rate = bank_state   
     bank_dot = Saturate(rate, -max_rate, max_rate)
     rate_dot = Saturate(kp*(command-bank)-kd*rate, -max_accel, max_accel)
 
     return np.array([bank_dot, rate_dot])
     
-def Saturate(value,min_value,max_value):
+def Saturate(value, min_value, max_value):
     return np.max( (np.min( (value, max_value) ), min_value))
     
 def Erf(value, min_value, max_value):
