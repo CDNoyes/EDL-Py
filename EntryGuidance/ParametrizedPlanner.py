@@ -1,12 +1,11 @@
 import numpy as np
 import chaospy as cp
+from scipy.integrate import odeint
+from functools import partial
 
 from EntryEquations import Entry
 from Triggers import DeployParachute, findTriggerPoint
-from Target import Target
-from scipy.integrate import odeint
-# from Utils.redirect import stdout_redirected
-from functools import partial
+from InitialState import InitialState
 
 
 def HEPBankReduced(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians(85.)):
@@ -199,30 +198,7 @@ def checkFeasibility(T,sign=-1):
     else:
         return 0
         
-# def HEPCost(T, x0, Simulation, target = Target(), bank = HEPBank, getIV = (lambda x,t: t), check=checkFeasibility):
-    
-    # J = check(T)
-    # if J > 300:
-        # return J
-        
-    # hep = lambda x,t: bank(getIV(x,t),*T)
 
-        
-    # time = np.linspace(0,450,1000)
-
-
-    # with stdout_redirected():
-        # X = odeint(entry.dynamics(hep), x0, time)
-
-
-    # idx = findTriggerPoint(X,time)-1
-    # h     = entry.altitude(X[idx,0], km=True)
-    # dr,cr = entry.planet.range(*x0[[1,2,5]], lonc = X[idx,1], latc = X[idx,2],km=True)
-
-    # Wh = 0.8*1e-6
-    # J = -h*Wh + ((target.DR-dr)**2 + (target.CR-cr)**2)**0.5
-
-    # return J
 
     
 def Optimize(x0,n=3,iv='time'):
@@ -283,45 +259,37 @@ def OptimizeSRP():
     from Simulation import Simulation, Cycle, EntrySim
 
     sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    x0 = InitialState()
 
     if 1:
         # bounds = [(0,250),(100,350)]
         bounds = [(0,250),(100,400),(100,550)]
-        sol = differential_evolution(SRPCost,args = (sim,), bounds=bounds, tol=1e-1, disp=True, polish=False)
+        sol = differential_evolution(SRPCost,args = (sim,x0), bounds=bounds, tol=1e-1, disp=True, polish=False)
     else:
-        sol = minimize(SRPCost,[ 165.4159422 ,  308.86420218,  399.53393904], args=(sim,), method='Nelder-Mead', tol=1e-5, options={'disp':True})
+        sol = minimize(SRPCost,[ 165.4159422 ,  308.86420218,  399.53393904], args=(sim,x0), method='Nelder-Mead', tol=1e-5, options={'disp':True})
         
     # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*sol.x)
-    bankProfile = lambda **d: HEPBank(d['time'], *sol.x)
+    bankProfile = lambda **d: HEPBankSmooth(d['time'], *sol.x, minBank=np.radians(30))
     
-    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1200e3)
-                                             
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+                                                 
     output = sim.run(x0,[bankProfile])
     
     sim.plot()
     sim.show()
     
     return sim,sol 
-def SRPCost(p, sim, sample=None):
+def SRPCost(p, sim, x0, sample=None):
 
-    dr_target = 1200
+    dr_target = 900
     cr_target = 0
-    h_target = 0
 
     
     J = checkFeasibility(p)
     if J > 300:
         return J
     
-    # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*p)
-    bankProfile = lambda **d: HEPBank(d['time'],*p)
-    
-    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   dr_target*1e3)
-                                             
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
+    bankProfile = lambda **d: HEPBankSmooth(d['time'],*p, minBank=np.radians(30))
+                                                
     output = sim.run(x0,[bankProfile],sample)
 
     Xf = output[-1,:]
@@ -331,7 +299,7 @@ def SRPCost(p, sim, sample=None):
     dr = Xf[10]
     cr = Xf[11]
     
-    J = -hf + ((dr_target-dr)**2 + (cr_target-cr)**2)**0.5 # 0.01*((h_target-hf)**2)**0.5
+    J = -hf + (0*(dr_target-dr)**2 + (cr_target-cr)**2)**0.5 
 
     return J
 
@@ -346,7 +314,7 @@ def OptimizeSRPRS():
         sol = minimize(SRPCostRS, [ 165.4159422 ,  308.86420218,  399.53393904], args=(sim, perturb), method='Nelder-Mead', tol=1e-2, options={'disp':True})
     else:
         bounds = [(0,250),(100,400),(250,500)]
-        sol = differential_evolution(SRPCostRS, args=(sim, perturb), bounds=bounds, tol=1e-3, disp=True, polish=False)
+        sol = differential_evolution(SRPCostRS, args=(sim, perturb, x0), bounds=bounds, tol=1e-3, disp=True, polish=False)
     
     print sol.x
     
@@ -365,11 +333,11 @@ def OptimizeSRPRS():
     # [ 162.43219422  294.49990189  429.22841173] using Nelder-Mead with nominal optimal as guess and 
     # [ 162.4368125   294.35875742  461.31910219] with differential evolution, each with a cost of 43.8 roughly. Nominal solution has a cost of 44.6
     
-def SRPCostRS(p, sim, pdf):
+def SRPCostRS(p, sim, pdf, x0):
 
     polynomials = cp.orth_ttr(order=2, dist=pdf)
     samples,weights = cp.generate_quadrature(order=2, domain=pdf, rule="Gaussian")
-    stateTensor = [SRPCost(p, sim, s) for s in samples.T]
+    stateTensor = [SRPCost(p, sim, x0, s) for s in samples.T]
     # stateTensor = pool.map(OptCost,samples.T)
     PCE = cp.fit_quadrature(polynomials,samples,weights,stateTensor)
     
@@ -430,15 +398,15 @@ def testExpansion():
     plt.show()
 
 if __name__ == '__main__':
-    from Uncertainty import getUncertainty
-    from Simulation import Simulation, Cycle, EntrySim
+    # from Uncertainty import getUncertainty
+    # from Simulation import Simulation, Cycle, EntrySim
 
     # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    # sim,sol = OptimizeSRP()
-    # print sol.x
+    sim,sol = OptimizeSRP()
+    print sol.x
     # perturb = getUncertainty()['parametric']
     # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
     # print "RS cost of nominal optimized profile: {}".format(SRPCostRS(p, sim, perturb))
     # OptimizeSRPRS()
     
-    testExpansion()
+    # testExpansion()
