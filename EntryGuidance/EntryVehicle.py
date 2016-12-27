@@ -31,6 +31,8 @@ class EntryVehicle:
         self.g0 = 9.81
         self.isp = Isp
         self.ve = self.g0*self.isp
+        cD,cL = self.aerodynamic_coefficients(24)
+        self.LoD = cL/cD
         
     def mdot(self, throttle):
         return -self.Thrust*throttle/(self.ve)
