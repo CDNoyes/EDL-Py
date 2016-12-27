@@ -1,4 +1,4 @@
-from EntryEquations import EDL
+from EntryEquations import EDL, Saturate
 
 import numpy as np
 from scipy.optimize import root
@@ -19,11 +19,11 @@ def cost(x, E, D, m, model):
     
 def solve(E, D, m, model):
     ''' Computes a radius vs velocity profile matching the D vs E profile input for a given mass and system model. '''
-    guess = [model.planet.radius + 65e3, 5000]
+    guess = [model.planet.radius + 85e3, 5500]
     r = []
     v = []
     for e,d in zip(E,D): 
-        sol = root(cost, guess, args=(e,d,m,model), tol=1e-5, options={'eps': 1e-6, 'diag':(.0001,.01)})
+        sol = root(cost, guess, args=(e,d,m,model), tol=1e-5, options={'eps': 1e-6, 'diag':(3e-7,2e-4)})
         r.append(sol['x'][0])
         v.append(sol['x'][1])
         guess = sol['x']
@@ -32,60 +32,89 @@ def solve(E, D, m, model):
     return h,v
   
 
-def reconstruct(E,L,D,h,v,m,model):
+def reconstruct(E,D,h,v,m,model):
+    ''' 
+    Given an Energy vs Drag profile and the corresponding Altitude vs Velocity solution, this method
+    reconstructs the flight path angle, downrange, and control trajectories.
+    The initial conditions of the perturbed solution will not in general match the nominal solution.
     
-    r = h[:-1] + model.planet.radius
+    '''
+    
+    r = h*1e3 + model.planet.radius
+
+    if E is None:
+        E = model.energy(r, v, Normalized=False)
+        L,D = model.aeroforces(r,v,m)
+    else:
+        L = model.aeroforces(r,v,m)[0]
+   
     g = model.planet.mu/r**2
-    e_dot = -D*v
+
+    e_dot = -D[:-2]*v[:-2]
+    
     h_prime = np.diff(h*1e3)/np.diff(E)
-    # h_dot = h_prime*e_dot[:-1]
-    fpa = np.arcsin(-h_prime*D[:-1])
+    fpa = np.arcsin(np.clip(-h_prime*D[:-1],-1,1))
     
-    s = cumtrapz(-np.cos(fpa)/D[:-1], E[:-1], initial=0)/1000 
-    
-    gamma_dot = np.diff(fpa)/np.diff(E[:-1])*e_dot[:-2]
-    
-    u = (gamma_dot + (g[:-1]/v[:-2]-v[:-2]/r[:-1])*np.cos(fpa[:-1]))*v[:-2]/L[:-2]
+    s = cumtrapz(-np.cos(fpa)/D[:-1], E[:-1], initial=0)/1000 # True
+    # s = cumtrapz(-1/D, E)/1000  # Approx - turns out the approximation is very good...
+    t = cumtrapz(-1/D/v, E, initial=0)
     
     
-    return np.degrees(fpa), s, u
+    gamma_dot = np.diff(fpa)/np.diff(E[:-1])*e_dot
+    
+    u = (gamma_dot + (g[:-2]/v[:-2]-v[:-2]/r[:-2])*np.cos(fpa[:-1]))*v[:-2]/L[:-2]
+    
+    
+    return np.degrees(fpa), s, u, t
     
 if __name__ == '__main__':
 
     from Simulation import Simulation, Cycle, EntrySim
     from ParametrizedPlanner import HEPBank,HEPBankSmooth
     from Uncertainty import getUncertainty
+    from InitialState import InitialState
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(.1),output=False,**EntrySim())
-    bankProfile = lambda **d: HEPBankSmooth(d['time'],*[ 165.4159422 ,  308.86420218, 399.53393904])
-    # bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
-    
-    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
-                                             
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0])
+    bankProfile = lambda **d: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609],minBank=np.radians(30))
+                                                
+    x0 = InitialState()
     output = reference_sim.run(x0,[bankProfile])
 
+    track_drag = 1
+    
     references = reference_sim.getRef()
-    istart = np.argmax(output[:,7])
-    energy = output[istart:,1]
-    drag = output[istart:,13]
-    lift = output[istart:,12]
-    sstart = references['rangeToGo'](output[istart,7])/1000. + 8
-    reference_sim.plot(plotEnergy=True)  
-
-    # sample = [-.1,0,0.2,0.01]
-    for sample in getUncertainty()['parametric'].sample(5).T:
-        h, v = solve(energy, drag, 2804.0, model = EDL(sample))
+    if track_drag:
+        istart = np.argmax(output[:,1])
+    else:
+        istart = np.argmax(output[:,7])
         
-        fpa, s, u = reconstruct(energy, lift, drag, h, v, 2804.0, model = EDL(sample))
+    energy = output[istart:,1]
+    drag = output[istart:,13]/np.cos(np.radians(output[istart:,8]))
+    # lift = output[istart:,12]
+    sstart = output[istart,10] 
+    reference_sim.plot(plotEnergy=True)  
+    
+    # samples = [np.zeros(4)]
+    # samples = np.array([np.zeros(4), [-.2, -.1, .1, .2], np.zeros(4), np.zeros(4)]) # Lift dispersions
+    # samples = np.array([[-.2, -.1, .1, .2], np.zeros(4), np.zeros(4), np.zeros(4)]) # Drag dispersions
+    
+    samples = getUncertainty()['parametric'].sample(10, 'S')
+    
+    # pdf = getUncertainty()['parametric'].pdf(samples)
+    for sample in samples.T:
+        if track_drag:
+            h, v = solve(energy, drag, x0[7], model = EDL(sample))
+        else:    
+            h, v = output[istart:,3], output[istart:,7]
+            energy = None
+        fpa, s, u, t = reconstruct(energy, drag, h, v, x0[7]*np.ones_like(h), model = EDL(sample))
         
         plt.figure(1)
         plt.plot(v,h,label="pert: {}".format(sample))
         
         plt.figure(3)
-        plt.plot(v[:-1],sstart-s,label="pert: {}".format(sample))
+        plt.plot(v[:-1],s+sstart,label="pert: {}".format(sample))
         
         plt.figure(5)
         plt.plot(v[:-2],u,label="pert: {}".format(sample))        
@@ -95,3 +124,8 @@ if __name__ == '__main__':
         
     plt.legend(loc='best')
     plt.show()
+    
+    import chaospy as cp
+    polynomials = cp.orth_ttr(order=5, dist=getUncertainty()['parametric']) 
+    nodes, weights = cp.generate_quadrature(order=5, domain=getUncertainty()['parametric'], rule="Gaussian")
+    print nodes.shape
