@@ -115,9 +115,13 @@ class Simulation(Machine):
         self.fullEDL = FullEDL
         if self.fullEDL:
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
+            if self.__output:
+                print "L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD)
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL))
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
+            if self.__output:
+                print "L/D: {:.2f}".format(self.edlModel.vehicle.LoD)
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -407,7 +411,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
         plt.colorbar(format="%.2f")
         # plt.clabel(CS, inline=1, fontsize=10)
         
-    if True: # Draw constant drag contours  
+    if False: # Draw constant drag contours  
         V,R = np.meshgrid(history[:,3], history[:,0])
         D_matrix = []
         for r in R:
@@ -420,18 +424,18 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
 
 
 
-        
-    en = edlModel.energy(history[:,0],history[:,3],Normalized=True)
-    plt.figure(fignum)
-    fignum += 1
-    plt.plot(history[:,3], en, lw = 3)
-    if plotEvents:
-        for i in ie:
-            plt.plot(history[i,3],en[i],'o',label = fsm_states[ie.index(i)], markersize=12)
-    if legend:
-        plt.legend(loc='upper left')   
-    plt.xlabel(label+'Velocity (m/s)')
-    plt.ylabel(label+'Energy (-)')
+    if False:    
+        en = edlModel.energy(history[:,0],history[:,3],Normalized=True)
+        plt.figure(fignum)
+        fignum += 1
+        plt.plot(history[:,3], en, lw = 3)
+        if plotEvents:
+            for i in ie:
+                plt.plot(history[i,3],en[i],'o',label = fsm_states[ie.index(i)], markersize=12)
+        if legend:
+            plt.legend(loc='upper left')   
+        plt.xlabel(label+'Velocity (m/s)')
+        plt.ylabel(label+'Energy (-)')
     
     # #Latitude/Longitude
     plt.figure(fignum)
@@ -449,14 +453,14 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     # Range vs Velocity
     plt.figure(fignum)
     fignum += 1
-    plt.plot(history[:,3], history[:,6]/1000)
+    plt.plot(history[:,3], (history[0,6]-history[:,6])/1000)
     if plotEvents:
         for i in ie:
-            plt.plot(history[i,3],history[i,6]/1000,'o',label = fsm_states[ie.index(i)])
+            plt.plot(history[i,3],(history[0,6]-history[i,6])/1000,'o',label = fsm_states[ie.index(i)])
     if legend:
         plt.legend(loc='best')
-        plt.xlabel(label+'Velocity (m/s)')
-    plt.ylabel(label+'Range to Target (km)')
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'Range(km)')
     
     # Bank Angle Profile
     plt.figure(fignum)
@@ -469,6 +473,19 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.xlabel(label+'Time (s)')
     plt.ylabel(label+'Bank Angle (deg)')
     
+    # Control vs Velocity Profile
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,3], np.cos(control_history[:]))
+    plt.plot(history[:,3], np.ones_like(control_history[:]),'k--',label='Saturation limit')
+    plt.plot(history[:,3], -np.ones_like(control_history[:]),'k--')
+    for i in ie:
+        plt.plot(history[i,3], np.cos(control_history[i]),'o',label = fsm_states[ie.index(i)])
+    if legend:
+        plt.legend(loc='best')  
+    plt.axis([300,5505,-1.5,1.5])    
+    plt.xlabel(label+'Velocity (m/s)')
+    plt.ylabel(label+'u=cos(sigma) (-)')
     
     # Downrange vs Crossrange
     range = np.array([edlModel.planet.range(*history[0,[1,2,5]],lonc=lon,latc=lat,km=True) for lon,lat in zip(history[:,1],history[:,2])])
@@ -506,7 +523,19 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.ylabel('Drag (m/s^2)')
     plt.xlabel('Velocity (m/s)')
     if legend:
-        plt.legend(loc='best')    
+        plt.legend(loc='best')   
+
+    plt.figure(fignum)
+    fignum += 1        
+    plt.plot(history[:,3],D/history[:,3])
+    if plotEvents:
+        for i in ie:
+            plt.plot(history[i,3], D[i]/history[i,3],'o',label = fsm_states[ie.index(i)])    
+    plt.ylabel('Drag/Velocity (s^-1)')
+    plt.xlabel('Velocity (m/s)')
+    if legend:
+        plt.legend(loc='best')  
+        
     return fignum+1
         
 # ########################################################## #
