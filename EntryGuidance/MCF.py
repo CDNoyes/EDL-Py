@@ -2,14 +2,13 @@
 
 import numpy as np
 
-def mcfilter(B, NB, input_names = None, threshold=0):
+def mcfilter(B, NB, input_names=None, threshold=0, plot=False):
     ''' Performs monte carlo filtering on data that has been split into behavioral and non-behavioral sets. '''
     
     from scipy.stats import ks_2samp as kstest2
     
     # Input checking
     if input_names is None or (len(input_names) != B.shape[0]):
-        # print("Using generic names in MCF.filter")
         input_names = ["Input{}:".format(i) for i in range(B.shape[0])] # Generic names
     else:
         input_names = [inp + ':' for inp in input_names]
@@ -27,13 +26,21 @@ def mcfilter(B, NB, input_names = None, threshold=0):
             ks_values.append(ks)
             p_values.append(p)
     
-    # Sort and display        
+    # Sort and print    
     ks_values_sorted, p_values_sorted, inputs_sorted = zip(*sorted(zip(ks_values,p_values,inputs),reverse=True))
     print "\n{}   KS      P".format('Input'.ljust(max_len))
     print "-"*(max_len+15)
     for i in inputs_sorted:
         print "{name: {fill}}  {ks:.2f}   {p:.3f}".format(name=input_names[i], ks=ks_values[i], p=p_values[i], fill=max_str)
-    print '\n'    
+    print '\n'   
+    
+    # Display
+    if plot:
+        import matplotlib.pyplot as plt
+        for i in inputs_sorted:
+            ecdf(B[i,:],NB[i,:],input_names[i][:-1])
+        plt.show()
+        
         
 def mcsplit(inputs, outputs, criteria):
     ''' 
@@ -55,7 +62,27 @@ def mcsplit(inputs, outputs, criteria):
     B = inputs[:,b]
     NB = inputs[:,nb]
     return B, NB
+ 
+def getECDF(data):
+    """ Computes the x and y values for an ECDF plot. """
+    x = np.sort( data )
+    return x, np.arange(1,len(x)+1)/float(len(x))
+
+def ecdf(dataB, dataNB, name, fontsize=12):
+    """ Plots the ECDF of two arrays. """
+    import matplotlib.pyplot as plt
     
+    x,y = getECDF(dataB)
+    xn,yn = getECDF(dataNB)
+    
+    plt.figure()
+    plt.plot( x, y, label = 'Behavioral')  
+    plt.plot( xn, yn, label = 'Non-Behavioral' )
+    plt.legend(loc='best')
+    plt.xlabel(name,fontsize=fontsize)
+    plt.ylabel('CDF',fontsize=fontsize)
+
+ 
 if __name__ == "__main__":
 
     inputs = 2*(np.random.rand(3,5000)-0.5)
@@ -64,4 +91,4 @@ if __name__ == "__main__":
         return output>3
         
     data = mcsplit(inputs,outputs,my_fun)
-    mcfilter(*data, input_names=['Really Long Name Is Long','Strong','Mild']) 
+    mcfilter(*data, input_names=['Really Long Name Is Long','Strong','Mild'], plot=True) 
