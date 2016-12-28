@@ -129,6 +129,67 @@ def HEPBank(T,t1,t2,t3,minBank = np.radians(15.), maxBank = np.radians(85.)):
     else:
         return bank
 
+def HEPBankSmooth(T, t1, t2, t3, minBank=np.radians(15.), maxBank=np.radians(85.)):
+    
+    maxRate = np.radians(20)
+    maxAcc = np.radians(5)
+    dt = maxRate/maxAcc                                     # Amount of time to go from 0 bank rate to max or vice versa
+    dbank = 0.5*(maxRate**2)/maxAcc                         # Angle traversed during max accel for dt seconds
+    
+    t1a = t1 + dt
+    t1v = t1 + (minBank+maxBank)/maxRate
+    t1d = t1v + dt
+    
+    t2a = t2+dt                                             # Acceleration phase
+    t2v = t2 + 2*maxBank/maxRate                            # Max velocity phase
+    t2d = t2v + dt                                          # Max deceleration phase    #Future: check that this is less than t3
+    
+    t3a = t3 + dt
+    t3v = t3 + (minBank+maxBank)/maxRate
+    t3d = t3v + dt
+
+    isScalar = False
+    bank = []
+    if isinstance(T,(float,int,np.float32,np.float64)):
+        T = [T]
+        isScalar = True
+
+    for t in T:
+        if t <= t1:
+            bank.append(-minBank)
+        elif t > t1 and t <= t1a: #Positive acceleration phase
+            bank.append(-minBank + 0.5*maxAcc*(t-t1)**2)
+        elif t > t1a and t <= t1v: #Max velocity phase (if it exists)
+            bank.append(-minBank+dbank+maxRate*(t-t1a))
+        elif t > t1v and t <= t1d:    
+            bank.append(maxBank - dbank + maxRate*(t-t1v) - 0.5*maxAcc*(t-t1v)**2)
+        elif t > t1d and t <= t2:
+            bank.append(maxBank)
+        elif t > t2 and t <= t2a: #Negative acceleration phase
+            bank.append(maxBank-0.5*maxAcc*(t-t2)**2)
+        elif t > t2a and t <= t2v: #Max velocity phase
+            bank.append(maxBank-dbank-maxRate*(t-t2a))
+        elif t > t2v and t <= t2d:
+            bank.append(dbank-maxBank - maxRate*(t-t2v) + 0.5*maxAcc*(t-t2v)**2 )
+        elif t > t2d and t <= t3:
+            bank.append(-maxBank)
+        elif t > t3 and t <= t3a:
+            bank.append(-maxBank + 0.5*maxAcc*(t-t3)**2)
+        elif t > t3a and t <= t3v:
+            bank.append(dbank-maxBank + maxRate*(t-t3a))
+        elif t > t3v and t <= t3d:
+            bank.append(minBank-dbank + maxRate*(t-t3v) - 0.5*maxAcc*(t-t3v)**2)
+        else:
+            bank.append(minBank)
+    if isScalar:
+        try:
+            return bank[0]
+        except:
+            print "Bank angle comp failed"
+            return -1.
+    else:
+        return bank    
+        
 def checkFeasibility(T,sign=-1):
     
     sig = sign*np.diff(T) #np.array([T[0]-T[1],T[1]-T[2]])
@@ -332,15 +393,15 @@ def ExpandBank():
     # polynomials = cp.orth_gs(order=2,dist=pdf) 
     # polynomials = cp.orth_chol(order=2,dist=pdf) 
     
-    if 1:
-        nodes, weights = cp.generate_quadrature(order=2, domain=pdf, rule="Gaussian")
+    if 0:
+        nodes, weights = cp.generate_quadrature(order=3, domain=pdf, rule="Gaussian")
         # nodes, weights = cp.generate_quadrature(order=2, domain=pdf, rule="C")
         # nodes, weights = cp.generate_quadrature(order=9, domain=pdf, rule="L")
         print nodes.shape
         samples = np.array([hep(t,*node) for node in nodes.T])
         hepPCE = cp.fit_quadrature(polynomials,nodes,weights,samples)
     else:
-        nodes = pdf.sample(10,'S')
+        nodes = pdf.sample(4,'S')
         samples = np.array([hep(t,*node) for node in nodes.T])
         hepPCE = cp.fit_regression(polynomials, nodes, samples,rule='T')
     return hepPCE
@@ -351,8 +412,9 @@ def testExpansion():
     Conclusions from running this over and over with different inputs:
         Order is very important. This problem works best by far with order 2
         Polynomial type had very little impact
-        Quadrature performed best with Gaussian, order must match
-        Collocation worked best with T(ikhonov Regularization), and had similar performance with quadrature for a similar number of evaluations
+        Quadrature performed best with Gaussian, order must >= polynomial order. The order of quadrature (and number of uncertain inputs) determines how many samples you will have to run.
+        Collocation worked best with T(ikhonov Regularization), and had similar performance with quadrature for a similar number of evaluations. 
+        However, the 1-D test in TestSuite.py seems to show clearly superior results using quadrature, perhaps because it is only 1-D.
 
     '''
     import matplotlib.pyplot as plt
@@ -372,9 +434,11 @@ if __name__ == '__main__':
     from Simulation import Simulation, Cycle, EntrySim
 
     # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    sim,sol = OptimizeSRP()
-    print sol.x
+    # sim,sol = OptimizeSRP()
+    # print sol.x
     # perturb = getUncertainty()['parametric']
     # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
     # print "RS cost of nominal optimized profile: {}".format(SRPCostRS(p, sim, perturb))
     # OptimizeSRPRS()
+    
+    testExpansion()

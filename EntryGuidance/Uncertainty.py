@@ -17,7 +17,7 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
         CD          = cp.Uniform(-0.10, 0.10)   # CD
         CL          = cp.Uniform(-0.10, 0.10)   # CL
         rho0        = cp.Normal(0, 0.0333*1.5)      # rho0
-        scaleHeight = cp.Uniform(-0.025,0.01)    # scaleheight        
+        scaleHeight = cp.Uniform(-0.02,0.01)    # scaleheight        
         perturbations['parametric'] = cp.J(CD,CL,rho0,scaleHeight)
         
     if knowledge:
@@ -25,8 +25,8 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
         perturbations['knowledge'] = cp.J(pitch)
     
     if initial:
-        V     = cp.Uniform(-150,150)     # Entry velocity deviation
-        gamma = cp.Normal(0, 2.0/3.0)    # Entry FPA deviation, +- 2 deg 3-sigma
+        V     = cp.Uniform(-5,5)     # Entry velocity deviation
+        gamma = cp.Normal(0, 0.5/3.0)    # Entry FPA deviation, +- 0.5 deg 3-sigma
         perturbations['initial'] = cp.J(V, gamma)
     
     return perturbations

@@ -134,7 +134,7 @@ def cost(u, sim, state, ratios, reference, scalar):
             drag_ref = reference['dragcos'](energy)               # Tracking D/cos(fpa) - which is the true integrand in energy integral
             integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
         
-        if vel[0]<5300 and True:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
+        if vel[0]<5300 and False:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
             rtg_ref = reference['rangeToGo'](vel)/1000.           # Meters to Km
             integrand += .1*(rangeToGo-rtg_ref)**2
             
@@ -206,13 +206,14 @@ def testNMPC():
 
     references = reference_sim.getRef()
     drag_ref = references['drag']
-    
+    reference_sim.plot(plotEnergy=True)
+
     # rtg = (output[-1,10]-output[:,10])*1e3
     # plt.figure()
     # plt.plot(output[:,10],output[:,1])
     # plt.plot(output[:,10],references['altitude_range'](rtg),'o')
-    # plt.show()
-    if 1:
+    plt.show()
+    if 0:
         # Create the simulation model:
             
         states = ['PreEntry','RangeControl','HeadingAlign']
@@ -240,8 +241,8 @@ def testNMPC():
         # sample = None 
         # sample = perturb.sample()
         # print sample
-        samples = [[ d,  d,  d, 0] for d in np.linspace(-0.05,0.05,6)]
-        # samples = perturb.sample(500).T
+        # samples = [[ d,  d,  0, 0] for d in np.linspace(-0.15,0.15,4)]
+        samples = perturb.sample(1).T
         # p = perturb.pdf(samples.T)
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
         x0_nav = [r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] # Errors in velocity and mass
@@ -254,7 +255,7 @@ def testNMPC():
             reference_sim.plot()
 
         else:
-            reference_sim.plot()
+            reference_sim.plot(plotEnergy=True)
 
             # output = sim.run(x0_full, controls, sample, FullEDL=True)
             # sim.plot(compare=False)
@@ -265,32 +266,8 @@ def testNMPC():
                 # saveDir = './data/'
                 # savemat(saveDir+'MC_MPC',{'states':stateTensor, 'samples':samples, 'pdf':p})
                 sim.plot(compare=False, legend=False)
-            plt.show()
+            sim.show()
 
-
-        # Dref = drag_ref(output[:,7])
-        # D = output[:,13]    
-        # Derr = D-Dref
-        # DerrPer = 100*Derr/Dref
-        # Ddot = np.insert(np.diff(D)/np.diff(output[:,0]),0,0)
-        # Ddotref = references['drag_rate'](output[:,7])
-        # # Dddotref = np.diff(Dref,n=2)/np.diff(output[1:,0])
-       
-        # iv = np.nonzero(output[:,7]<5400)[0]
-        
-        # plt.figure(60)
-        # plt.plot(output[iv,7],D[iv],label='Actual')
-        # plt.plot(output[iv,7],Dref[iv],label='Reference')
-        # plt.ylabel('Drag (m/s^2)')
-        # plt.xlabel('Velocity (m/s)')
-        # plt.legend()
-        
-        # plt.figure(61)
-        # plt.plot(output[iv,7],Ddot[iv],label='Actual')
-        # plt.plot(output[iv,7],Ddotref[iv],label='Reference')
-        # plt.ylabel('Drag rate (m/s^3)')
-        # plt.xlabel('Velocity (m/s)')
-        # plt.legend()
         
         sim.show()
     

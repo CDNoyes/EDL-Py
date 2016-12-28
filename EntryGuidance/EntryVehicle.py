@@ -3,7 +3,6 @@ class EntryVehicle:
     Defines an EntryVehicle Class:
     
     members:
-        mass - the initial mass of the vehicle, kg
         area - the effective area, m^2
         CD   - a multiplicative offset for the vehicle's drag coefficient
         CL   - a multiplicative offset for the vehicle's lift coefficient
@@ -17,11 +16,11 @@ class EntryVehicle:
     methods:
         mdot(throttle) - computes the mass rate of change based on the current throttle setting
         aerodynamic_coefficients(Mach) - computes the values of CD and CL for the current Mach values
+        BC(mass,Mach=24) - computes the vehicle's ballistic coefficient as a function of its mass. Drag coefficient is calculated by default at Mach 24. 
         
     '''
     
-    def __init__(self, mass = 8500.0, area = 15.8, CD = 0, CL = 0, Thrust = 60375, Isp = 260, ThrustFactor = 1):
-        # self.mass = mass
+    def __init__(self, area = 15.8, CD = 0, CL = 0, Thrust = 60375, Isp = 260, ThrustFactor = 1):
         self.area = area
         self.CD = CD
         self.CL = CL
@@ -33,7 +32,7 @@ class EntryVehicle:
         self.isp = Isp
         self.ve = self.g0*self.isp
         
-    def mdot(self,throttle):
+    def mdot(self, throttle):
         return -self.Thrust*throttle/(self.ve)
         
     def aerodynamic_coefficients(self, M):
@@ -59,3 +58,6 @@ class EntryVehicle:
             
         cL = num/den
         return cD*(1+self.CD), cL*(1+self.CL)
+    
+    def BC(self, mass, Mach=24):
+        return mass/self.area/self.aerodynamic_coefficients(Mach)[0]

@@ -153,14 +153,90 @@ def testCuba():
     print "Multi-dimensional integral of the PDF over its support = {}".format(P[0])
     print "Total error in integration = {}".format(err[0])
     
-if __name__ == '__main__':
-    perturb = getUncertainty()['parametric']
-    sample = [10*s for s in perturb.sample()]
+def testPCE():
+    ''' Tests chaospy against a 1-d problem with analytical solution '''
 
+    #model: dx/dt = -ax w/ a uniform in [0,1], x(0) = 1
+    
+    # Truth model:
+    x0 = 1
+    time = np.linspace(0.001,100,200)
+    c = 1
+    mean = (1-np.exp(-c*time))/time
+    var = (1-np.exp(-2*c*time))/(2*time) - mean**2
+    
+    # plt.figure(1)
+    # plt.plot(time, mean, '--', label='True')
+    
+    # plt.figure(2)
+    # plt.plot(time, var, '--', label='True')
+    
+    def xfun(t,a):
+        return np.exp(-a*t)
+        
+    pdf = cp.Uniform(0,c)
+
+    
+    for order in [5,10,15]: 
+        polynomials = cp.orth_ttr(order=5, dist=pdf) 
+        nodes, weights = cp.generate_quadrature(order=order+1, domain=pdf, rule="Gaussian")
+        samples = np.array([xfun(time,node) for node in nodes.T])
+        PCE = cp.fit_quadrature(polynomials,nodes,weights,samples)
+        pce_mean = cp.E(poly=PCE,dist=pdf)
+        pce_sigma = cp.Std(poly=PCE,dist=pdf)
+        
+        plt.figure(1)
+        plt.plot(time, np.abs(mean-pce_mean), label='{} ({} points)'.format(order,nodes.shape[1]))
+
+        plt.figure(2)
+        plt.plot(time, np.abs(var-pce_sigma**2), label='{} ({} points)'.format(order,nodes.shape[1]))
+    
+    plt.legend(loc='best')
+    plt.xlabel('Time')
+    plt.ylabel('Variance Error')
+    
+    plt.figure(1)
+    plt.legend(loc='best')
+    plt.xlabel('Time')
+    plt.ylabel('Mean Error')
+
+    for n in [5,10,15, 1000]: 
+        polynomials = cp.orth_ttr(order=5, dist=pdf) 
+
+        nodes = pdf.sample(n+2,'S')
+        samples = np.array([xfun(time,node) for node in nodes.T])
+        PCE = cp.fit_regression(polynomials, nodes, samples,rule='T')
+        pce_mean = cp.E(poly=PCE,dist=pdf)
+        pce_sigma = cp.Std(poly=PCE,dist=pdf)
+        
+        plt.figure(3)
+        plt.plot(time, np.abs(mean-pce_mean), label='{} points'.format(n+1))
+
+        plt.figure(4)
+        plt.plot(time, np.abs(var-pce_sigma**2), label='{} points'.format(n+1))
+    
+    plt.legend(loc='best')
+    plt.xlabel('Time')
+    plt.ylabel('Variance Error')
+    
+    plt.figure(3)
+    plt.legend(loc='best')
+    plt.xlabel('Time')
+    plt.ylabel('Mean Error')
+        
+        
+    plt.show()
+
+        
+# def testLQR():    
+    
+if __name__ == '__main__':
+    # perturb = getUncertainty()['parametric']
+    # sample = [10*s for s in perturb.sample()]
+    # testFilters(sample)
+    
     # gains = np.linspace(-1., 0.99, 25)
     # JRS = [OptCostRS(gain, perturb) for gain in gains]
-
     # plt.plot(gains,JRS)
     # plt.show()
-
-    testFilters(sample)
+    testPCE()
