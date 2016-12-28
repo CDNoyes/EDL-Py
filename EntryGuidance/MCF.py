@@ -2,7 +2,7 @@
 
 import numpy as np
 
-def mcfilter(B, NB, input_names=None, threshold=0, plot=False):
+def mcfilter(B, NB, input_names=None, threshold=0, plot=False, fontsize=16):
     ''' Performs monte carlo filtering on data that has been split into behavioral and non-behavioral sets. '''
     
     from scipy.stats import ks_2samp as kstest2
@@ -38,7 +38,7 @@ def mcfilter(B, NB, input_names=None, threshold=0, plot=False):
     if plot:
         import matplotlib.pyplot as plt
         for i in inputs_sorted:
-            ecdf(B[i,:],NB[i,:],input_names[i][:-1])
+            ecdf(B[i,:], NB[i,:], input_names[i][:-1], fontsize=fontsize)
         plt.show()
         
         
@@ -68,7 +68,7 @@ def getECDF(data):
     x = np.sort( data )
     return x, np.arange(1,len(x)+1)/float(len(x))
 
-def ecdf(dataB, dataNB, name, fontsize=12):
+def ecdf(dataB, dataNB, name, fontsize):
     """ Plots the ECDF of two arrays. """
     import matplotlib.pyplot as plt
     
