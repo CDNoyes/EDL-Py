@@ -356,7 +356,7 @@ class Simulation(Machine):
             self.u = self.control_history[i]
             self.triggerInput = self.getDict()
             if not self.__conditions[self.index](self.triggerInput): # Interpolate between i and i+1 states
-                for j in np.linspace(0.01,0.99,20): # The number of points used here will determinte the accuracy of the final state
+                for j in np.linspace(0.01,0.99,20): # The number of points used here will determine the accuracy of the final state
                     # Find a better state:
                     self.time = ((1-j)*self.times[i] + j*self.times[i+1])
                     self.x = ((1-j)*self.history[i] + j*self.history[i+1])

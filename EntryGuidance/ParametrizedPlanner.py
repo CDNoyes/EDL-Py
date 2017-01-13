@@ -382,7 +382,7 @@ def testExpansion():
         Polynomial type had very little impact
         Quadrature performed best with Gaussian, order must >= polynomial order. The order of quadrature (and number of uncertain inputs) determines how many samples you will have to run.
         Collocation worked best with T(ikhonov Regularization), and had similar performance with quadrature for a similar number of evaluations. 
-        However, the 1-D test in TestSuite.py seems to show clearly superior results using quadrature, perhaps because it is only 1-D.
+        However, the 1-D test in TestSuite.py seems to show clearly superior results using quadrature, perhaps because it is only 1-D and very smooth.
 
     '''
     import matplotlib.pyplot as plt

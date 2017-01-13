@@ -86,7 +86,7 @@ def ecdf(dataB, dataNB, name, fontsize):
 if __name__ == "__main__":
 
     inputs = 2*(np.random.rand(3,5000)-0.5)
-    outputs = [10*inp[1]**2 + 2*inp[2] for inp in inputs.T] # Strong dependence on inp[1], mild on inp[2], no dependence on inp[0]
+    outputs = [10*inp[1]**2 + 2*inp[2] for inp in inputs.T] # No dependence on inp[0], Strong dependence on inp[1], mild on inp[2], 
     def my_fun(output):
         return output>3
         
