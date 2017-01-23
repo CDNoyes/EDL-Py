@@ -6,7 +6,10 @@
     2. Estimate marginals, expectations, etc. using the remaining methods. 
 
 
+    Note: When using "grid" be careful not to use too many bins relative to the number of samples.
 """
+
+import numpy as np
 
 def grid(data, density, bins=50):
     ''' 
@@ -55,7 +58,6 @@ def grid(data, density, bins=50):
     Pave = Pgrid/Ngrid                   # Average density in each grid
     
     Ptotal = integrate_pdf(centers_pdf,Pave) # Total density
-    
     Pest = Pave/Ptotal
 
     return centers, Pest
@@ -117,11 +119,11 @@ def test():
     
     delta = cp.J(N1,N2)
     
-    samples = delta.sample(100000,'S').T
+    samples = delta.sample(200,'S').T
     pdf = delta.pdf(samples.T)
         
 
-    centers,p = grid(samples, pdf, bins=(30,40))
+    centers,p = grid(samples, pdf, bins=(10,10))
     X,Y = np.meshgrid(centers[0],centers[1])
 
     plt.figure()
@@ -140,7 +142,7 @@ def test():
     plt.figure()
     plt.plot(centers[0],M[1],'k',label='Estimated')
     plt.plot(x1_samples,x1_marginal,'o',label='Truth')
-    plt.legend('Location','best')
+    plt.legend(loc='best')
     plt.show()
     
 if __name__ == '__main__':    
