@@ -7,6 +7,9 @@
 
 
     Note: When using "grid" be careful not to use too many bins relative to the number of samples.
+    
+    TODO: Allow for marginal computation (by permuting the order of integration)
+          Increase test example to 3D, then compare 2-d bivariate distributions in addition to marginals
 """
 
 import numpy as np
@@ -15,7 +18,7 @@ def grid(data, density, bins=50):
     ''' 
     This method partitions the domain defined by data into equal intervals defined by bins.
     Then, the probability density in each partition is estimated as the average of the density of
-    each point in the partition.
+    each point in the partition, normalized by the total probability mass.
         
         Inputs:
             data - An (N,n) numpy array of points where each column is a different variable (x1,x2,...,xn). 
@@ -119,11 +122,11 @@ def test():
     
     delta = cp.J(N1,N2)
     
-    samples = delta.sample(200,'S').T
+    samples = delta.sample(20000,'S').T
     pdf = delta.pdf(samples.T)
         
 
-    centers,p = grid(samples, pdf, bins=(10,10))
+    centers,p = grid(samples, pdf, bins=(30,30))
     X,Y = np.meshgrid(centers[0],centers[1])
 
     plt.figure()
