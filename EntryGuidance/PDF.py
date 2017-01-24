@@ -8,7 +8,7 @@
 
     Note: When using "grid" be careful not to use too many bins relative to the number of samples.
     
-    TODO: Allow for marginal computation (by permuting the order of integration)
+    TODO: Allow for marginal computation (by permuting the order of integration). Eventually extend to an order of marginal, or at least bivariate.
           Increase test example to 3D, then compare 2-d bivariate distributions in addition to marginals
 """
 
@@ -96,6 +96,47 @@ def integrate_pdf(grid_points, pdf, return_all=False):
         return M 
     else:
         return M[-1]
+
+def marginal(grid_points, pdf, index=None):
+    ''' Given n-dimensional data, compute the univariate marginal distributions corresponding the
+    directions given by index. Set index to None to compute all n marginals.
+    
+    '''
+    
+    
+    if index is not None:
+        if isinstance(index,int):                                                           # Compute a single marginal
+            grid_points_new, pdf_new = permute_data(grid_points[:], np.copy(pdf), index)
+            M = integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2]  
+        else:                                                                               # Compute a list of marginals
+            M = []
+            for ind in index:
+                grid_points_new, pdf_new = permute_data(grid_points[:], np.copy(pdf), ind)
+                M.append(integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2])  
+    else:                                                                                   # Compute all the marginals
+        M = []
+        for index in range(len(grid_points)):
+            grid_points_new, pdf_new = permute_data(grid_points[:], np.copy(pdf), index)
+            M.append(integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2])  
+    return M
+    
+def permute_data(grid_points, pdf, index):
+    n = len(grid_points)
+    
+    if not isinstance(index,int):
+        raise('permute_data can only move one index. Please specify an integer.')
+    elif index < 0 or index > (len(grid_points)-1):
+        raise('Invalid input for index in permute_data')
+        
+    if index == 0:
+        return grid_points, pdf
+    
+    indices = range(n)
+    indices.insert(0, indices.pop(index))
+    
+    grid_points.insert(0, grid_points.pop(index))
+    pdf = np.transpose(pdf, indices)
+    return grid_points, pdf
     
 def allocate(n, N):
     ''' 
@@ -140,12 +181,22 @@ def test():
     plt.colorbar()
     
     M = integrate_pdf(centers, p, return_all=True)
+    M2 = marginal(centers,p,1)
     x1_samples = N1.sample(100,'S')
     x1_marginal = N1.pdf(x1_samples)
+    x2_samples = N2.sample(100,'S')
+    x2_marginal = N2.pdf(x2_samples)   
+    
     plt.figure()
     plt.plot(centers[0],M[1],'k',label='Estimated')
     plt.plot(x1_samples,x1_marginal,'o',label='Truth')
     plt.legend(loc='best')
+    
+    plt.figure()
+    plt.plot(centers[1],M2,'k',label='Estimated')
+    plt.plot(x2_samples,x2_marginal,'o',label='Truth')
+    plt.legend(loc='best')
+    
     plt.show()
     
 if __name__ == '__main__':    
