@@ -12,8 +12,10 @@
           Increase test example to 3D, then compare 2-d bivariate distributions in addition to marginals
 """
 
+from numba import jit
 import numpy as np
 
+# @jit
 def grid(data, density, bins=50):
     ''' 
     This method partitions the domain defined by data into equal intervals defined by bins.
@@ -21,17 +23,19 @@ def grid(data, density, bins=50):
     each point in the partition, normalized by the total probability mass.
         
         Inputs:
-            data - An (N,n) numpy array of points where each column is a different variable (x1,x2,...,xn). 
+            data    - An (N,n) numpy array of points where each column is a different variable (x1,x2,...,xn). 
             density - An array-like with N elements
-            bins - an integer or list of integers with len == n (columns of data).
+            bins    - An integer or list of integers with len == n (columns of data).
             
         Outputs:
             centers - A list of 1-d arrays representing the center of each hypercube in each dimension
-            Pest - The estimated density matrix
+            Pest    - The estimated density matrix
     '''
     
     if isinstance(bins,int):
         bins = [bins for _ in range(data.shape[1])]
+    elif len(bins) != data.shape[1]:
+        raise "Invalid input in grid. bins must be an integer or an array with length equal to n variables in data."
         
     edges = [np.linspace(row.min(),row.max(),nbins+1) for row,nbins in zip(data.T,bins)] # Iterate over the columns of the original matrix
     centers_pdf = [np.linspace(row.min(),row.max(),nbins) for row,nbins in zip(data.T,bins)] # This is better for estimate of joint pdf, worse for marginals
@@ -65,7 +69,7 @@ def grid(data, density, bins=50):
 
     return centers, Pest
    
-
+# @jit
 def integrate_pdf(grid_points, pdf, return_all=False):  
     ''' Given a grid of points and the probability density in each grid point, compute the integral over the entire domain. 
     
@@ -76,20 +80,19 @@ def integrate_pdf(grid_points, pdf, return_all=False):
         Thus, the second to last element will be a univariate marginal, the third to last element will be a bivariate marginal, etc.
     
     '''
-    from scipy.integrate import trapz
+    # from scipy.integrate import trapz
+    from scipy.integrate import simps as trapz # just so I don't have to rewrite it
     from itertools import product
        
     n = len(grid_points)                           # Number of variables
     N = [len(a) for a in grid_points]              # Number of points in each dimension  
-    M = [pdf] + allocate(n,N)               # Storage of all intermediate arrays
+    M = [pdf] + allocate(n,N)                      # Storage of all intermediate arrays
     
     for i in range(1,n+1):
-        # print "Dimension: {}".format(i)
         dir = [range(d) for d in M[i].shape]
         
         # These can be converted to a comprehension at some point. No need to preallocate then.
         for ndpoint in product(*dir): # Loop over all the possible combinations of 1-D arrays
-            # print "Point: {}".format(ndpoint)
             M[i][ndpoint] = trapz(M[i-1][ndpoint],grid_points[-i])    
             
     if return_all:
@@ -97,30 +100,32 @@ def integrate_pdf(grid_points, pdf, return_all=False):
     else:
         return M[-1]
 
+# @jit        
 def marginal(grid_points, pdf, index=None):
     ''' Given n-dimensional data, compute the univariate marginal distributions corresponding the
-    directions given by index. Set index to None to compute all n marginals.
+        directions given by index. Set index to None to compute all n marginals.
     
     '''
     
-    
     if index is not None:
-        if isinstance(index,int):                                                           # Compute a single marginal
+        if isinstance(index, int):                                                           # Compute a single marginal
             grid_points_new, pdf_new = permute_data(grid_points[:], np.copy(pdf), index)
             M = integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2]  
-        else:                                                                               # Compute a list of marginals
+        else:                                                                                # Compute a list of marginals
             M = []
             for ind in index:
                 grid_points_new, pdf_new = permute_data(grid_points[:], np.copy(pdf), ind)
                 M.append(integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2])  
-    else:                                                                                   # Compute all the marginals
+    else:                                                                                    # Compute all the marginals
         M = []
         for index in range(len(grid_points)):
             grid_points_new, pdf_new = permute_data(grid_points[:], np.copy(pdf), index)
             M.append(integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2])  
     return M
-    
+
+@jit    
 def permute_data(grid_points, pdf, index):
+    ''' Permutes the grid_points list and pdf ndarray such that the dimension specified by index becomes the first dimension. '''
     n = len(grid_points)
     
     if not isinstance(index,int):
@@ -138,6 +143,7 @@ def permute_data(grid_points, pdf, index):
     pdf = np.transpose(pdf, indices)
     return grid_points, pdf
     
+# @jit    
 def allocate(n, N):
     ''' 
         Pre-allocates a list of tensors in decreasing dimension. 
@@ -153,42 +159,46 @@ def allocate(n, N):
     return tensor
     
     
-def test():
+def estimate_sparsity(pdf):
+    ''' Divide zero elements by total number of elements '''
+    return 1-float(np.count_nonzero(pdf))/pdf.size
+    
+def test_3d():
     import chaospy as cp
     import matplotlib.pyplot as plt
     
     N1 = - 0.5+cp.Beta(2,5)
     N2 = cp.Normal(0,0.3)
-    MU = cp.Uniform(0.,.0005)
+    MU = cp.Uniform(0.,.5)
     
-    delta = cp.J(N1,N2)
+    delta = cp.J(N1,N2,MU)
     
-    samples = delta.sample(20000,'S').T
+    N = 2000000
+    Nb = int(N**(1./3.5))
+    samples = delta.sample(N,'S').T
     pdf = delta.pdf(samples.T)
         
 
-    centers,p = grid(samples, pdf, bins=(30,30))
+    centers,p = grid(samples, pdf, bins=(Nb,Nb,Nb-1))
     X,Y = np.meshgrid(centers[0],centers[1])
 
-    plt.figure()
-    plt.contourf(X,Y,p.T)
-    plt.title('Grid-based estimate of PF results')
-    plt.colorbar()
-    
-    plt.figure()
-    plt.scatter(samples[:,0],samples[:,1],20,pdf)
-    plt.title('Truth')
-    plt.colorbar()
+    print p.shape
+    print "Sparsity: {}".format(estimate_sparsity(p))
     
     M = integrate_pdf(centers, p, return_all=True)
     M2 = marginal(centers,p,1)
+    Mmu = marginal(centers,p,2)
+    
+    # Truth for comparison
     x1_samples = N1.sample(100,'S')
     x1_marginal = N1.pdf(x1_samples)
     x2_samples = N2.sample(100,'S')
-    x2_marginal = N2.pdf(x2_samples)   
+    x2_marginal = N2.pdf(x2_samples)
+    mu_samples = MU.sample(100,'S')
+    mu_marginal = MU.pdf(mu_samples)   
     
     plt.figure()
-    plt.plot(centers[0],M[1],'k',label='Estimated')
+    plt.plot(centers[0],M[-2],'k',label='Estimated')
     plt.plot(x1_samples,x1_marginal,'o',label='Truth')
     plt.legend(loc='best')
     
@@ -197,7 +207,50 @@ def test():
     plt.plot(x2_samples,x2_marginal,'o',label='Truth')
     plt.legend(loc='best')
     
+    plt.figure()
+    plt.plot(centers[2],Mmu,'k',label='Estimated')
+    plt.plot(mu_samples,mu_marginal,'o',label='Truth')
+    plt.legend(loc='best')    
+    
+    
     plt.show()
     
+def test_grid_resolution():
+    ''' Uses a simple 2-d example with various grid sizes for a large data set '''
+    import chaospy as cp
+    import matplotlib.pyplot as plt
+    
+    N1 = - 0.5+cp.Beta(2,5)
+    N2 = cp.Normal(0,0.3)
+    
+    delta = cp.J(N1,N2)
+    
+    N = 100000
+    # Nb = int(N**(1./3.5))
+    samples = delta.sample(N,'S').T
+    pdf = delta.pdf(samples.T)
+        
+        
+    for Nb in [4,14,24]:
+        print Nb
+        centers,p = grid(samples, pdf, bins=(Nb,Nb))
+        X,Y = np.meshgrid(centers[0], centers[1])
+        print "Sparsity: {}".format(estimate_sparsity(p))
+
+        plt.figure()
+        plt.contourf(X,Y,p.T)
+        plt.hlines(centers[1],centers[0].min(),centers[0].max())
+        plt.vlines(centers[0],centers[1].min(),centers[1].max())
+        plt.title('Grid-based estimate of PF results ({} partitions per dimension)'.format(Nb))
+        plt.colorbar()
+        
+    plt.figure()
+    plt.scatter(samples[:,0],samples[:,1],20,pdf)
+    plt.title('Truth')
+    plt.colorbar()
+    
+    plt.show()
+    
+    
 if __name__ == '__main__':    
-    test()
+    test_grid_resolution()
