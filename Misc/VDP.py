@@ -1,8 +1,13 @@
 import numpy as np
 import chaospy as cp
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from scipy.integrate import odeint
 
+import sys
+from os import path
+sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+from EntryGuidance.PDF import grid, marginal
 
 
 class VDP(object):
@@ -35,31 +40,35 @@ class VDP(object):
         
     def plot(self):
         ''' Visualizations of the monte carlo results. '''
+        cm = 'YlOrRd'
+        
         if 0:
             for traj in self.outputs:
-                plt.figure(1)
+                plt.figure(3)
                 plt.plot(traj[:,0],traj[:,1],'k',alpha=0.1)
 
-            plt.figure(1)
+            plt.figure(3)
             for i in range(0,self.outputs.shape[1],10):
                 # plt.scatter(self.outputs[:,i,0],self.outputs[:,i,1],20,self.pdf)
                 plt.scatter(self.outputs[:,i,0],self.outputs[:,i,1],20,self.outputs[:,i,2])
             
             
-        plt.figure(3)
-        counts,xe,ye,im = plt.hist2d(self.outputs[:,-1,0], self.outputs[:,-1,1], normed=True, bins=(250,250))
-        plt.title('QMC')    
+        plt.figure(1)
+        counts,xe,ye,im = plt.hist2d(self.outputs[:,-1,0], self.outputs[:,-1,1], normed=True, bins=(250,250),cmap=cm)
+        plt.title('MC')    
         plt.colorbar()    
             
-        # print type(counts)    
-        # print counts.shape    
-            
         vmax = np.max((counts.max(),self.outputs[:,-1,2].max()))    
-            
+        
+        Nb = 65 #int(self.outputs.shape[0]**(1./2.5))
+        centers,p = grid(self.outputs[:,-1,0:2], self.outputs[:,-1,2], bins=(Nb,Nb))
+        X,Y = np.meshgrid(centers[0],centers[1])
+
         plt.figure(2)
-        plt.scatter(self.outputs[:,-1,0],self.outputs[:,-1,1],20,self.outputs[:,-1,2],vmin=0) #PF operator
-        plt.scatter(self.outputs[:,-1,0],self.outputs[:,-1,1],20,self.outputs[:,-1,2],vmin=0,vmax=vmax) #force same color range as the histogram
-        plt.title('PF Operator')
+        plt.contourf(X,Y,p.T,cmap=cm)
+        plt.hlines(centers[1],centers[0].min(),centers[0].max())
+        plt.vlines(centers[0],centers[1].min(),centers[1].max())
+        plt.title('Grid-based estimate of PF results ({} partitions per dimension)'.format(Nb))
         plt.colorbar()
 
             
@@ -78,7 +87,7 @@ class VDP(object):
         elif 1:
             N1 = - 0.5+cp.Beta(2,5)
             # N2 = cp.Beta(1.5,2)-0.5
-            N2 = cp.Normal(0,0.3)
+            N2 = cp.Normal(0,0.1)
 
             MU = cp.Uniform(0.,.0005)
 
@@ -91,10 +100,10 @@ class VDP(object):
         # delta = cp.J(N1,N2,MU)
         delta = cp.J(N1,N2)
         
-        tf = 10
-        Mu = 0.5
+        tf = 1
+        Mu = 4
         
-        samples = delta.sample(200000,'L').T
+        samples = delta.sample(100000,'S').T
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
                   
