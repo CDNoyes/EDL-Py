@@ -26,7 +26,7 @@ class VDP(object):
         return -mu*(1-x[0]**2)*x[2]
         
     def simulate(self, sample, tf, p):
-        x = odeint(self.__dynamics__, [sample[0],sample[1],p], np.linspace(0,tf,51), args=(sample[2],))
+        x = odeint(self.__dynamics__, [sample[0],sample[1],p], np.linspace(0,tf,61), args=(sample[2],))
         return x
 
 
@@ -38,33 +38,34 @@ class VDP(object):
         self.samples = samples
         self.pdf = pdf
         
-    def plot(self):
+    def plot(self,fignum=0):
         ''' Visualizations of the monte carlo results. '''
         cm = 'YlOrRd'
         
-        if 0:
-            for traj in self.outputs:
-                plt.figure(3)
-                plt.plot(traj[:,0],traj[:,1],'k',alpha=0.1)
+        if 1:
+            for traj in self.outputs[::10]:
+                plt.figure(3+fignum)
+                plt.plot(traj[:,0],traj[:,1],'k',alpha=0.01)
 
-            plt.figure(3)
-            for i in range(0,self.outputs.shape[1],10):
+            plt.figure(3+fignum)
+            for i in [0,-1]:
                 # plt.scatter(self.outputs[:,i,0],self.outputs[:,i,1],20,self.pdf)
                 plt.scatter(self.outputs[:,i,0],self.outputs[:,i,1],20,self.outputs[:,i,2])
             
             
-        plt.figure(1)
+        plt.figure(1+fignum)
         counts,xe,ye,im = plt.hist2d(self.outputs[:,-1,0], self.outputs[:,-1,1], normed=True, bins=(250,250),cmap=cm)
         plt.title('MC')    
         plt.colorbar()    
             
         vmax = np.max((counts.max(),self.outputs[:,-1,2].max()))    
         
-        Nb = 65 #int(self.outputs.shape[0]**(1./2.5))
+        # Nb = int(self.outputs.shape[0]**(1./2.5))
+        Nb = 45
         centers,p = grid(self.outputs[:,-1,0:2], self.outputs[:,-1,2], bins=(Nb,Nb))
         X,Y = np.meshgrid(centers[0],centers[1])
 
-        plt.figure(2)
+        plt.figure(2+fignum)
         plt.contourf(X,Y,p.T,cmap=cm)
         plt.hlines(centers[1],centers[0].min(),centers[0].max())
         plt.vlines(centers[0],centers[1].min(),centers[1].max())
@@ -87,7 +88,7 @@ class VDP(object):
         elif 1:
             N1 = - 0.5+cp.Beta(2,5)
             # N2 = cp.Beta(1.5,2)-0.5
-            N2 = cp.Normal(0,0.1)
+            N2 = cp.Normal(3,0.1)
 
             MU = cp.Uniform(0.,.0005)
 
@@ -100,16 +101,30 @@ class VDP(object):
         # delta = cp.J(N1,N2,MU)
         delta = cp.J(N1,N2)
         
-        tf = 1
-        Mu = 4
+        tf = 2
+        Mu = 1
         
-        samples = delta.sample(100000,'S').T
+        samples = delta.sample(1000,'S').T
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
                   
         self.monte_carlo(samples,tf,pdf)
         self.plot()
-                
+        
+        # samples = delta.sample(1000,'L').T
+        # pdf = delta.pdf(samples.T)
+        # samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
+                  
+        # self.monte_carlo(samples,tf,pdf)
+        # self.plot(3)
+        
+        # samples = delta.sample(50000,'L').T
+        # pdf = delta.pdf(samples.T)
+        # samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
+                  
+        # self.monte_carlo(samples,tf,pdf)
+        # self.plot(6)
+        
         # xy = np.mgrid[2.7:3.3:50j, -0.9:0.9:50j].reshape(2,-1).T
         # mu = Mu*np.ones((xy.shape[0],1))
 
