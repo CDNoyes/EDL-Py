@@ -173,43 +173,51 @@ def test_3d():
     
     delta = cp.J(N1,N2,MU)
     
-    N = 2000000
-    Nb = int(N**(1./3.5))
+    N = 500000
+    Nb = int(N**(1./3.3))
     samples = delta.sample(N,'S').T
     pdf = delta.pdf(samples.T)
         
 
-    centers,p = grid(samples, pdf, bins=(Nb,Nb,Nb-1))
+    centers,p = grid(samples, pdf, bins=(Nb+1,Nb+3,Nb-1))
     X,Y = np.meshgrid(centers[0],centers[1])
 
+    p_np, edges = np.histogramdd(samples,bins=(Nb+1,Nb+3,Nb-1),normed=True)
+    
     print p.shape
+    print p_np.shape
     print "Sparsity: {}".format(estimate_sparsity(p))
+    e = np.abs(p-p_np)
+    print e.max()
     
     M = integrate_pdf(centers, p, return_all=True)
     M2 = marginal(centers,p,1)
     Mmu = marginal(centers,p,2)
     
     # Truth for comparison
-    x1_samples = N1.sample(100,'S')
+    x1_samples = sorted(N1.sample(1000,'S'))
     x1_marginal = N1.pdf(x1_samples)
-    x2_samples = N2.sample(100,'S')
+    x2_samples = sorted(N2.sample(1000,'S'))
     x2_marginal = N2.pdf(x2_samples)
-    mu_samples = MU.sample(100,'S')
+    mu_samples = sorted(MU.sample(1000,'S'))
     mu_marginal = MU.pdf(mu_samples)   
     
     plt.figure()
     plt.plot(centers[0],M[-2],'k',label='Estimated')
-    plt.plot(x1_samples,x1_marginal,'o',label='Truth')
+    plt.plot(x1_samples,x1_marginal,'--',label='Truth')
+    plt.hist(samples[:,0],bins=200,normed=True,histtype='step',label='QMC' )
     plt.legend(loc='best')
     
     plt.figure()
     plt.plot(centers[1],M2,'k',label='Estimated')
-    plt.plot(x2_samples,x2_marginal,'o',label='Truth')
+    plt.plot(x2_samples,x2_marginal,'--',label='Truth')
+    plt.hist(samples[:,1],bins=200,normed=True,histtype='step',label='QMC' )
     plt.legend(loc='best')
     
     plt.figure()
     plt.plot(centers[2],Mmu,'k',label='Estimated')
-    plt.plot(mu_samples,mu_marginal,'o',label='Truth')
+    plt.plot(mu_samples,mu_marginal,'--',label='Truth')
+    plt.hist(samples[:,2],bins=200,normed=True,histtype='step',label='QMC' )
     plt.legend(loc='best')    
     
     
@@ -253,4 +261,5 @@ def test_grid_resolution():
     
     
 if __name__ == '__main__':    
-    test_grid_resolution()
+    test_3d()
+    # test_grid_resolution()
