@@ -1,4 +1,4 @@
-""" State-Dependent Coefficient factorizations of longitudinal entry dynamics """
+""" Approximating Sequence of Riccati Equations """
 
 from numpy import sin, cos, tan, dot
 import numpy as np
@@ -31,12 +31,12 @@ from functools import partial
 
 # def SDRE(x0, tf, A, B, C, Q, R, F, z):    
     
-def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01):
+def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
     """ Approximating Sequence of Riccati Equations """
     from scipy.integrate import odeint
     from scipy.interpolate import interp1d
     
-    n_discretize = 250                      # Generally small effect on solution quality
+                          # Generally small effect on solution quality
     interp_type = 'cubic'
     
     # Problem size
@@ -90,7 +90,7 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01):
             x = odeint(dynamics, x0, t, args=(A, B, R, Pi, ui, si))
             u = compute_control(B, R, Pv, x, u, s, n, t)
             J = compute_cost(t, x, u, C, Q, R, F, z)
-            converge = (J-Jold)/J
+            converge = np.abs(J-Jold)/J
         
         print "Current cost: {}".format(J)
         if converge <= tol:
@@ -195,20 +195,21 @@ def IP_z(t):
     return np.array([[sin(t)]])
     
 def IP_R(t):
-    return np.array([[1 + 200*np.exp(-t)]])
+    return np.array([[.1 + 200*np.exp(-t)]])
     
 def test_IP():
     R = np.array([10])
     R.shape = (1,1)
     C = np.array([[1,0]])
     x0 = np.zeros((2)) + 1
-    Q = np.array([[1.0e3]])
-    F = np.array([[1.0e1]])
+    Q = np.array([[1.0e2]])
+    F = np.array([[0.0e1]])
     tf = 10
     
-    x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1)
-    # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.1)
-    t = np.linspace(0,tf,250)
+    # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1) # Constant R
+    x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.01)      # Time-varying R
+    
+    t = np.linspace(0,tf,u.size)
     plt.figure()
     plt.plot(t,x)
     plt.plot(t,sin(t),'k--',label='Reference')
