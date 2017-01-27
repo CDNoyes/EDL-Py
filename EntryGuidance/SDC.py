@@ -3,6 +3,7 @@
 from numpy import sin, cos, tan, dot
 import numpy as np
 from scipy.linalg import solve as matrix_solve
+from scipy.integrate import simps as trapz
 import matplotlib.pyplot as plt
 
 from functools import partial
@@ -27,9 +28,10 @@ from functools import partial
     # return A,B    
     
     
+
+# def SDRE(x0, tf, A, B, C, Q, R, F, z):    
     
-    
-def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.1):
+def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01):
     """ Approximating Sequence of Riccati Equations """
     from scipy.integrate import odeint
     from scipy.interpolate import interp1d
@@ -55,22 +57,42 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.1):
             # Riccati equation for feedback solution
             Pf = dot(C(x0).T,dot(F(x0),C(x0))).flatten()
             Pv = odeint(dP, Pf, tb, args=(A, B, C, Q, R, lambda t: x0, lambda t: np.zeros((m,1))))
-            print Pv.shape
             Pi = interp1d(tb, Pv, kind=interp_type, fill_value=(Pv[0],Pv[-1]), axis=0, bounds_error=False)
             
             # Feedforward solution
             sf = dot(C(x0).T,dot(F(x0),z(tf))).T[0]
-            print sf.shape
             s = odeint(ds, sf, tb, args=(A, B, C, Q, R, lambda t: x0, lambda t: np.zeros((m,1)), Pi, z))
             si = interp1d(tb, s, kind=interp_type, fill_value=(s[0],s[-1]), axis=0, bounds_error=False)
             
             # Compute new state trajectory and control        
             x = odeint(dynamics, x0, t, args=(A, B, R, Pi, lambda t: np.zeros((m,1)), si))
             u = compute_control(B, R, Pv, x, np.zeros((n_discretize,m)), s, n, t)
+            J = compute_cost(t, x, u, C, Q, R, F, z)
+
+        else: # LTV iterations until convergence        
+            xf = x[-1]
+            xi = interp1d(t, x, kind=interp_type, fill_value=(x[0],x[-1]), axis=0, bounds_error=False)
+            ui = interp1d(t, u, kind=interp_type, fill_value=(u[0],u[-1]), axis=0, bounds_error=False)
             
-        # else: # LTV iterations until convergence        
+            # Riccati equation for feedback solution
+            Pf = dot(C(xf).T,dot(F(xf),C(xf))).flatten()
+            Pv = odeint(dP, Pf, tb, args=(A, B, C, Q, R, xi, ui))
+            Pi = interp1d(tb, Pv, kind=interp_type, fill_value=(Pv[0],Pv[-1]), axis=0, bounds_error=False)
+            
+            # Feedforward solution
+            sf = dot(C(xf).T,dot(F(xf),z(tf))).T[0]
+            s = odeint(ds, sf, tb, args=(A, B, C, Q, R, xi, ui, Pi, z))
+            si = interp1d(tb, s, kind=interp_type, fill_value=(s[0],s[-1]), axis=0, bounds_error=False)
+            
+            # Compute new state trajectory and control        
+            xold = np.copy(x)
+            Jold = J
+            x = odeint(dynamics, x0, t, args=(A, B, R, Pi, ui, si))
+            u = compute_control(B, R, Pv, x, u, s, n, t)
+            J = compute_cost(t, x, u, C, Q, R, F, z)
+            converge = (J-Jold)/J
         
-        
+        print "Current cost: {}".format(J)
         if converge <= tol:
             print "Convergence achieved. "
             break
@@ -86,7 +108,13 @@ def compute_control(B,R,Pv,X,U,S,n,T):
         
     return np.array(u_new)  
     
-
+def compute_cost(t, x, u, C, Q, R, F, z):
+    e = z(t).flatten() - np.array([[dot(C(xi),xi)] for xi in x]).flatten()
+    integrand = np.array([dot(ei,dot(Q(xi),ei)) + dot(ui,dot(R(ti),ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
+    J0 = 0.5*dot(e[-1],dot(F(x[-1]),e[-1]))
+    return J0[0,0] + trapz(integrand, t)
+    
+    
 def dP(p, t, A, B, C, Q, R, X, U):  
     """ Riccati equation """
     n = int(np.sqrt(p.size))
@@ -170,7 +198,7 @@ def IP_R(t):
     return np.array([[1 + 200*np.exp(-t)]])
     
 def test_IP():
-    R = np.array([100])
+    R = np.array([10])
     R.shape = (1,1)
     C = np.array([[1,0]])
     x0 = np.zeros((2)) + 1
@@ -178,8 +206,8 @@ def test_IP():
     F = np.array([[1.0e1]])
     tf = 10
     
-    # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1)
-    x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=2, tol=0.1)
+    x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1)
+    # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.1)
     t = np.linspace(0,tf,250)
     plt.figure()
     plt.plot(t,x)
