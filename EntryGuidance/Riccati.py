@@ -1,11 +1,11 @@
-""" Approximating Sequence of Riccati Equations """
+""" Riccati equation based nonlinear control methods """
 
 from numpy import sin, cos, tan, dot
 import numpy as np
 from scipy.linalg import solve as matrix_solve
 from scipy.integrate import simps as trapz
+from scipy.integrate import odeint
 import matplotlib.pyplot as plt
-
 from functools import partial
 
 # def range(edl_model):
@@ -28,15 +28,71 @@ from functools import partial
     # return A,B    
     
     
+# ################################################################################################
+#                                State Dependent Riccati Equation                                #
+# ################################################################################################
+#  
 
-# def SDRE(x0, tf, A, B, C, Q, R, F, z):    
+def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):  
+    from scipy.linalg import solve_continuous_are as care
     
+    T = np.linspace(0, tf, n_points)
+    dt = tf/(n_points-1.0)
+    X = [x] 
+    U = [np.zeros(R(x).shape[0])]
+    P = []
+    for iter, t in zip(range(n_points), T):
+        if not (iter)%np.ceil(n_points/10.):
+            print "Step {}".format(iter)
+        a = A(x)
+        b = B(x)
+        c = C(x)
+        q = Q(x)
+        # r = R(x)
+        r = R(t)
+        S = dot(b, matrix_solve(r, b.T))
+        qc = dot(c.T, dot(q, c))
+
+        # Solve the CARE:
+        p = care(a, b, qc, r)
+        P.append(p)
+        
+        # Solve the feedforward control:
+        s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t))))
+        xnew = odeint(sdre_dynamics, x, np.linspace(t,t+dt,10), args=(a, b, r, p, s))
+        x = xnew[-1,:]
+        u = sdre_control(x, b, r, p, s)
+        X.append(x)
+        U.append(u)
+        
+    J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
+    print "Cost: {}".format(J)
+    
+    return np.array(X), np.array(U)   
+    
+def sdre_control(x, b, r, p, s):   
+    return -dot(matrix_solve(r,b.T), dot(p,x)-np.reshape(s,-1))
+    
+def sdre_dynamics(x, t, a, b, r, p, s):
+    """ Closed-loop dynamics integrated in SDRE """
+    S = dot(b,matrix_solve(r,b.T))
+    return (dot(a - dot(S,p),x) + np.reshape(dot(S,s),-1))
+    
+def sdre_cost(t, x, u, C, Q, R, z):
+    """ Estimation of the final cost in SDRE"""
+    e = z(t).flatten() - np.array([[dot(C(xi),xi)] for xi in x]).flatten()
+    integrand = np.array([dot(ei,dot(Q(xi),ei)) + dot(ui,dot(R(ti),ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
+    return trapz(integrand,t)    
+    
+    
+# ################################################################################################
+#                           Approximating Sequence of Riccati Equations                          #
+# ################################################################################################
+   
 def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
     """ Approximating Sequence of Riccati Equations """
-    from scipy.integrate import odeint
     from scipy.interpolate import interp1d
     
-                          # Generally small effect on solution quality
     interp_type = 'cubic'
     
     # Problem size
@@ -97,7 +153,9 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
             print "Convergence achieved. "
             break
             
-    return x,u       
+        # Reshape Pv and output    
+            
+    return x, u       
     
     
 def compute_control(B,R,Pv,X,U,S,n,T):
@@ -157,6 +215,7 @@ def ds(s, t, A, B, C, Q, R, X, U, P, z):
 
 
 def dynamics(x, t, A, B, R, P, U, s):
+    """ Used in ASRE """
     p = P(t)
     n = int(np.sqrt(p.size))
     p.shape = (n,n)      # Turn into a matrix
@@ -190,32 +249,51 @@ def IP_A(x):
     
 def IP_B(x,u):
     return np.array([[0],[10]])
-    
+ 
 def IP_z(t):
     return np.array([[sin(t)]])
     
 def IP_R(t):
-    return np.array([[.1 + 200*np.exp(-t)]])
+    return np.array([[1 + 200*np.exp(-t)]])
     
 def test_IP():
+    import time
     R = np.array([10])
     R.shape = (1,1)
     C = np.array([[1,0]])
     x0 = np.zeros((2)) + 1
-    Q = np.array([[1.0e2]])
+    Q = np.array([[1.0e3]])
     F = np.array([[0.0e1]])
     tf = 10
     
     # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1) # Constant R
+    t_init = time.time()
     x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.01)      # Time-varying R
+    t_asre = -t_init + time.time()
     
     t = np.linspace(0,tf,u.size)
-    plt.figure()
-    plt.plot(t,x)
+    plt.figure(1)
+    plt.plot(t,x[:,0],label='ASRE')
     plt.plot(t,sin(t),'k--',label='Reference')
-    plt.figure()
-    plt.plot(t,u)
-    plt.show()
+    plt.figure(2)
+    plt.plot(t,u,label='ASRE')
+        
+    t_init = time.time()
+    x,u = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=250)      # Time-varying R
+    t_sdre = -t_init + time.time()
+
+    print "ASRE: {} s".format(t_asre)
+    print "SDRE: {} s".format(t_sdre)
     
+    t = np.linspace(0,tf,u.size)
+    plt.figure(1)
+    plt.plot(t,x[:,0],label='SDRE')
+    plt.title('Output history')
+    plt.figure(2)
+    plt.plot(t,u,label='SDRE')
+    plt.title('Control history')
+    plt.legend()
+    
+    plt.show()
 if __name__ == '__main__':    
     test_IP()
