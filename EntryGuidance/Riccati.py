@@ -7,31 +7,13 @@ from scipy.integrate import simps as trapz
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from functools import partial
+from itertools import product
 
-# def range(edl_model):
-    # """ SDC using downrange as the independent variable """
-    
-    # # Assumes the state vector is [r,v,gamma]
-    
-    # def A(x,L,D):
-        # r,v,fpa = x
-        # w1 = np.ones(3)/np.sqrt(3)
-        # w2 = np.ones(2)/np.sqrt(2)
-        
-        # A_sdc = [ [0,0,tan(fpa)/fpa], [w1[0]*v_prime/r, w1[1]*v_prime/v, w1[2]*v_prime/fpa], [-w2[0]*g/(r*v**2) + 1/r**2,-w2[1]*g/v**3] ]
-        # return np.array(A_sdc)
-        
-    # def B(x,L):
-        # r,v,fpa = x
-        # return np.array([0,0,L/(cos(fpa)*v**2)]).shape = (3,1)
-        
-    # return A,B    
-    
-    
+
 # ################################################################################################
 #                                State Dependent Riccati Equation                                #
 # ################################################################################################
-#  
+
 
 def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):  
     from scipy.linalg import solve_continuous_are as care
@@ -40,7 +22,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):
     dt = tf/(n_points-1.0)
     X = [x] 
     U = [np.zeros(R(x).shape[0])]
-    P = []
+    K = []
     for iter, t in zip(range(n_points), T):
         if not (iter)%np.ceil(n_points/10.):
             print "Step {}".format(iter)
@@ -55,7 +37,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):
 
         # Solve the CARE:
         p = care(a, b, qc, r)
-        P.append(p)
+        K.append(sdre_feedback(b,r,p))
         
         # Solve the feedforward control:
         s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t))))
@@ -68,7 +50,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):
     J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
     print "Cost: {}".format(J)
     
-    return np.array(X), np.array(U)   
+    return np.array(X), np.array(U), np.array(K)   
     
 def sdre_control(x, b, r, p, s):   
     return -dot(matrix_solve(r,b.T), dot(p,x)-np.reshape(s,-1))
@@ -83,6 +65,9 @@ def sdre_cost(t, x, u, C, Q, R, z):
     e = z(t).flatten() - np.array([[dot(C(xi),xi)] for xi in x]).flatten()
     integrand = np.array([dot(ei,dot(Q(xi),ei)) + dot(ui,dot(R(ti),ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
     return trapz(integrand,t)    
+    
+def sdre_feedback(b,r,p):
+    return dot(matrix_solve(r,b.T),p)
     
     
 # ################################################################################################
@@ -154,8 +139,9 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
             break
             
         # Reshape Pv and output    
-            
-    return x, u       
+        K = [sdre_feedback(B(xc,np.zeros(m)),R(tc),np.reshape(p,(n,n))) for tc,xc,p in zip(t,x,Pv[::-1])]    
+        
+    return x, u, np.array(K)       
     
     
 def compute_control(B,R,Pv,X,U,S,n,T):
@@ -227,9 +213,10 @@ def dynamics(x, t, A, B, R, P, U, s):
     S = dot(b,matrix_solve(r,b.T))
     return dot(a - dot(S,p),x) + dot(S,s(t))
     
-# ########################## #
-# Test Functions ########### #
-# ########################## #
+    
+# ################################################################################################
+#                                         Test Functions                                         #
+# ################################################################################################
 
 # def F8_A(x):
     # return np.array([[-0.877 + 0.47*x[0] + 3.846*x[0]^2-x[0]*x(3), -0.019*x[1], 1-0.088*x[0]]
@@ -238,7 +225,7 @@ def dynamics(x, t, A, B, R, P, U, s):
                      
 # def F8_B(x,u):
     # return
-def replace_nan(x,replace=1):
+def replace_nan(x,replace=1.):
     if np.isnan(x):
         return replace
     else:
@@ -251,7 +238,7 @@ def IP_B(x,u):
     return np.array([[0],[10]])
  
 def IP_z(t):
-    return np.array([[sin(t)]])
+    return np.array([[sin(t)+cos(2*t-1)]])
     
 def IP_R(t):
     return np.array([[1 + 200*np.exp(-t)]])
@@ -263,23 +250,28 @@ def test_IP():
     C = np.array([[1,0]])
     x0 = np.zeros((2)) + 1
     Q = np.array([[1.0e3]])
-    F = np.array([[0.0e1]])
-    tf = 10
+    F = np.array([[1.0e1]])
+    tf = 15
     
     # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1) # Constant R
     t_init = time.time()
-    x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.01)      # Time-varying R
+    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.01)      # Time-varying R
     t_asre = -t_init + time.time()
     
     t = np.linspace(0,tf,u.size)
     plt.figure(1)
     plt.plot(t,x[:,0],label='ASRE')
-    plt.plot(t,sin(t),'k--',label='Reference')
+    plt.plot(t,IP_z(t).flatten(),'k--',label='Reference')
     plt.figure(2)
     plt.plot(t,u,label='ASRE')
-        
+    
+    Kplot = np.transpose(K,(1,2,0))
+    plt.figure(3)
+    for gain in product(range(K.shape[1]),range(K.shape[2])):
+        plt.plot(t,Kplot[gain],label='ASRE {}'.format(gain))    
+    
     t_init = time.time()
-    x,u = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=250)      # Time-varying R
+    x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=750)      # Time-varying R
     t_sdre = -t_init + time.time()
 
     print "ASRE: {} s".format(t_asre)
@@ -294,6 +286,15 @@ def test_IP():
     plt.title('Control history')
     plt.legend()
     
+    Kplot = np.transpose(K,(1,2,0))
+    plt.figure(3)
+    for gain in product(range(K.shape[1]),range(K.shape[2])):
+        plt.plot(t[:-1],Kplot[gain],label='SDRE {}'.format(gain))    
+    plt.title('Feedback gains')    
+    plt.legend()    
+    
     plt.show()
+    
+    
 if __name__ == '__main__':    
     test_IP()
