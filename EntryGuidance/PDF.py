@@ -14,6 +14,7 @@
 
 from numba import jit
 import numpy as np
+from scipy.integrate import simps as trapz
 
 # @jit
 def grid(data, density, bins=50):
@@ -80,8 +81,6 @@ def integrate_pdf(grid_points, pdf, return_all=False):
         Thus, the second to last element will be a univariate marginal, the third to last element will be a bivariate marginal, etc.
     
     '''
-    # from scipy.integrate import trapz
-    from scipy.integrate import simps as trapz # just so I don't have to rewrite it
     from itertools import product
        
     n = len(grid_points)                           # Number of variables
@@ -123,6 +122,10 @@ def marginal(grid_points, pdf, index=None):
             M.append(integrate_pdf(grid_points_new, pdf_new, return_all=True)[-2])  
     return M
 
+def expectation_from_marginal(x, px):
+    return trapz(x*px, x)
+    
+    
 @jit    
 def permute_data(grid_points, pdf, index):
     ''' Permutes the grid_points list and pdf ndarray such that the dimension specified by index becomes the first dimension. '''
@@ -190,28 +193,39 @@ def test_3d():
     e = np.abs(p-p_np)
     print e.max()
     
-    M = integrate_pdf(centers, p, return_all=True)
+    M1 = integrate_pdf(centers, p, return_all=True)
     M2 = marginal(centers,p,1)
     Mmu = marginal(centers,p,2)
+    x1m = expectation_from_marginal(centers[0],M1[-2])
+    x2m = expectation_from_marginal(centers[1],M2)
+    mum = expectation_from_marginal(centers[2],Mmu)
     
     # Truth for comparison
     x1_samples = sorted(N1.sample(1000,'S'))
     x1_marginal = N1.pdf(x1_samples)
+    x1_mean = samples[:,0].mean()
     x2_samples = sorted(N2.sample(1000,'S'))
     x2_marginal = N2.pdf(x2_samples)
+    x2_mean = samples[:,1].mean()
+
     mu_samples = sorted(MU.sample(1000,'S'))
     mu_marginal = MU.pdf(mu_samples)   
+    mu_mean = samples[:,2].mean()
     
     plt.figure()
-    plt.plot(centers[0],M[-2],'k',label='Estimated')
+    plt.plot(centers[0],M1[-2],'k',label='Estimated')
     plt.plot(x1_samples,x1_marginal,'--',label='Truth')
     plt.hist(samples[:,0],bins=200,normed=True,histtype='step',label='QMC' )
+    plt.vlines(x1_mean,0,x1_marginal.max(),label='Est. Mean')
+    plt.vlines(x1m,0,x1_marginal.max(),label='Truth (Large QMC)')
     plt.legend(loc='best')
     
     plt.figure()
     plt.plot(centers[1],M2,'k',label='Estimated')
     plt.plot(x2_samples,x2_marginal,'--',label='Truth')
     plt.hist(samples[:,1],bins=200,normed=True,histtype='step',label='QMC' )
+    plt.vlines(x2_mean,0,x2_marginal.max(),label='Est. Mean')
+    plt.vlines(x2m,0,x2_marginal.max(),label='Truth (Large QMC)')
     plt.legend(loc='best')
     
     plt.figure()
