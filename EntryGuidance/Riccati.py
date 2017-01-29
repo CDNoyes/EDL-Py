@@ -15,7 +15,23 @@ from itertools import product
 # ################################################################################################
 
 
-def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):  
+def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):  
+    """ 
+        Inputs:
+            x     -   current state
+            tf    -   solution horizon (independent variable need not be time)
+            A(x)  -   function returning SDC system matrix 
+            B(x)  -   function returning SDC control matrix 
+            C(x)  -   function returning SDC output matrix 
+            Q(x)  -   function returning LQR tracking error matrix
+            R(t)  -   function returning LQR control weight matrix
+            z(t)  -   function returning the reference signal(s) at each value of the independent variable
+            
+        Outputs:
+            x     -   state vector at n_points
+            u     -   control history at n_points
+            K     -   Nonlinear feedback gains
+    """        
     from scipy.linalg import solve_continuous_are as care
     
     T = np.linspace(0, tf, n_points)
@@ -40,8 +56,8 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200):
         K.append(sdre_feedback(b,r,p))
         
         # Solve the feedforward control:
-        s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t))))
-        xnew = odeint(sdre_dynamics, x, np.linspace(t,t+dt,10), args=(a, b, r, p, s))
+        s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t+h))))                    # Can introduce a problem-dependent offset here as anticipatory control to reduce lag
+        xnew = odeint(sdre_dynamics, x, np.linspace(t,t+dt,3), args=(a, b, r, p, s))
         x = xnew[-1,:]
         u = sdre_control(x, b, r, p, s)
         X.append(x)
@@ -225,12 +241,15 @@ def dynamics(x, t, A, B, R, P, U, s):
                      
 # def F8_B(x,u):
     # return
+    
 def replace_nan(x,replace=1.):
+    """ A useful method for use in SDC factorizations. """
     if np.isnan(x):
         return replace
     else:
         return x
-        
+
+# ############## Inverted Pendulum ##############        
 def IP_A(x):
     return np.array([[0,1],[4*4.905*replace_nan(sin(x[0])/x[0],1), -0.4]])
     
@@ -255,7 +274,7 @@ def test_IP():
     
     # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1) # Constant R
     t_init = time.time()
-    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=5, tol=0.01)      # Time-varying R
+    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=20, tol=0.001)      # Time-varying R
     t_asre = -t_init + time.time()
     
     t = np.linspace(0,tf,u.size)
@@ -271,7 +290,7 @@ def test_IP():
         plt.plot(t,Kplot[gain],label='ASRE {}'.format(gain))    
     
     t_init = time.time()
-    x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=750)      # Time-varying R
+    x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=250,h=0.1)      # Time-varying R
     t_sdre = -t_init + time.time()
 
     print "ASRE: {} s".format(t_asre)
