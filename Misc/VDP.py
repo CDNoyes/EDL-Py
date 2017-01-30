@@ -3,7 +3,7 @@ import chaospy as cp
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from scipy.integrate import odeint
-
+from scipy.interpolate import interp1d
 import sys
 from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
@@ -19,19 +19,39 @@ class VDP(object):
     def __dynamics__(self, x, t, mu):
         return np.array([x[1],-x[0] + mu*(1-x[0]**2)*x[1], self.__pf__(x,mu)])
         
-    # def __jacobian__(self, x, mu):    
-        # return np.array([[0, 1],[-1-2*x[0]*x[1]*mu, mu*(1-x[0]**2)]])
+    def __jacobian__(self, x, mu):    
+        # Experimentally, this jacobian includes the elements of the PF operator to estimate its sensitivity
+        return np.array([[0, 1, 0],[-1-2*x[0]*x[1]*mu, mu*(1-x[0]**2), 0], [2*mu*x[0], 0, -mu*(1-x[0]**2)]])
         
     def __pf__(self, x, mu):
+        """ Perron-Frobenius operator dynamics """
         return -mu*(1-x[0]**2)*x[2]
         
+        
+    def __stm__(self, stm, t, x, mu):   
+        """ State-transition matrix dynamics """
+        stm.shape = (3,3)
+        A = self.__jacobian__(x(t), mu)
+        
+        return np.dot(A,stm).flatten()
+        
     def simulate(self, sample, tf, p):
-        x = odeint(self.__dynamics__, [sample[0],sample[1],p], np.linspace(0,tf,61), args=(sample[2],))
-        return x
+        ''' Integrate a single sample. '''
+        t = np.linspace(0,tf,61)
+        x = odeint(self.__dynamics__, [sample[0],sample[1],p], t, args=(sample[2],))
+        stm = self.integrate_stm(t, x, sample[2])
+        return x, stm
 
-
+    def integrate_stm(self, t, x, mu):
+        ''' Integrate the STM along a trajectory to determine linear sensitivity. '''
+        stm0 = np.eye(3).flatten()
+        X = interp1d(t, x, kind='cubic', axis=0, bounds_error=False, assume_sorted=True)
+        stm_vec = odeint(self.__stm__, stm0, t, args=(X,mu))
+        
+        return np.array([np.reshape(stm,(3,3)) for stm in stm_vec])
+        
     def monte_carlo(self, samples, tf, pdf):
-        ''' Samples is an (N,3) array-like of deltas [x1,x2,mu] '''
+        ''' Performs a Monte Carlo. Samples is an (N,3) array-like of deltas [x1,x2,mu] '''
         
         X = np.array([self.simulate(sample,tf,p0) for sample,p0 in zip(samples,pdf)])
         self.outputs = X
@@ -40,6 +60,7 @@ class VDP(object):
         
     def plot(self,fignum=0):
         ''' Visualizations of the monte carlo results. '''
+        
         cm = 'YlOrRd'
         
         if 1:
@@ -138,4 +159,14 @@ class VDP(object):
 
 if __name__ == '__main__':    
     vdp = VDP()
-    vdp.test()
+    # vdp.test()
+    t = np.linspace(0,5,61)
+    x,stm = vdp.simulate([3,3,.2], 5, 0.01)
+    plt.figure()
+    plt.plot(x[:,0],x[:,1])
+    plt.figure()
+    plt.plot(t, stm[:,0,0],label='x1')
+    plt.plot(t, stm[:,1,1],label='x2')
+    plt.plot(t, stm[:,2,0],label='dp/dx1(0)')
+    plt.plot(t, stm[:,2,1],label='dp/dx2(0)')
+    plt.show()
