@@ -19,13 +19,13 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
     """ 
         Inputs:
             x     -   current state
-            tf    -   solution horizon (independent variable need not be time)
+            tf    -   solution horizon (independent variable need not be time)  #TODO: This needs to be a time span instead. Or split into a single step method and a propgator.
             A(x)  -   function returning SDC system matrix 
             B(x)  -   function returning SDC control matrix 
             C(x)  -   function returning SDC output matrix 
             Q(x)  -   function returning LQR tracking error matrix
             R(t)  -   function returning LQR control weight matrix
-            z(t)  -   function returning the reference signal(s) at each value of the independent variable
+            z(t)  -   function returning the reference signal(s) at each value of the independent variable. Single step version can take a single value instead of function.
             
         Outputs:
             x     -   state vector at n_points
@@ -57,11 +57,12 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
         
         # Solve the feedforward control:
         s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t+h))))                    # Can introduce a problem-dependent offset here as anticipatory control to reduce lag
+        u = sdre_control(x, b, r, p, s)
+        U.append(u)
+
         xnew = odeint(sdre_dynamics, x, np.linspace(t,t+dt,3), args=(a, b, r, p, s))
         x = xnew[-1,:]
-        u = sdre_control(x, b, r, p, s)
         X.append(x)
-        U.append(u)
         
     J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
     print "Cost: {}".format(J)
@@ -274,7 +275,7 @@ def test_IP():
     
     # x,u = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, lambda x: R, lambda x: F, IP_z, max_iter=2, tol=0.1) # Constant R
     t_init = time.time()
-    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=20, tol=0.001)      # Time-varying R
+    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda x: C, lambda x: Q, IP_R, lambda x: F, IP_z, max_iter=50, tol=0.1)      # Time-varying R
     t_asre = -t_init + time.time()
     
     t = np.linspace(0,tf,u.size)
