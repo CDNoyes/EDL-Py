@@ -4,18 +4,28 @@ import numpy as np
 from numpy import sin, cos, tan
 from scipy.interpolate import interp1d
 
-def controller(velocity, lift, drag, fpa, rangeToGo, bank, reference, bounds, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, reference, bounds, get_heading, **kwargs):
 
     Rp = predict_range(velocity, drag, velocity*sin(fpa), reference)  
         
     LoD_com = LoD_command(velocity, rangeToGo/1000., Rp, reference)
     sigma = bank_command(lift/drag, LoD_com)   
     
-    # sigma = bank_command(velocity, rangeToGo/1000, Rp, reference)
     # Lateral logic here
-    sign = np.sign(reference['U'](velocity))
+    if rangeToGo < 0:
+        sign = np.sign(bank)
+    else:
+        sign = lateral(np.sign(bank), heading, latitude, longitude, get_heading)
     return np.clip(sigma, *bounds)*sign
+    
+def lateral(bank_sign, heading, latitude, longitude, compute_heading):
 
+    heading_desired = compute_heading(longitude,latitude)
+    # print "Heading error: {} deg".format(np.degrees(heading-heading_desired))
+    if np.abs(heading-heading_desired)>.07:
+        return np.sign(heading-heading_desired)
+    else:        
+        return bank_sign
 
 
 def gains(sim):
@@ -59,34 +69,32 @@ def gains(sim):
     omega = np.array([[0, -w, 0],[w, 0, 0], [0,0,0]])
     Vp = Vp_rel + np.dot(omega,r_corrected.T).T # Velocity vector with planet rotation
 
-    # wv = np.array([[0],[0],[w]])
-    wv = np.array([0,0,w])
-    wcrossr = np.array([np.cross(wv,p).T for p in r_corrected])
-    velcsm = Vp-wcrossr
+    # wv = np.array([0,0,w])
+    # wcrossr = np.array([np.cross(wv,p).T for p in r_corrected])
+    # velcsm = Vp-wcrossr
     
     # Range to go? will it be the same as the value I already have?
-    relsg = radius[-1]
-    latc = lat[-1]
-    lonc = lon[-1]
-    urt0 = np.array([cos(latc)*cos(lonc),cos(latc)*sin(lonc),sin(latc)])
-    uz = np.array([0,0,1])
-    rte = np.cross(uz,urt0)
-    utr = np.cross(rte,uz)
+    # relsg = radius[-1]
+    # latc = lat[-1]
+    # lonc = lon[-1]
+    # urt0 = np.array([cos(latc)*cos(lonc),cos(latc)*sin(lonc),sin(latc)])
+    # uz = np.array([0,0,1])
+    # rte = np.cross(uz,urt0)
+    # utr = np.cross(rte,uz)
     
-    urt = np.array([urt0 + utr*(cos(w*t)-1) + rte*sin(w*t) for t in time])
+    # urt = np.array([urt0 + utr*(cos(w*t)-1) + rte*sin(w*t) for t in time])
     
-    # dvxr = [np.cross(vcsm,pos) for vcsm,pos in zip(velcsm,r_corrected)]
-    dvxr = np.cross(velcsm,r_corrected)
-    dvrxn = np.linalg.norm(dvxr,axis=1)
+    # dvxr = np.cross(velcsm,r_corrected)
+    # dvrxn = np.linalg.norm(dvxr,axis=1)
     
-    uni = dvxr/np.array([dvrxn,dvrxn,dvrxn]).T
-    upmci = r_corrected/np.tile(radius,(3,1)).T
-    u2 = np.cross(np.cross(uni,urt),uni)
-    u2n = np.linalg.norm(u2,axis=1)
-    u2 = u2/np.tile(u2n,(3,1)).T 
+    # uni = dvxr/np.array([dvrxn,dvrxn,dvrxn]).T
+    # upmci = r_corrected/np.tile(radius,(3,1)).T
+    # u2 = np.cross(np.cross(uni,urt),uni)
+    # u2n = np.linalg.norm(u2,axis=1)
+    # u2 = u2/np.tile(u2n,(3,1)).T 
     
-    tmp = np.sum(u2*upmci,axis=1)
-    np.clip(tmp,-1,1,tmp) #second tmp means clip in place
+    # tmp = np.sum(u2*upmci,axis=1)
+    # np.clip(tmp,-1,1,tmp) #second tmp means clip in place
     # rtgo = np.arccos(tmp)*relsg
     
     # Prep for backwards integration of adjoints
@@ -143,19 +151,19 @@ def gains(sim):
     # plt.plot(vref,f2,label='f2')
     # plt.plot(vref,f3,label='f3')
     # plt.legend(loc='best')
-
+    # plt.show()
     # build the output dictionary
     vi = vref[0:iv]
-    data = { 'F1'    : interp1d(vi,f1[:iv]),
-             'F2'    : interp1d(vi,f2[:iv]),
-             'F3'    : interp1d(vi,f3[:iv]),
-             'F3'    : interp1d(vi,f3[:iv]),
-             'RTOGO' : interp1d(vi,rtogo[:iv]),
-             'RDTREF': interp1d(vi,rdtref[:iv]),
-             'DREF'  : interp1d(vi,dref[:iv]),
-             'LOD'   : interp1d(vi,lodref[:iv]),
-             'U'     : interp1d(vi,interp1d(time, bank)(tfine)[:iv]),
-             'K'    : 6.0
+    f3[f3<0.1] = 0.1
+    data = { 'F1'    : interp1d(vi,f1[:iv], fill_value=(f1[0],f1[iv]), assume_sorted=True, bounds_error=False),
+             'F2'    : interp1d(vi,f2[:iv], fill_value=(f2[0],f2[iv]), assume_sorted=True, bounds_error=False),
+             'F3'    : interp1d(vi,f3[:iv], fill_value=(f3[0],f3[iv]), assume_sorted=True, bounds_error=False),
+             'RTOGO' : interp1d(vi,rtogo[:iv], fill_value=(rtogo[0],rtogo[iv]), assume_sorted=True, bounds_error=False),
+             'RDTREF': interp1d(vi,rdtref[:iv], fill_value=(rdtref[0],rdtref[iv]), assume_sorted=True, bounds_error=False),
+             'DREF'  : interp1d(vi,dref[:iv], fill_value=(dref[0],dref[iv]), assume_sorted=True, bounds_error=False),
+             'LOD'   : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
+             # 'U'     : interp1d(vi,interp1d(time, bank)(tfine)[:iv]),
+             'K'    : 1.0
              }
              
     return data
