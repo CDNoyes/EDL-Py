@@ -205,8 +205,8 @@ dtr = pi/180;
 
 % data(3) = load('E:\Documents\EDL\data\MC_nominalHEP.mat');
 % data(4) =  load('E:\Documents\EDL\data\MC_RSHEP.mat');
-data(1) = load('E:\Documents\EDL\data\MC_MPC.mat');
-final = zeros(length(data),500,27);
+data(1) = load('E:\Documents\EDL\data\MC_Apollo_2000.mat');
+final = zeros(length(data),length(data.pdf),27);
 label = {'Nom','RS'};
 colors = {'r','b','g','m'};
 for d = 1:length(data)
@@ -230,18 +230,56 @@ for d = 1:length(data)
     figure(1)
     hold all
     plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
+    xlabel('Velocity (m/s)')
+    ylabel('Altitude (km)')
     
     figure(2)
     hold all
     plot(final(d,:,12),(final(d,:,11)), 'o')
-    
+    xlabel('CR (km)')
+    ylabel('DR (km)')
 end
 
+dist = sqrt(sum(final(1,:,12).^2 +(final(1,:,11)-905).^2,1));
+ntotal = length(dist);
+mean(dist)
+n2 = length(dist(dist>2));
+n5 = length(dist(dist>5));
+n10 = length(dist(dist>10));
+p2 = 1-n2/ntotal;
+p5 = 1-n5/ntotal;
+p10 = 1-n10/ntotal;
+
 figure
-scatter(final(1,:,12),final(1,:,11),[],1-pdf(1,:)/max(pdf(1,:)))
+hold on
+Ellipse([0,905],2,2,0,{'r--','LineWidth',2})
+Ellipse([0,905],5,5,0,{'k--','LineWidth',2})
+Ellipse([0,905],10,10,0,'b--')
+
+scatter(final(1,:,12),final(1,:,11),[],pdf(1,:)/max(pdf(1,:)))
+legend([' 2 km (',num2str(p2*100),'% inside)'], [' 5 km (',num2str(p5*100),'% inside)'], ['10 km (',num2str(p10*100),'% inside)'])
+xlabel('CR (km)')
+ylabel('DR (km)')
+axis equal
+box on
+grid on
+
 figure
-scatter(final(1,:,8),final(1,:,5),[],1-pdf(1,:)/max(pdf(1,:)))
+scatter(final(1,:,8),(final(1,:,5)-3397e3)/1000,[],pdf(1,:)/max(pdf(1,:)))
+xlabel('Velocity (m/s)')
+ylabel('Altitude (km)')
+title('Colored by probability')
+box on
+grid on
 figure
-scatter(samples(1,:),samples(2,:),[],1-pdf(1,:)/max(pdf(1,:)))
+scatter(final(1,:,8),(final(1,:,5)-3397e3)/1000,[],dist)
+xlabel('Velocity (m/s)')
+ylabel('Altitude (km)')
+title('Colored by miss distance')
+box on
+grid on
+colorbar
 figure
-scatter(samples(3,:),samples(4,:),[],1-pdf(1,:)/max(pdf(1,:)))
+scatter(samples(1,:),samples(2,:),[],pdf(1,:)/max(pdf(1,:)))
+figure
+scatter(samples(3,:),samples(4,:),[],pdf(1,:)/max(pdf(1,:)))

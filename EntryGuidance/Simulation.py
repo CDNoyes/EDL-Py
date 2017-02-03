@@ -78,11 +78,14 @@ class Simulation(Machine):
         Machine.__init__(self, model=None, states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
     
+    def set_output(self,bool):
+        self.__output=bool
+    
     def integrate(self):
     
         while not self.__conditions[self.index](self.triggerInput):
-            if self.__output and not len(self.history)%10:
-                print "current simulation time = {} s".format(self.time) # Should define a pretty print function and call that here
+            if self.__output and not (len(self.history)-1*self.cycle.rate)%int(10*self.cycle.rate):
+                print "current simulation time = {} s".format(int(self.time)) # Should define a pretty print function and call that here
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
         return True
@@ -158,7 +161,8 @@ class Simulation(Machine):
             print('Transitioning from state {} to {} because the following condition was met:'.format(self.__states[self.index],self.state))
             print(self.__conditions[self.index].dump())
             for key,value in self.triggerInput.items():
-                print '{} : {}\n'.format(key,value)
+                if not key in ('vehicle','current_state'):
+                    print '{} : {}\n'.format(key,value)
         self.index += 1
         self.ie.append(len(self.history)-1)
     
@@ -231,7 +235,7 @@ class Simulation(Machine):
             plt.title('Aerodynamic Filter Ratios')
        
         else:
-            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, plotEnergy=plotEnergy)
+            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, plotEnergy=plotEnergy, legend=legend)
         
         
     def show(self):
@@ -338,6 +342,9 @@ class Simulation(Machine):
         ref['rangeToGo'] = interp1d(vel[:i_vmax],range[:i_vmax], fill_value=(range[0],range[i_vmax]), assume_sorted=True, bounds_error=False)
         ref['bank'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(bank[0],bank[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
         
+        fpa = np.radians(self.output[:,8])
+        ref['fpa'] = interp1d(vel[:i_vmax],bank[:i_vmax], fill_value=(fpa[0],fpa[i_vmax]), assume_sorted=True, bounds_error=False, kind='nearest')
+        
         # Range as independent variable
         ref['altitude_range'] = interp1d(range, alt, fill_value=(alt[0],alt[-1]), assume_sorted=True, bounds_error=False, kind='cubic')
         
@@ -393,7 +400,10 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.plot(history[:,3], edlModel.altitude(history[:,0],km=True), lw = 3)
     if plotEvents:
         for i in ie:
-            plt.plot(history[i,3],edlModel.altitude(history[i,0],km=True),'o',label = fsm_states[ie.index(i)], markersize=12)
+            if legend:
+                plt.plot(history[i,3],edlModel.altitude(history[i,0],km=True),'o',label = fsm_states[ie.index(i)], markersize=12)
+            else:
+                plt.plot(history[i,3],edlModel.altitude(history[i,0],km=True),'o', markersize=12)
     if legend:
         plt.legend(loc='upper left')   
     plt.xlabel(label+'Velocity (m/s)')
@@ -443,7 +453,10 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.plot(history[:,1]*180/np.pi, history[:,2]*180/np.pi)
     if plotEvents:        
         for i in ie:
-            plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+            if legend:
+                plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+            else:
+                plt.plot(history[i,1]*180/np.pi, history[i,2]*180/np.pi,'o')
     if legend:
         plt.legend(loc='best')             
     plt.xlabel(label+'Longitude (deg)')        
@@ -474,18 +487,18 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.ylabel(label+'Bank Angle (deg)')
     
     # Control vs Velocity Profile
-    plt.figure(fignum)
-    fignum += 1
-    plt.plot(history[:,3], np.cos(control_history[:]))
-    plt.plot(history[:,3], np.ones_like(control_history[:]),'k--',label='Saturation limit')
-    plt.plot(history[:,3], -np.ones_like(control_history[:]),'k--')
-    for i in ie:
-        plt.plot(history[i,3], np.cos(control_history[i]),'o',label = fsm_states[ie.index(i)])
-    if legend:
-        plt.legend(loc='best')  
-    plt.axis([300,5505,-1.5,1.5])    
-    plt.xlabel(label+'Velocity (m/s)')
-    plt.ylabel(label+'u=cos(sigma) (-)')
+    # plt.figure(fignum)
+    # fignum += 1
+    # plt.plot(history[:,3], np.cos(control_history[:]))
+    # plt.plot(history[:,3], np.ones_like(control_history[:]),'k--',label='Saturation limit')
+    # plt.plot(history[:,3], -np.ones_like(control_history[:]),'k--')
+    # for i in ie:
+        # plt.plot(history[i,3], np.cos(control_history[i]),'o',label = fsm_states[ie.index(i)])
+    # if legend:
+        # plt.legend(loc='best')  
+    # plt.axis([300,5505,-1.5,1.5])    
+    # plt.xlabel(label+'Velocity (m/s)')
+    # plt.ylabel(label+'u=cos(sigma) (-)')
     
     # Downrange vs Crossrange
     range = np.array([edlModel.planet.range(*history[0,[1,2,5]],lonc=lon,latc=lat,km=True) for lon,lat in zip(history[:,1],history[:,2])])
@@ -680,60 +693,3 @@ if __name__ == '__main__':
     sim = testFullSim()
     sim.plot(compare=False)
     sim.show()
-    # Monte Carlo Stuff:
-
-    # from argparse import ArgumentParser
-    # import multiprocessing as mp
-    # import chaospy as cp
-    # import os
-    # from Simulation import Simulation, SRP, EntrySim
-    # from functools import partial
-    # from scipy.io import savemat, loadmat
-    # import JBG
-    # from ParametrizedPlanner import HEPBankReducedSmooth, HEPBank
-    # from Uncertainty import getUncertainty
-    # from Triggers import AccelerationTrigger,VelocityTrigger
-    # import matplotlib.pyplot as plt
-    # from MPC import controller,options
-    # from numpy import pi
-
-    # # Define Uncertainty Joint PDF
-    # pdf = getUncertainty()['parametric']
-    
-    # n = 2000
-    # samples = pdf.sample(n)    
-    # p = pdf.pdf(samples)
-    
-    # reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    # bankProfile = lambda **d: HEPBank(d['time'],*[ 165.4159422 ,  308.86420218,  399.53393904])
-    
-    # r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
-                                             # 5505.0,   np.radians(-14.15), np.radians(4.99),   1000e3)
-                                             
-    # x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0])
-    # output = reference_sim.run(x0,[bankProfile])
-
-    # references = reference_sim.getRef()
-    # drag_ref = references['drag']
-    
-    
-    # # Create the simulation model:
-        
-    # states = ['PreEntry','Entry']
-    # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(500)]
-    # input = { 'states' : states,
-              # 'conditions' : conditions }
-              
-    # sim = Simulation(cycle=Cycle(1),output=False,**input)
-
-    # # Create the controllers
-    
-    # option_dict = options(N=1,T=5)
-    # mpc = partial(controller, control_options=option_dict, control_bounds=(0,pi/2), aero_ratios=(1,1), references=references)
-    # pre = partial(constant, value=bankProfile(time=0))
-    # controls = [pre,mpc]
-    
-    # # Run the off-nominal simulations
-    # stateTensor = [sim.run(x0,controls,s) for s in samples.T]
-    # saveDir = './data/'
-    # savemat(saveDir+'MC',{'states':stateTensor, 'samples':samples, 'pdf':p})
