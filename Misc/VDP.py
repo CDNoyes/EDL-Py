@@ -62,10 +62,55 @@ class VDP(object):
         self.samples = samples
         self.pdf = pdf
         
-    def sample_stm(self, radius):
-        """ Radius is a scalar or a tuple with the length of the of n-dimensional ball around each point """
-        delta = np.array([[x[0]-3,x[1]-3,p-pdf0] for x,p in zip(samples,pdf)])    
-        xnew = np.array([xf + np.dot(phi,d) for d in delta])
+    def sample_stm(self, radius, N, dist):
+        """ Radius is a scalar or a tuple with the length of the of n-dimensional ball around each point
+            N is the number of additional samples to add around each existing sample point. Thus the total number of points MC points will be E*(N+1) where E is the original MC size.
+            For accuracy using linear approximations, the delta in initial conditions needs to be small, not the delta around the final states. This is an issue.
+        """
+        n = self.outputs[0].shape[1]-1 # state dimension without PF operator
+        nMC = self.outputs.shape[0]
+        try:
+            radius[0]
+        except:
+            radius = [radius for _ in range(n)] # Turn scalar into iterable
+        
+        # normals = [cp.Normal(0,r) for r in radius]
+        normals = [cp.Uniform(-r,r) for r in radius]
+        local_dist = cp.J(*normals) # Joint distribution for sampling the deltas around each sample point
+        
+        xf_new = []
+        pf_new = []
+        delta_xf = local_dist.sample(N,'S') 
+        for traj,stm_traj in zip(self.outputs, self.stms):
+            x0 = traj[0,:-1]                                                   # All initial states except the probability density state
+            xf = traj[-1,:-1]                                                  # All final states except the probability density state
+            p0 = traj[0,-1]                                                    # The initial probability density state
+            pf = traj[-1,-1]                                                   # The final probability density state
+            stmf = stm_traj[-1]
+            xf_new.append(xf + delta_xf.T)                                     # New local final points
+            delta_x0 = np.linalg.solve(stmf[0:n,0:n],delta_xf)                                  # Map the final deltas back to deltas on initial conditions.
+            # Notice that I could map back the density as well and compare it to the true density as a measure of the validity of the linear approximations
+            x0.shape = (x0.shape[0],1)
+            delta_p0 = dist.pdf(x0 + delta_x0)-p0
+            delta_p0.shape = (1,delta_p0.shape[0])
+            # print delta_p0.shape
+            # print delta_x0.shape
+            # print np.vstack((delta_x0,delta_p0)).shape
+            pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0)))) # Need to check for negative densities
+
+        xf_new = np.reshape(np.array(xf_new),(nMC*N,2))
+        pf_new = np.reshape(np.array(pf_new),(nMC*N,1))
+        # print pf_new
+        keep = (pf_new>0)[:,0]
+        # print keep.shape[0]
+        # print np.sum(keep)
+        print "{}% of STM samples removed. ".format((1-np.sum(keep)/float(keep.shape[0]))*100)
+        # print pf_new[keep].shape
+        # print xf_new[keep,:].shape
+        # print np.hstack((xf_new,pf_new)).shape
+        # print self.outputs[:,-1,:].shape
+        self.stm_outputs = np.hstack((xf_new[keep,:],pf_new[keep])) # Now we can use these as if they were actual MC data    
+        self.extended_outputs = np.vstack((self.outputs[:,-1,:],self.stm_outputs)) # Now we can use these as if they were actual MC data    
         
         
     def plot(self,fignum=0):
@@ -83,25 +128,43 @@ class VDP(object):
                 # plt.scatter(self.outputs[:,i,0],self.outputs[:,i,1],20,self.pdf)
                 plt.scatter(self.outputs[:,i,0],self.outputs[:,i,1],20,self.outputs[:,i,2])
             
+            plt.colorbar()
             
         plt.figure(1+fignum)
-        counts,xe,ye,im = plt.hist2d(self.outputs[:,-1,0], self.outputs[:,-1,1], normed=True, bins=(250,250),cmap=cm)
+        counts,xe,ye,im = plt.hist2d(self.outputs[:,-1,0], self.outputs[:,-1,1], normed=True, bins=(250,250), cmap=cm)
         plt.title('MC')    
         plt.colorbar()    
-            
-        vmax = np.max((counts.max(),self.outputs[:,-1,2].max()))    
+        
+        # plt.figure(3+fignum)
+        # plt.scatter(self.extended_outputs[:,0], self.extended_outputs[:,1], 10, 'k',alpha=0.1)
+        # plt.title('MC + STM approximations')    
+        # plt.colorbar()   
+        
+        # vmax = np.max((counts.max(),self.outputs[:,-1,2].max()))    
         
         # Nb = int(self.outputs.shape[0]**(1./2.5))
-        # Nb = 45
-        # centers,p = grid(self.outputs[:,-1,0:2], self.outputs[:,-1,2], bins=(Nb,Nb))
-        # X,Y = np.meshgrid(centers[0],centers[1])
+        Nb = 15
+        centers,p = grid(self.outputs[:,-1,0:2], self.outputs[:,-1,2], bins=(Nb,Nb)) # Just actual samples
+        # centers,p = grid(self.extended_outputs[:,0:2], self.extended_outputs[:,2], bins=(Nb,Nb)) # Augmented samples
+        X,Y = np.meshgrid(centers[0],centers[1])
 
-        # plt.figure(2+fignum)
-        # plt.contourf(X,Y,p.T,cmap=cm)
-        # plt.hlines(centers[1],centers[0].min(),centers[0].max())
-        # plt.vlines(centers[0],centers[1].min(),centers[1].max())
-        # plt.title('Grid-based estimate of PF results ({} partitions per dimension)'.format(Nb))
-        # plt.colorbar()
+        plt.figure(2+fignum)
+        plt.contourf(X,Y,p.T,cmap=cm)
+        plt.hlines(centers[1],centers[0].min(),centers[0].max())
+        plt.vlines(centers[0],centers[1].min(),centers[1].max())
+        plt.title('Grid-based estimate of PF results ({} partitions per dimension)'.format(Nb))
+        plt.colorbar()
+        
+        Nb=30
+        centers,p = grid(self.extended_outputs[:,0:2], self.extended_outputs[:,2], bins=(Nb,Nb)) # Augmented samples
+        X,Y = np.meshgrid(centers[0],centers[1])
+
+        plt.figure(5+fignum)
+        plt.contourf(X,Y,p.T,cmap=cm)
+        plt.hlines(centers[1],centers[0].min(),centers[0].max())
+        plt.vlines(centers[0],centers[1].min(),centers[1].max())
+        plt.title('Grid-based estimate of PF results with STM augment ({} partitions per dimension)'.format(Nb))
+        plt.colorbar()
 
             
         
@@ -126,15 +189,15 @@ class VDP(object):
 
         delta = cp.J(N1,N2)
         
-        tf = 2
-        Mu = .2
+        tf = 1.5
+        Mu = .5
         
-        samples = delta.sample(500,'S').T
+        samples = delta.sample(1000,'S').T
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
                   
         self.monte_carlo(samples,tf,pdf)
-        
+        self.sample_stm((.05,.05),1000,delta)
                         # samples = delta.sample(1000,'L').T
                         # pdf = delta.pdf(samples.T)
                         # samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
@@ -159,18 +222,18 @@ class VDP(object):
                         # self.plot()
         
         # ##### Compare linear predictions using STM against true points
-        pdf0 = delta.pdf(np.array([[3],[3]]))[0]
-        x, stm = vdp.simulate([3,3,Mu], tf, pdf0,True)
-        # print stm
-        plt.figure()
-        plt.plot(x[:,0],x[:,1])
-        xf = x[-1]
-        phi = stm[-1]
+        # pdf0 = delta.pdf(np.array([[3],[3]]))[0]
+        # x, stm = vdp.simulate([3,3,Mu], tf, pdf0,True)
+
+        # plt.figure()
+        # plt.plot(x[:,0],x[:,1])
+        # xf = x[-1]
+        # phi = stm[-1]
         
-        delta = np.array([[x[0]-3,x[1]-3,p-pdf0] for x,p in zip(samples,pdf)])    
-        xnew = np.array([xf + np.dot(phi,d) for d in delta])
-        plt.scatter(xnew[:,0],xnew[:,1],20,xnew[:,2])
-        plt.colorbar()    
+        # delta = np.array([[x[0]-3,x[1]-3,p-pdf0] for x,p in zip(samples,pdf)])    
+        # xnew = np.array([xf + np.dot(phi,d) for d in delta])
+        # plt.scatter(xnew[:,0],xnew[:,1],20,xnew[:,2])
+        # plt.colorbar()    
         self.plot(1)
 
         plt.show()    
