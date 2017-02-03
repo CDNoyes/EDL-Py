@@ -4,6 +4,9 @@ import numpy as np
 from numpy import sin, cos, tan
 from scipy.interpolate import interp1d
 
+# To do: Turn this into a class and use the init method to set the reference and probably also "get_heading". 
+# Then, replanning is simply a matter of running the optimizer from HEP, and recomputing the gains needed.
+
 def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, reference, bounds, get_heading, **kwargs):
 
     Rp = predict_range(velocity, drag, velocity*sin(fpa), reference)  
@@ -32,14 +35,8 @@ def gains(sim):
     """ Determines the sensitivities based on a reference trajectory. 
     
     """ 
-    edl = sim.edlModel
-
-    J2000 = 2451545.0
-    GM = edl.planet.mu # may need to convert units
-    W0 = 176.63
-    
+    edl = sim.edlModel   
     w = edl.planet.omega
-    
     
     traj = sim.output
     time = traj[:,0]
@@ -57,45 +54,17 @@ def gains(sim):
     altrate = vel*np.sin(fpa)
     
     # Cartesian coords
-    x_rel = radius*sin(lon)*cos(azi)
-    y_rel = radius*sin(lon)*sin(azi)
-    z_rel = radius*cos(lon)
+    # x_rel = radius*sin(lon)*cos(azi)
+    # y_rel = radius*sin(lon)*sin(azi)
+    # z_rel = radius*cos(lon)
     
-    r_corrected = np.array([np.dot(C3(-t*w),[x,y,z]).T for t,x,y,z in zip(time,x_rel,y_rel,z_rel)]) # Position vector
+    # r_corrected = np.array([np.dot(C3(-t*w),[x,y,z]).T for t,x,y,z in zip(time,x_rel,y_rel,z_rel)]) # Position vector
     
-    Vc = np.array([vel*sin(fpa),vel*cos(fpa)*cos(azi),vel*cos(fpa)*sin(azi)])
-    Vp_rel = np.array([np.dot(C3(-theta), np.dot(C2(phi),vc)) for theta, phi, vc in zip(lon,lat,Vc.T)])
+    # Vc = np.array([vel*sin(fpa),vel*cos(fpa)*cos(azi),vel*cos(fpa)*sin(azi)])
+    # Vp_rel = np.array([np.dot(C3(-theta), np.dot(C2(phi),vc)) for theta, phi, vc in zip(lon,lat,Vc.T)])
 
-    omega = np.array([[0, -w, 0],[w, 0, 0], [0,0,0]])
-    Vp = Vp_rel + np.dot(omega,r_corrected.T).T # Velocity vector with planet rotation
-
-    # wv = np.array([0,0,w])
-    # wcrossr = np.array([np.cross(wv,p).T for p in r_corrected])
-    # velcsm = Vp-wcrossr
-    
-    # Range to go? will it be the same as the value I already have?
-    # relsg = radius[-1]
-    # latc = lat[-1]
-    # lonc = lon[-1]
-    # urt0 = np.array([cos(latc)*cos(lonc),cos(latc)*sin(lonc),sin(latc)])
-    # uz = np.array([0,0,1])
-    # rte = np.cross(uz,urt0)
-    # utr = np.cross(rte,uz)
-    
-    # urt = np.array([urt0 + utr*(cos(w*t)-1) + rte*sin(w*t) for t in time])
-    
-    # dvxr = np.cross(velcsm,r_corrected)
-    # dvrxn = np.linalg.norm(dvxr,axis=1)
-    
-    # uni = dvxr/np.array([dvrxn,dvrxn,dvrxn]).T
-    # upmci = r_corrected/np.tile(radius,(3,1)).T
-    # u2 = np.cross(np.cross(uni,urt),uni)
-    # u2n = np.linalg.norm(u2,axis=1)
-    # u2 = u2/np.tile(u2n,(3,1)).T 
-    
-    # tmp = np.sum(u2*upmci,axis=1)
-    # np.clip(tmp,-1,1,tmp) #second tmp means clip in place
-    # rtgo = np.arccos(tmp)*relsg
+    # omega = np.array([[0, -w, 0],[w, 0, 0], [0,0,0]])
+    # Vp = Vp_rel + np.dot(omega,r_corrected.T).T # Velocity vector with planet rotation
     
     # Prep for backwards integration of adjoints
     l1 = 1.0                # s
@@ -154,7 +123,7 @@ def gains(sim):
     # plt.show()
     # build the output dictionary
     vi = vref[0:iv]
-    f3[f3<0.1] = 0.1
+    f3[f3<0.01] = 0.01
     data = { 'F1'    : interp1d(vi,f1[:iv], fill_value=(f1[0],f1[iv]), assume_sorted=True, bounds_error=False),
              'F2'    : interp1d(vi,f2[:iv], fill_value=(f2[0],f2[iv]), assume_sorted=True, bounds_error=False),
              'F3'    : interp1d(vi,f3[:iv], fill_value=(f3[0],f3[iv]), assume_sorted=True, bounds_error=False),
@@ -163,7 +132,7 @@ def gains(sim):
              'DREF'  : interp1d(vi,dref[:iv], fill_value=(dref[0],dref[iv]), assume_sorted=True, bounds_error=False),
              'LOD'   : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
              # 'U'     : interp1d(vi,interp1d(time, bank)(tfine)[:iv]),
-             'K'    : 1.0
+             'K'    : 6.0
              }
              
     return data
@@ -179,8 +148,6 @@ def LoD_command(V, R, Rp, ref):
 def bank_command(LoD, LoD_com):
     return np.arccos(np.clip(LoD_com/LoD,-1,1))
     
-# def bank_command(V,R,Rp,ref):
-    # return ref['U'](V) + ref['K']*(R-Rp)/ref['F3'](V)
     
 def C1(x):
     return np.array([[1, 0, 0],
