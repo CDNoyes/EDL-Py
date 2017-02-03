@@ -1,36 +1,190 @@
 """ Modified Apollo Final Phase Hypersonic Guidance for Mars Entry """
 
 import numpy as np
+from numpy import sin, cos, tan
+from scipy.interpolate import interp1d
 
-# def controller(references, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, reference, bounds, **kwargs):
+
+    Rp = predict_range(velocity, drag, velocity*sin(fpa), reference)  
+        
+    LoD_com = LoD_command(velocity, rangeToGo/1000., Rp, reference)
+    sigma = bank_command(lift/drag, LoD_com)   
+    
+    # sigma = bank_command(velocity, rangeToGo/1000, Rp, reference)
+    # Lateral logic here
+    sign = np.sign(reference['U'](velocity))
+    return np.clip(sigma, *bounds)*sign
 
 
 
-
-
-# def get_ref_from_sim(sim):
-    """ Outputs a set of interpolants for the reference range-to-go, drag, vertical L/D (i.e. Lcos(sigma)/D), and altitude rate as a function of navigated velocity """
-
-
-# def gains(ref_traj):
+def gains(sim):
     """ Determines the sensitivities based on a reference trajectory. 
-            dR/dD
-            dR/dr_dot
-            dR/d(L/D)
     
-    """
+    """ 
+    edl = sim.edlModel
+
+    J2000 = 2451545.0
+    GM = edl.planet.mu # may need to convert units
+    W0 = 176.63
     
-def predict_range(V, D, r_dot, ref, gains):
-    # We could pass gamma instead of rdot if its simpler
-    # Since the gains are all sensitivities of range, we could name them drag and r_dot etc to be consistent
-    return ref['range'](V) + gains['dRdD'](V)*(D-ref['drag'](V)) + gains['dRdr_dot'](V)*(r_dot-ref['r_dot'](V))
+    w = edl.planet.omega
     
     
-def LoD_command(V, R, Rp, ref, gains):
-    return ref['LoD'](V) + gains['k3']*(R-Rp)/gains['LoD'](V)
+    traj = sim.output
+    time = traj[:,0]
+    bank = np.radians(traj[:,2])
+    radius = traj[:,4]
+    lon = np.radians(traj[:,5])
+    lat = np.radians(traj[:,6])
+    vel = traj[:,7]
+    fpa = np.radians(traj[:,8])
+    azi = np.radians(traj[:,9])
+    rtgo = traj[-1,10]-traj[:,10]
+    lift = traj[:,12]
+    drag = traj[:,13]
+    lod = lift*np.cos(bank)/drag
+    altrate = vel*np.sin(fpa)
+    
+    # Cartesian coords
+    x_rel = radius*sin(lon)*cos(azi)
+    y_rel = radius*sin(lon)*sin(azi)
+    z_rel = radius*cos(lon)
+    
+    r_corrected = np.array([np.dot(C3(-t*w),[x,y,z]).T for t,x,y,z in zip(time,x_rel,y_rel,z_rel)]) # Position vector
+    
+    Vc = np.array([vel*sin(fpa),vel*cos(fpa)*cos(azi),vel*cos(fpa)*sin(azi)])
+    Vp_rel = np.array([np.dot(C3(-theta), np.dot(C2(phi),vc)) for theta, phi, vc in zip(lon,lat,Vc.T)])
+
+    omega = np.array([[0, -w, 0],[w, 0, 0], [0,0,0]])
+    Vp = Vp_rel + np.dot(omega,r_corrected.T).T # Velocity vector with planet rotation
+
+    # wv = np.array([[0],[0],[w]])
+    wv = np.array([0,0,w])
+    wcrossr = np.array([np.cross(wv,p).T for p in r_corrected])
+    velcsm = Vp-wcrossr
+    
+    # Range to go? will it be the same as the value I already have?
+    relsg = radius[-1]
+    latc = lat[-1]
+    lonc = lon[-1]
+    urt0 = np.array([cos(latc)*cos(lonc),cos(latc)*sin(lonc),sin(latc)])
+    uz = np.array([0,0,1])
+    rte = np.cross(uz,urt0)
+    utr = np.cross(rte,uz)
+    
+    urt = np.array([urt0 + utr*(cos(w*t)-1) + rte*sin(w*t) for t in time])
+    
+    # dvxr = [np.cross(vcsm,pos) for vcsm,pos in zip(velcsm,r_corrected)]
+    dvxr = np.cross(velcsm,r_corrected)
+    dvrxn = np.linalg.norm(dvxr,axis=1)
+    
+    uni = dvxr/np.array([dvrxn,dvrxn,dvrxn]).T
+    upmci = r_corrected/np.tile(radius,(3,1)).T
+    u2 = np.cross(np.cross(uni,urt),uni)
+    u2n = np.linalg.norm(u2,axis=1)
+    u2 = u2/np.tile(u2n,(3,1)).T 
+    
+    tmp = np.sum(u2*upmci,axis=1)
+    np.clip(tmp,-1,1,tmp) #second tmp means clip in place
+    # rtgo = np.arccos(tmp)*relsg
+    
+    # Prep for backwards integration of adjoints
+    l1 = 1.0                # s
+    l2 = 0.0                # v
+    l3 = 0.0                # gamma
+    l4 = -1.0/tan(fpa[-1])  # h
+    l5 = 0.0                # u
+    
+    hs = edl.planet.scaleHeight
+    akm = 1000.0
+
+    tfine = np.linspace(time[-1],time[0],1000) # backwards
+    dt = tfine[-2]
+    rtogo = interp1d(time, rtgo)(tfine) # Do I want this in meters or km?
+    vref  = interp1d(time, vel)(tfine)
+    rref  = interp1d(time, radius)(tfine)
+    rdtref = interp1d(time, altrate)(tfine)
+    dref = interp1d(time, drag)(tfine)
+    lodref = interp1d(time, lod)(tfine)
+    
+    gamma = interp1d(time, fpa)(tfine)
+
+    liftv = lodref*dref
+    sg = sin(gamma)
+    cg = cos(gamma)
+    c1 = liftv/vref**2 + cg/rref + 3.71*cg/vref**2
+    c2 = (vref/rref - 3.71/vref)*sg
+    f1 = []
+    f2 = []
+    f3 = []
+    iv = np.argmax(vref)
+
+    for i in range(tfine.shape[0]):
+        
+        f1.append(-hs/dref[i]*l4/akm) # Divide this gain by 1000 if I use rtogo in km
+        f2.append(l3/(vref[i]*cg[i]*akm))
+        f3.append(l5/akm)
+        
+        dl1 = 0
+        dl2 = -cg[i]*l1 + 2*dref[i]/vref[i]*l2 - c1[i]*l3 -sg[i]*l4
+        dl3 = vref[i]*sg[i]*l1 + 3.71*cg[i]*l2 + c2[i]*l3 - vref[i]*cg[i]*l4
+        dl4 = -dref[i]/hs*l2 + l3*(liftv[i]/vref[i]/hs) + vref[i]*cg[i]/rref[i]
+        dl5 = -dref[i]/vref[i]*l3
+    
+        l1 -= dt*dl1
+        l2 -= dt*dl2
+        l3 -= dt*dl3
+        l4 -= dt*dl4
+        l5 -= dt*dl5
+    
+    # import matplotlib.pyplot as plt
+    # plt.plot(vref[:iv],f1[:iv],label='f1')
+    # plt.plot(vref,f2,label='f2')
+    # plt.plot(vref,f3,label='f3')
+    # plt.legend(loc='best')
+
+    # build the output dictionary
+    vi = vref[0:iv]
+    data = { 'F1'    : interp1d(vi,f1[:iv]),
+             'F2'    : interp1d(vi,f2[:iv]),
+             'F3'    : interp1d(vi,f3[:iv]),
+             'F3'    : interp1d(vi,f3[:iv]),
+             'RTOGO' : interp1d(vi,rtogo[:iv]),
+             'RDTREF': interp1d(vi,rdtref[:iv]),
+             'DREF'  : interp1d(vi,dref[:iv]),
+             'LOD'   : interp1d(vi,lodref[:iv]),
+             'U'     : interp1d(vi,interp1d(time, bank)(tfine)[:iv]),
+             'K'    : 6.0
+             }
+             
+    return data
+    
+def predict_range(V, D, r_dot, ref):
+    return ref['RTOGO'](V) + (ref['F1'](V))*(D-ref['DREF'](V)) + ref['F2'](V)*(r_dot-ref['RDTREF'](V))
+    
+    
+def LoD_command(V, R, Rp, ref):
+    return ref['LOD'](V) + ref['K']*(R-Rp)/ref['F3'](V)
     
     
 def bank_command(LoD, LoD_com):
-    return np.arccos(LoD_com/LoD)
+    return np.arccos(np.clip(LoD_com/LoD,-1,1))
     
+# def bank_command(V,R,Rp,ref):
+    # return ref['U'](V) + ref['K']*(R-Rp)/ref['F3'](V)
     
+def C1(x):
+    return np.array([[1, 0, 0],
+                    [0, np.cos(x), np.sin(x)],
+                    [-np.sin(x),np.cos(x),0]])
+    
+def C2(x):
+    return np.array([[np.cos(x), 0, -np.sin(x)],
+                    [0, 1, 0],
+                    [np.sin(x), 0, np.cos(x)]])
+                    
+def C3(x):
+    return np.array([[np.cos(x), np.sin(x), 0],
+                     [-np.sin(x), np.cos(x), 0],                   
+                     [0, 0, 1]])
