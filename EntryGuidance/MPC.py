@@ -112,13 +112,16 @@ def cost(u, sim, state, ratios, reference, scalar):
         if 0:                                                     
             drag_ref = reference['drag'](vel)                     # Pure drag tracking as function of velocity
             integrand = 1*(drag-drag_ref)**2
-        elif 0:
+        elif 1:
             drag_ref = reference['drag_energy'](energy)
             integrand = 1*(drag-drag_ref)**2
-        else:
+        elif 0:
             drag_ref = reference['dragcos'](energy)               # Tracking D/cos(fpa) - which is the true integrand in energy integral
             # integrand = 1*(drag/np.cos(fpa)-drag_ref)**2
             integrand = 1*(drag-drag_ref)**2
+        else:
+            fpa_ref = reference['fpa'](vel[-1])                     # Flight path tracking as function of velocity
+            return (fpa[-1]-fpa_ref)**2
         
         if vel[0]<5300 and False:                                  # Add range to go, like an integral term in PID. Shouldn't start until the reference makes sense
             rtg_ref = reference['rangeToGo'](vel)/1000.           # Meters to Km
@@ -220,35 +223,18 @@ def testNMPC():
         # Run the off-nominal simulation
         perturb = getUncertainty()['parametric']
         # sample = None 
-        # sample = perturb.sample()
-        sample = [.1,-.1,-.05,0]
-        # print sample
-        # samples = [[ d,  d,  0, 0] for d in np.linspace(-0.15,0.15,4)]
-        # samples = perturb.sample(1).T
-        # p = perturb.pdf(samples.T)
+        sample = perturb.sample()
+        # sample = [.1,-.1,-.05,0]
+        print sample
+
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
-        x0_nav = x0 # + Errors in velocity and mass
-        x0_full = InitialState(1) #np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] + x0_nav + [1,1] + [np.radians(-15),0])
+        x0_full = InitialState(1) 
 
-        if 0:
-            output = sim.run(x0, controls, sample, FullEDL=False)
-            plt.show()
-            
-            reference_sim.plot()
 
-        else:
-            reference_sim.plot(plotEnergy=True)
+        reference_sim.plot(plotEnergy=True)
 
-            output = sim.run(x0_full, controls, sample, FullEDL=True)
-            sim.plot(compare=False)
-            
-            # for sample in samples:
-                # output = sim.run(x0_full, controls, sample, FullEDL=True)
-                # # stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples]
-                # # saveDir = './data/'
-                # # savemat(saveDir+'MC_MPC',{'states':stateTensor, 'samples':samples, 'pdf':p})
-                # sim.plot(compare=False, legend=False)
-            # sim.show()
+        output = sim.run(x0_full, controls, sample, FullEDL=True)
+        sim.plot(compare=False)
 
         
         sim.show()
