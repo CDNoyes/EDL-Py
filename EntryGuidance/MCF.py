@@ -9,9 +9,9 @@ def mcfilter(B, NB, input_names=None, threshold=0, plot=False, fontsize=16):
     
     # Input checking
     if input_names is None or (len(input_names) != B.shape[0]):
-        input_names = ["Input{}:".format(i) for i in range(B.shape[0])] # Generic names
+        input_names = ["Input{}".format(i) for i in range(B.shape[0])] # Generic names
     else:
-        input_names = [inp + ':' for inp in input_names]
+        input_names = [inp for inp in input_names]
         
     max_len = np.max([len(name) for name in input_names])    
     max_str = '<{}'.format(max_len)
@@ -38,7 +38,7 @@ def mcfilter(B, NB, input_names=None, threshold=0, plot=False, fontsize=16):
     if plot:
         import matplotlib.pyplot as plt
         for i in inputs_sorted:
-            ecdf(B[i,:], NB[i,:], input_names[i][:-1], fontsize=fontsize)
+            ecdf(B[i,:], NB[i,:], input_names[i], fontsize=fontsize)
         plt.show()
         
         
@@ -48,8 +48,8 @@ def mcsplit(inputs, outputs, criteria):
         
         Inputs:
             inputs - A 2-D array
-            outputs - A list/tuple of 2-D arrays
-            criteria - A function operating on a 2-D array returning a boolean
+            outputs - A list/tuple of output objects - can take any form
+            criteria - A function operating on each output that returns a boolean
             
         Outputs:
             B - behavioral partition of the inputs
