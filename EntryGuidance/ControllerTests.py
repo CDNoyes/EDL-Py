@@ -89,15 +89,15 @@ def test_controller():
             sim.plot(compare=False)
 
         else:
-            if 1: # Single trajectory
+            if 0: # Single trajectory
                 reference_sim.plot(plotEnergy=True, legend=False)
                 output = sim.run(x0_full, controls, sample, FullEDL=True)
                 sim.plot(compare=False)
             
             else: # Multiple
-                N = 1000
+                N = 2000
                 sim.set_output(False)
-                samples = perturb.sample(N,'S')
+                samples = perturb.sample(N,'L')
                 p = perturb.pdf(samples)
                 
                 if 1: # List comprehension, and save the results
@@ -107,8 +107,9 @@ def test_controller():
                     
                 else: # Raw loop, graph each trajectory
                 
-                    for sample in samples.T:
+                    for iter,sample in enumerate(samples.T):
                         output = sim.run(x0_full, controls, sample, FullEDL=True)
+                        print "Completed iteration {}".format(iter+1)
                         sim.plot(compare=False, legend=False)
                     sim.show()
 
