@@ -1,6 +1,6 @@
 """ Riccati equation based nonlinear control methods """
 
-from numpy import sin, cos, tan, dot
+from numpy import sin, cos, tan, dot, arccos
 import numpy as np
 from scipy.linalg import solve as matrix_solve
 from scipy.integrate import simps as trapz
@@ -9,6 +9,14 @@ import matplotlib.pyplot as plt
 from functools import partial
 from itertools import product
 
+
+def controller(A, B, C, Q, R, z, method='SDRE',**kwargs):
+
+    x = np.array([kwargs['current_state'][0],kwargs['velocity'], kwargs['fpa'], kwargs['lift'], kwargs['drag']])
+    t = kwargs['velocity']
+    u = np.clip(sdre_step(x, t, A, B, C, Q, R, z, h=0)[0],-1,1)
+
+    return arccos(u)*np.sign(kwargs['bank'])
 
 # ################################################################################################
 #                                State Dependent Riccati Equation                                #
@@ -68,6 +76,30 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
     print "Cost: {}".format(J)
     
     return np.array(X), np.array(U), np.array(K)   
+
+def sdre_step(x, t, A, B, C, Q, R, z, h=0, args=()):
+    from scipy.linalg import solve_continuous_are as care
+
+    a = A(x)
+    n = a.shape[0]
+    b = B(x)
+    c = C(x)
+    q = Q(x)
+    r = R(x)
+    # r = R(t)
+    S = dot(b, matrix_solve(r, b.T))
+    qc = dot(c.T, dot(q, c))
+
+    # Solve the CARE:
+    p = care(a, b, qc, r)
+    
+    # Solve the feedforward control:
+    s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t+h))))
+    # for val in [x,b,r,p,s]:
+        # print val.shape
+    u = sdre_control(x[0:n], b, r, p, s)
+    return u
+    
     
 def sdre_control(x, b, r, p, s):   
     return -dot(matrix_solve(r,b.T), dot(p,x)-np.reshape(s,-1))
