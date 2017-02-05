@@ -8,6 +8,23 @@ import sys
 from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 from EntryGuidance.PDF import grid, marginal
+import time
+
+
+def box_grid(bounds, n, interior=False):
+    # N-dimensional box grid, either just the exterior, or with interior points as well
+    # bounds is an N-length list/tuple with each element being the (min,max) along that dimension
+    # n is the number of samples per dimension, either a scalar or N-length list of integers.
+    try:
+        n[0]
+    else:
+        n = [n for _ in bounds]
+        
+    vectors = [np.linspace(b[0],b[1],ni) for b,ni in zip(bounds,n)]
+    
+    nTotal = np.product(n)
+    grid_points
+    
 
 
 class VDP(object):
@@ -65,7 +82,8 @@ class VDP(object):
     def sample_stm(self, radius, N, dist):
         """ Radius is a scalar or a tuple with the length of the of n-dimensional ball around each point
             N is the number of additional samples to add around each existing sample point. Thus the total number of points MC points will be E*(N+1) where E is the original MC size.
-            For accuracy using linear approximations, the delta in initial conditions needs to be small, not the delta around the final states. This is an issue.
+            For accuracy using linear approximations, the delta in initial conditions needs to be small, not the delta around the final states.
+            This is an issue -> Just check the IC after you generate them.
         """
         n = self.outputs[0].shape[1]-1 # state dimension without PF operator
         nMC = self.outputs.shape[0]
@@ -74,34 +92,56 @@ class VDP(object):
         except:
             radius = [radius for _ in range(n)] # Turn scalar into iterable
         
-        # normals = [cp.Normal(0,r) for r in radius]
-        normals = [cp.Uniform(-r,r) for r in radius]
+        normals = [cp.Normal(0,r/3.) for r in radius]
+        # normals = [cp.Uniform(-r,r) for r in radius]
         local_dist = cp.J(*normals) # Joint distribution for sampling the deltas around each sample point
+        # local_dist = cp.J(normals[0],cp.Uniform(-radius[1],radius[1])) # Joint distribution for sampling the deltas around each sample point
         
+        x0_new = []
+        p0_new = []
         xf_new = []
         pf_new = []
-        delta_xf = local_dist.sample(N,'S') 
+        # delta_xf = local_dist.sample(N,'S') 
+        delta_x0 = local_dist.sample(N,'S') 
+
+        pf_min = np.min(self.outputs[:,-1,-1])
         for traj,stm_traj in zip(self.outputs, self.stms):
             x0 = traj[0,:-1]                                                   # All initial states except the probability density state
             xf = traj[-1,:-1]                                                  # All final states except the probability density state
             p0 = traj[0,-1]                                                    # The initial probability density state
             pf = traj[-1,-1]                                                   # The final probability density state
             stmf = stm_traj[-1]
-            xf_new.append(xf + delta_xf.T)                                     # New local final points
-            delta_x0 = np.linalg.solve(stmf[0:n,0:n],delta_xf)                                  # Map the final deltas back to deltas on initial conditions.
-            # Notice that I could map back the density as well and compare it to the true density as a measure of the validity of the linear approximations
-            x0.shape = (x0.shape[0],1)
-            delta_p0 = dist.pdf(x0 + delta_x0)-p0
-            delta_p0.shape = (1,delta_p0.shape[0])
-            # print delta_p0.shape
-            # print delta_x0.shape
-            # print np.vstack((delta_x0,delta_p0)).shape
-            pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0)))) # Need to check for negative densities
+            if 0: # Original implementation
+                xf.shape = (xf.shape[0],1)
 
-        xf_new = np.reshape(np.array(xf_new),(nMC*N,2))
+                xf_new.append(xf + delta_xf)                                     # New local final points
+                delta_x0 = np.linalg.solve(stmf[0:n,0:n],delta_xf)                                  # Map the final deltas back to deltas on initial conditions.
+                # Notice that I could map back the density as well and compare it to the true density as a measure of the validity of the linear approximations
+                x0.shape = (x0.shape[0],1)
+                delta_p0 = dist.pdf(x0 + delta_x0)-p0
+                delta_p0.shape = (1,delta_p0.shape[0])
+                # print delta_p0.shape
+                # print delta_x0.shape
+                # print np.vstack((delta_x0,delta_p0)).shape
+                x0_new.append(x0 + delta_x0)
+                pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0)))) # Need to check for negative densities
+            else: # Sample x0 and propagate them instead of the reverse. Seems to work much better
+                x0.shape = (x0.shape[0],1)
+                xf.shape = (xf.shape[0],1)
+                x0_new.append(x0 + delta_x0)
+                p0_new.append(dist.pdf(x0_new[-1]))
+                delta_p0 = p0_new[-1]-p0
+                xf_new.append(xf + np.dot(stmf[0:n,0:n],delta_x0))
+                pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0))))
+
+
+        x0_new = np.hstack(x0_new).T
+        # xf_new = np.reshape(np.array(xf_new),(nMC*N,2))
+        xf_new = np.hstack(xf_new).T
         pf_new = np.reshape(np.array(pf_new),(nMC*N,1))
         # print pf_new
-        keep = (pf_new>0)[:,0]
+        keep = (pf_new>pf_min)[:,0]
+        # keep = np.array([True for _ in pf_new])
         # print keep.shape[0]
         # print np.sum(keep)
         print "{}% of STM samples removed. ".format((1-np.sum(keep)/float(keep.shape[0]))*100)
@@ -109,6 +149,7 @@ class VDP(object):
         # print xf_new[keep,:].shape
         # print np.hstack((xf_new,pf_new)).shape
         # print self.outputs[:,-1,:].shape
+        self.stm_inputs = x0_new
         self.stm_outputs = np.hstack((xf_new[keep,:],pf_new[keep])) # Now we can use these as if they were actual MC data    
         self.extended_outputs = np.vstack((self.outputs[:,-1,:],self.stm_outputs)) # Now we can use these as if they were actual MC data    
         
@@ -130,6 +171,15 @@ class VDP(object):
             
             plt.colorbar()
             
+        plt.figure(10)    
+        plt.scatter(self.stm_outputs[:,0],self.stm_outputs[:,1],10,self.stm_outputs[:,2])
+        plt.title('New final states')
+        plt.colorbar()
+        
+        plt.figure(11)
+        plt.scatter(self.stm_inputs[:,0],self.stm_inputs[:,1],10)
+        plt.title('New initial states')
+            
         plt.figure(1+fignum)
         counts,xe,ye,im = plt.hist2d(self.outputs[:,-1,0], self.outputs[:,-1,1], normed=True, bins=(250,250), cmap=cm)
         plt.title('MC')    
@@ -143,7 +193,7 @@ class VDP(object):
         # vmax = np.max((counts.max(),self.outputs[:,-1,2].max()))    
         
         # Nb = int(self.outputs.shape[0]**(1./2.5))
-        Nb = 15
+        Nb = 20
         centers,p = grid(self.outputs[:,-1,0:2], self.outputs[:,-1,2], bins=(Nb,Nb)) # Just actual samples
         # centers,p = grid(self.extended_outputs[:,0:2], self.extended_outputs[:,2], bins=(Nb,Nb)) # Augmented samples
         X,Y = np.meshgrid(centers[0],centers[1])
@@ -155,7 +205,7 @@ class VDP(object):
         plt.title('Grid-based estimate of PF results ({} partitions per dimension)'.format(Nb))
         plt.colorbar()
         
-        Nb=30
+        Nb=40
         centers,p = grid(self.extended_outputs[:,0:2], self.extended_outputs[:,2], bins=(Nb,Nb)) # Augmented samples
         X,Y = np.meshgrid(centers[0],centers[1])
 
@@ -189,15 +239,20 @@ class VDP(object):
 
         delta = cp.J(N1,N2)
         
-        tf = 1.5
-        Mu = .5
+        tf = 0.5
+        Mu = 1
         
-        samples = delta.sample(1000,'S').T
+        samples = delta.sample(200,'L').T
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
-                  
+        
+        t0 = time.time()
         self.monte_carlo(samples,tf,pdf)
-        self.sample_stm((.05,.05),1000,delta)
+        t1 = time.time()
+        self.sample_stm((0.04,0.08),500,delta)
+        t2 = time.time()
+        print "MC time: {} s".format(t1-t0)
+        print "STM time: {} s".format(t2-t1)
                         # samples = delta.sample(1000,'L').T
                         # pdf = delta.pdf(samples.T)
                         # samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
