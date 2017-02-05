@@ -25,14 +25,17 @@ def box_grid(bounds, N, interior=False):
     # nTotal = np.product(N)
     grid_points = []
 
+    if interior:
+        bounds = vectors
 
     for dim in range(n):
         reduced_bounds = list(bounds[:])
         reduced_bounds.pop(dim)
         new_points = np.zeros((N[dim],n)) # Preallocate
-
+        dim_iter = range(n)
+            
         for corner in product(*reduced_bounds):
-            for dim_ in range(n):
+            for dim_ in dim_iter:
                 if dim_ < dim:
                     new_points[:,dim_] = np.tile(corner[dim_],(N[dim]))
                 elif dim_ > dim:    
@@ -302,14 +305,13 @@ def test_box_grid():
     
     # 2-d example
     
-    pts = box_grid(((-3,3),(-1,1)), (70,30))
+    pts = box_grid(((-3,3),(-1,1)), (20,10),interior=True)
     plt.figure()
-    # plt.scatter(pts[:,0],pts[:,1])
     plt.plot(pts[:,0],pts[:,1],'o')
     plt.show()
 
 
 if __name__ == '__main__':    
-    vdp = VDP()
-    vdp.test()
-    # test_box_grid()
+    # vdp = VDP()
+    # vdp.test()
+    test_box_grid()
