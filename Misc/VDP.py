@@ -10,22 +10,40 @@ sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 from EntryGuidance.PDF import grid, marginal
 import time
 
+from itertools import product 
 
-def box_grid(bounds, n, interior=False):
-    # N-dimensional box grid, either just the exterior, or with interior points as well
-    # bounds is an N-length list/tuple with each element being the (min,max) along that dimension
-    # n is the number of samples per dimension, either a scalar or N-length list of integers.
+def box_grid(bounds, N, interior=False):
+    # n-dimensional box grid, either just the exterior, or with interior points as well
+    # bounds is an n-length list/tuple with each element being the (min,max) along that dimension
+    # N is the number of samples per dimension, either a scalar or N-length list of integers.
     try:
-        n[0]
-    else:
-        n = [n for _ in bounds]
-        
-    vectors = [np.linspace(b[0],b[1],ni) for b,ni in zip(bounds,n)]
-    
-    nTotal = np.product(n)
-    grid_points
-    
+        N[0]
+    except:
+        N = [N for _ in bounds]
+    n = len(bounds)    
+    vectors = [np.linspace(b[0],b[1],ni) for b,ni in zip(bounds,N)] # Each one of these will be used 2**(n-1) times
+    # nTotal = np.product(N)
+    grid_points = []
 
+
+    for dim in range(n):
+        reduced_bounds = list(bounds[:])
+        reduced_bounds.pop(dim)
+        new_points = np.zeros((N[dim],n)) # Preallocate
+
+        for corner in product(*reduced_bounds):
+            for dim_ in range(n):
+                if dim_ < dim:
+                    new_points[:,dim_] = np.tile(corner[dim_],(N[dim]))
+                elif dim_ > dim:    
+                    new_points[:,dim_] = np.tile(corner[dim_-1],(N[dim]))
+                else:
+                    new_points[:,dim_] = vectors[dim]
+                    
+                    
+
+            grid_points.append(np.copy(new_points))
+    return np.vstack(grid_points)
 
 class VDP(object):
     ''' A van der pol oscillator class '''
@@ -101,7 +119,6 @@ class VDP(object):
         p0_new = []
         xf_new = []
         pf_new = []
-        # delta_xf = local_dist.sample(N,'S') 
         delta_x0 = local_dist.sample(N,'S') 
 
         pf_min = np.min(self.outputs[:,-1,-1])
@@ -111,28 +128,15 @@ class VDP(object):
             p0 = traj[0,-1]                                                    # The initial probability density state
             pf = traj[-1,-1]                                                   # The final probability density state
             stmf = stm_traj[-1]
-            if 0: # Original implementation
-                xf.shape = (xf.shape[0],1)
 
-                xf_new.append(xf + delta_xf)                                     # New local final points
-                delta_x0 = np.linalg.solve(stmf[0:n,0:n],delta_xf)                                  # Map the final deltas back to deltas on initial conditions.
-                # Notice that I could map back the density as well and compare it to the true density as a measure of the validity of the linear approximations
-                x0.shape = (x0.shape[0],1)
-                delta_p0 = dist.pdf(x0 + delta_x0)-p0
-                delta_p0.shape = (1,delta_p0.shape[0])
-                # print delta_p0.shape
-                # print delta_x0.shape
-                # print np.vstack((delta_x0,delta_p0)).shape
-                x0_new.append(x0 + delta_x0)
-                pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0)))) # Need to check for negative densities
-            else: # Sample x0 and propagate them instead of the reverse. Seems to work much better
-                x0.shape = (x0.shape[0],1)
-                xf.shape = (xf.shape[0],1)
-                x0_new.append(x0 + delta_x0)
-                p0_new.append(dist.pdf(x0_new[-1]))
-                delta_p0 = p0_new[-1]-p0
-                xf_new.append(xf + np.dot(stmf[0:n,0:n],delta_x0))
-                pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0))))
+            # Sample x0 and propagate them instead of the reverse. Seems to work much better
+            x0.shape = (x0.shape[0],1)
+            xf.shape = (xf.shape[0],1)
+            x0_new.append(x0 + delta_x0)
+            p0_new.append(dist.pdf(x0_new[-1]))
+            delta_p0 = p0_new[-1]-p0
+            xf_new.append(xf + np.dot(stmf[0:n,0:n],delta_x0))
+            pf_new.append(pf + np.dot(stmf[-1,:],np.vstack((delta_x0,delta_p0))))
 
 
         x0_new = np.hstack(x0_new).T
@@ -242,7 +246,8 @@ class VDP(object):
         tf = 0.5
         Mu = 1
         
-        samples = delta.sample(200,'L').T
+        # samples = delta.sample(200,'L').T
+        samples = box_grid(((2.7,3.3),(2.4,3.6)), N=20)
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
         
@@ -292,17 +297,19 @@ class VDP(object):
         self.plot(1)
 
         plt.show()    
+        
+def test_box_grid():
+    
+    # 2-d example
+    
+    pts = box_grid(((-3,3),(-1,1)), (70,30))
+    plt.figure()
+    # plt.scatter(pts[:,0],pts[:,1])
+    plt.plot(pts[:,0],pts[:,1],'o')
+    plt.show()
+
 
 if __name__ == '__main__':    
     vdp = VDP()
     vdp.test()
-    # t = np.linspace(0,5,61)
-    # x,stm = vdp.simulate([3,3,.2], 5, 0.01,True)
-    # plt.figure()
-    # plt.plot(x[:,0],x[:,1])
-    # plt.figure()
-    # plt.plot(t, stm[:,0,0],label='x1')
-    # plt.plot(t, stm[:,1,1],label='x2')
-    # plt.plot(t, stm[:,2,0],label='dp/dx1(0)')
-    # plt.plot(t, stm[:,2,1],label='dp/dx2(0)')
-    # plt.show()
+    # test_box_grid()
