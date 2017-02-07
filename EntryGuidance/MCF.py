@@ -59,6 +59,7 @@ def mcsplit(inputs, outputs, criteria):
     
     b = np.array([criteria(output) for output in outputs],dtype=bool)
     nb = np.array([not bb for bb in b], dtype=bool)
+    print "{} cases ({}%) are non-behavioral.".format(np.sum(nb), 100*np.sum(nb)/inputs.shape[1])
     B = inputs[:,b]
     NB = inputs[:,nb]
     return B, NB
