@@ -124,7 +124,8 @@ class VDP(object):
         pf_new = []
         delta_x0 = local_dist.sample(N,'S') 
 
-        pf_min = np.min(self.outputs[:,-1,-1])
+        # pf_min = np.min(self.outputs[:,-1,-1])
+        pf_min = 0
         for traj,stm_traj in zip(self.outputs, self.stms):
             x0 = traj[0,:-1]                                                   # All initial states except the probability density state
             xf = traj[-1,:-1]                                                  # All final states except the probability density state
@@ -143,19 +144,10 @@ class VDP(object):
 
 
         x0_new = np.hstack(x0_new).T
-        # xf_new = np.reshape(np.array(xf_new),(nMC*N,2))
         xf_new = np.hstack(xf_new).T
         pf_new = np.reshape(np.array(pf_new),(nMC*N,1))
-        # print pf_new
         keep = (pf_new>pf_min)[:,0]
-        # keep = np.array([True for _ in pf_new])
-        # print keep.shape[0]
-        # print np.sum(keep)
         print "{}% of STM samples removed. ".format((1-np.sum(keep)/float(keep.shape[0]))*100)
-        # print pf_new[keep].shape
-        # print xf_new[keep,:].shape
-        # print np.hstack((xf_new,pf_new)).shape
-        # print self.outputs[:,-1,:].shape
         self.stm_inputs = x0_new
         self.stm_outputs = np.hstack((xf_new[keep,:],pf_new[keep])) # Now we can use these as if they were actual MC data    
         self.extended_outputs = np.vstack((self.outputs[:,-1,:],self.stm_outputs)) # Now we can use these as if they were actual MC data    
@@ -200,7 +192,7 @@ class VDP(object):
         # vmax = np.max((counts.max(),self.outputs[:,-1,2].max()))    
         
         # Nb = int(self.outputs.shape[0]**(1./2.5))
-        Nb = 20
+        Nb = 30
         centers,p = grid(self.outputs[:,-1,0:2], self.outputs[:,-1,2], bins=(Nb,Nb)) # Just actual samples
         # centers,p = grid(self.extended_outputs[:,0:2], self.extended_outputs[:,2], bins=(Nb,Nb)) # Augmented samples
         X,Y = np.meshgrid(centers[0],centers[1])
@@ -249,15 +241,15 @@ class VDP(object):
         tf = 0.5
         Mu = 1
         
-        # samples = delta.sample(200,'L').T
-        samples = box_grid(((2.7,3.3),(2.4,3.6)), N=20)
+        samples = delta.sample(20000,'L').T
+        # samples = box_grid(((2.7,3.3),(2.4,3.6)), N=50, interior=True)
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
         
         t0 = time.time()
         self.monte_carlo(samples,tf,pdf)
         t1 = time.time()
-        self.sample_stm((0.04,0.08),500,delta)
+        self.sample_stm((0.02,0.04),5,delta)
         t2 = time.time()
         print "MC time: {} s".format(t1-t0)
         print "STM time: {} s".format(t2-t1)
@@ -312,6 +304,6 @@ def test_box_grid():
 
 
 if __name__ == '__main__':    
-    # vdp = VDP()
-    # vdp.test()
-    test_box_grid()
+    vdp = VDP()
+    vdp.test()
+    # test_box_grid()
