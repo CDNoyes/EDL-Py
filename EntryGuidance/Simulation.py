@@ -71,6 +71,11 @@ class Simulation(Machine):
         states.append('Complete')
         transitions = [{'trigger':'advance', 'source':states[i-1], 'dest':states[i], 'conditions':'integrate'} for i in range(1,len(states))]
         try:
+            iPre = states.index('PreEntry')
+            transitions[0]['after'] = 'bank_reversal'
+        except:
+            pass
+        try:
             iSRP = states.index('SRP')
             transitions[iSRP-1]['after'] = 'ignite'
         except:
@@ -120,11 +125,14 @@ class Simulation(Machine):
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
             if self.__output:
                 print "L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD)
+                print "BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7]))
+
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL))
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
             if self.__output:
                 print "L/D: {:.2f}".format(self.edlModel.vehicle.LoD)
+                print "BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7]))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -215,6 +223,11 @@ class Simulation(Machine):
     
     def ignite(self):
         self.edlModel.ignite()
+        
+    def bank_reversal(self):
+        self.u[0] *= -1
+        self.triggerInput = self.getDict()
+
         
     def plot(self, plotEvents=True, compare=True, legend=True, plotEnergy=False):   
         import matplotlib.pyplot as plt
@@ -332,7 +345,8 @@ class Simulation(Machine):
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum downward so the reference is monotonic
         
         energy = np.flipud(self.output[:,1])
-        i_emax = np.argmax(energy)
+        # i_emax = np.argmax(energy)
+        i_emax=i_vmax
         # Should probably use a loop or comprehension at this point...
         
         # Velocity as independent variable
@@ -538,16 +552,16 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if legend:
         plt.legend(loc='best')   
 
-    plt.figure(fignum)
-    fignum += 1        
-    plt.plot(history[:,3],D/history[:,3])
-    if plotEvents:
-        for i in ie:
-            plt.plot(history[i,3], D[i]/history[i,3],'o',label = fsm_states[ie.index(i)])    
-    plt.ylabel('Drag/Velocity (s^-1)')
-    plt.xlabel('Velocity (m/s)')
-    if legend:
-        plt.legend(loc='best')  
+    # plt.figure(fignum)
+    # fignum += 1        
+    # plt.plot(history[:,3],D/history[:,3])
+    # if plotEvents:
+        # for i in ie:
+            # plt.plot(history[i,3], D[i]/history[i,3],'o',label = fsm_states[ie.index(i)])    
+    # plt.ylabel('Drag/Velocity (s^-1)')
+    # plt.xlabel('Velocity (m/s)')
+    # if legend:
+        # plt.legend(loc='best')  
         
     return fignum+1
         
