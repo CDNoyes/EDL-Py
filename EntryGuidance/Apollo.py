@@ -7,31 +7,40 @@ from scipy.interpolate import interp1d
 # To do: Turn this into a class and use the init method to set the reference and probably also "get_heading". 
 # Then, replanning is simply a matter of running the optimizer from HEP, and recomputing the gains needed.
 
-def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, reference, bounds, get_heading, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error = 0.06, use_energy=False, **kwargs):
 
-    Rp = predict_range(velocity, drag, velocity*sin(fpa), reference)  
+    if use_energy:
+        IV = energy
+    else:
+        IV = velocity
         
-    LoD_com = LoD_command(velocity, rangeToGo/1000., Rp, reference)
+    Rp = predict_range(IV, drag, velocity*sin(fpa), reference)  
+        
+    LoD_com = LoD_command(IV, rangeToGo/1000., Rp, reference)
     sigma = bank_command(lift/drag, LoD_com)   
     
     # Lateral logic here
-    if rangeToGo < 0:
-        sign = np.sign(bank)
-    else:
-        sign = lateral(np.sign(bank), heading, latitude, longitude, get_heading)
+    if 1: # Bank corridor logic:
+        if rangeToGo < 0:
+            sign = np.sign(bank)
+        else:
+            sign = lateral(np.sign(bank), heading, latitude, longitude, heading_error, get_heading)
+    else: # Reverse at same velocity/energy as the reference trajectory
+        sign = np.sign(reference['U'](IV))
+            
     return np.clip(sigma, *bounds)*sign
     
-def lateral(bank_sign, heading, latitude, longitude, compute_heading):
+def lateral(bank_sign, heading, latitude, longitude, max_error, compute_heading):
 
     heading_desired = compute_heading(longitude,latitude)
     # print "Heading error: {} deg".format(np.degrees(heading-heading_desired))
-    if np.abs(heading-heading_desired)>.07:
+    if np.abs(heading-heading_desired)>max_error:
         return np.sign(heading-heading_desired)
     else:        
         return bank_sign
 
 
-def gains(sim):
+def gains(sim, use_energy=False):
     """ Determines the sensitivities based on a reference trajectory. 
     
     """ 
@@ -40,6 +49,7 @@ def gains(sim):
     
     traj = sim.output
     time = traj[:,0]
+    energy = traj[:,1]
     bank = np.radians(traj[:,2])
     radius = traj[:,4]
     lon = np.radians(traj[:,5])
@@ -80,6 +90,7 @@ def gains(sim):
     dt = tfine[-2]
     rtogo = interp1d(time, rtgo)(tfine) # Do I want this in meters or km?
     vref  = interp1d(time, vel)(tfine)
+    eref  = interp1d(time, energy)(tfine)
     rref  = interp1d(time, radius)(tfine)
     rdtref = interp1d(time, altrate)(tfine)
     dref = interp1d(time, drag)(tfine)
@@ -96,7 +107,8 @@ def gains(sim):
     f2 = []
     f3 = []
     iv = np.argmax(vref)
-
+    uref = interp1d(time, bank)(tfine)[:iv]
+    
     for i in range(tfine.shape[0]):
         
         f1.append(-hs/dref[i]*l4/akm) # Divide this gain by 1000 if I use rtogo in km
@@ -121,8 +133,13 @@ def gains(sim):
     # plt.plot(vref,f3,label='f3')
     # plt.legend(loc='best')
     # plt.show()
+    
     # build the output dictionary
-    vi = vref[0:iv]
+    if use_energy:
+        vi = eref[0:iv]
+    else:
+        vi = vref[0:iv]
+        
     f3[f3<0.01] = 0.01
     data = { 'F1'    : interp1d(vi,f1[:iv], fill_value=(f1[0],f1[iv]), assume_sorted=True, bounds_error=False),
              'F2'    : interp1d(vi,f2[:iv], fill_value=(f2[0],f2[iv]), assume_sorted=True, bounds_error=False),
@@ -131,8 +148,8 @@ def gains(sim):
              'RDTREF': interp1d(vi,rdtref[:iv], fill_value=(rdtref[0],rdtref[iv]), assume_sorted=True, bounds_error=False),
              'DREF'  : interp1d(vi,dref[:iv], fill_value=(dref[0],dref[iv]), assume_sorted=True, bounds_error=False),
              'LOD'   : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
-             # 'U'     : interp1d(vi,interp1d(time, bank)(tfine)[:iv]),
-             'K'    : 6.0
+             'U'     : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
+             'K'    : 1.0
              }
              
     return data
