@@ -24,6 +24,7 @@ def build(p, sim, pdf, x0, fun, **kwargs):
     polynomials = cp.orth_ttr(order=1, dist=pdf)
     samples,weights = cp.generate_quadrature(order=1, domain=pdf, rule="Gaussian")
     print "Running {} trajectories to build PCE model...".format(samples.shape[1])
+    print "...using {}".format(p)
     stateTensor = [fun(p, sim, x0, s, **kwargs) for s in samples.T]
     PCE = cp.fit_quadrature(polynomials,samples,weights,stateTensor)
     E = cp.E(poly=PCE,dist=pdf)

@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 # To do: Turn this into a class and use the init method to set the reference and probably also "get_heading". 
 # Then, replanning is simply a matter of running the optimizer from HEP, and recomputing the gains needed.
 
-def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error = 0.06, use_energy=False, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.077, use_energy=False, **kwargs):
 
     if use_energy:
         IV = energy
@@ -149,7 +149,7 @@ def gains(sim, use_energy=False):
              'DREF'  : interp1d(vi,dref[:iv], fill_value=(dref[0],dref[iv]), assume_sorted=True, bounds_error=False),
              'LOD'   : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
              'U'     : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
-             'K'    : 1.0
+             'K'    : 4.5
              }
              
     return data

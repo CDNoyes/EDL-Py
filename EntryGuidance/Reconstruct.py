@@ -114,28 +114,32 @@ if __name__ == '__main__':
     import chaospy as cp
     
     # Plan the nominal profile:
-    reference_sim = Simulation(cycle=Cycle(.1),output=False,**EntrySim())
+    reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
     bankProfile = lambda **d: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609],minBank=np.radians(30))
                                                 
     x0 = InitialState()
     output = reference_sim.run(x0,[bankProfile]) 
     # output = reference_sim.run(x0,[bankProfile],[0,-.15,-0.15,0.0]) #Plan with less lift
+    # reference_sim.plot()
+    # reference_sim.show()
+    
     references = reference_sim.getRef()
     N = 50
     colors = ['b','r','m','g','k']
-    # labels = ['CD','CL','rho0','hs','Total']
-    labels = ['Total']
+    labels = ['CD','CL','rho0','hs','Total']
+    # labels = ['Total']
     
-    delta = cp.Normal(0, 1).sample(N)
-    sample_sets = [ #np.array([delta*0.15/3, np.zeros(N), np.zeros(N), np.zeros(N)]),       # Drag dispersions
-                    #np.array([np.zeros(N), delta*0.15/3, np.zeros(N), np.zeros(N)]),       # Lift dispersions
-                    #np.array([np.zeros(N), np.zeros(N), delta*0.05, np.zeros(N)]),         # Density at h=0 dispersions
-                    #np.array([np.zeros(N), np.zeros(N), np.zeros(N), delta*0.02/3]),       # Scale height dispersions
+    delta = cp.Normal(0, 1).sample(N,'L')
+    sample_sets = [ np.array([delta*0.15/3, np.zeros(N), np.zeros(N), np.zeros(N)]),       # Drag dispersions
+                    np.array([np.zeros(N), delta*0.15/3, np.zeros(N), np.zeros(N)]),       # Lift dispersions
+                    np.array([np.zeros(N), np.zeros(N), delta*0.05, np.zeros(N)]),         # Density at h=0 dispersions
+                    np.array([np.zeros(N), np.zeros(N), np.zeros(N), delta*0.02/3]),       # Scale height dispersions
                     getUncertainty()['parametric'].sample(N, 'S')]                         # Full dispersion set, sampled by Sobol' sequence
-    sample_sets = [np.zeros(4)]
+                    
+    # sample_sets = [np.zeros(4)]
     for samples, color, label in zip(sample_sets, colors, labels):  
         print "Running deltas on {}, plotted with color {}".format(label,color)
-        for family in range(2,3):
+        for family in [0]:#range(2,3):
         
             if family == 0:
                 # istart = np.argmax(output[:,1])

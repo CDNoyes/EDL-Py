@@ -82,7 +82,6 @@ def test_controller():
         # sample = [.1,-.1,-.05,0]
         # sample = [.133,-.133,.0368,.0014] # Worst case sample from Apollo runs
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
-        print s0
         x0_nav = x0 # + Errors in velocity and mass
         x0_full = InitialState(1) #np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] + x0_nav + [1,1] + [np.radians(-15),0])
 
@@ -93,7 +92,7 @@ def test_controller():
             sim.plot(compare=False)
 
         else:
-            if 1: # Single trajectory
+            if 0: # Single trajectory
                 reference_sim.plot(plotEnergy=True, legend=False)
                 output = sim.run(x0_full, controls, sample, FullEDL=True)
                 sim.plot(compare=False)
@@ -107,7 +106,7 @@ def test_controller():
                 if 1: # List comprehension, and save the results
                     stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples.T]
                     saveDir = './data/'
-                    savemat(saveDir+'MC_Apollo_{}_K1_energy'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
+                    savemat(saveDir+'MC_Apollo_{}_K4p5_energy'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
                     
                 else: # Raw loop, graph each trajectory
                 

@@ -206,9 +206,10 @@ dtr = pi/180;
 % data(3) = load('E:\Documents\EDL\data\MC_nominalHEP.mat');
 % data(4) =  load('E:\Documents\EDL\data\MC_RSHEP.mat');
 % data(1) = load('E:\Documents\EDL\data\MC_Apollo_20.mat');
-data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1.mat');
+% data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1.mat');
 % data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K6.mat');
-data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1_energy.mat');
+data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1_energy.mat');
+data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K4p5_energy.mat'); % This also has the 0.077 rad corridor
 
 idrag = 14;
 ienergy = 2;

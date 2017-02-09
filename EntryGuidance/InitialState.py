@@ -6,7 +6,7 @@ def InitialState(full_state=False):
     ''' A simple method to use a consistent nominal initial state across all programs. '''
     r0, theta0, phi0, v0, gamma0, psi0, s0, m0 = (3540.0e3, radians(-90.07), radians(-43.90),
                                                   5505.0,   radians(-14.15), radians(4.99),
-                                                  906*1e3, 8500)
+                                                  905.65*1e3, 8500)
 
     if full_state:
 

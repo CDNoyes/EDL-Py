@@ -28,7 +28,7 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
         perturbations['knowledge'] = cp.J(pitch)
     
     if initial:
-        V     = cp.Uniform(-5,5)     # Entry velocity deviation
+        V     = cp.Uniform(-3,3)     # Entry velocity deviation
         gamma = cp.Normal(0, 0.5/3.0)    # Entry FPA deviation, +- 0.5 deg 3-sigma
         perturbations['initial'] = cp.J(V, gamma)
     
