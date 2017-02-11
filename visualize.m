@@ -195,7 +195,7 @@ ylabel('Error (%)')
 histogram(err)
 
 %%
-clear
+clc;clear
 % addpath('C:\Users\cdnoyes\Documents\Experimental\Matlab')
 dtr = pi/180;
 % data(1) = load('E:\Documents\EDL\data\MC_nominalHEP_small.mat');
@@ -205,19 +205,25 @@ dtr = pi/180;
 
 % data(3) = load('E:\Documents\EDL\data\MC_nominalHEP.mat');
 % data(4) =  load('E:\Documents\EDL\data\MC_RSHEP.mat');
-data(1) = load('E:\Documents\EDL\data\MC_Apollo_2000.mat');
-final = zeros(length(data),length(data.pdf),27);
-label = {'Nom','RS'};
+% data(1) = load('E:\Documents\EDL\data\MC_Apollo_20.mat');
+% data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1.mat');
+% data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K6.mat');
+data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1_energy.mat');
+data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K4p5_energy.mat'); % This also has the 0.077 rad corridor
+
+idrag = 14;
+ienergy = 2;
+final = zeros(length(data),length(data(1).pdf),27);
+label = {'V','E'};
 colors = {'r','b','g','m'};
 for d = 1:length(data)
     states = data(d).states;
     samples = data(d).samples;
     pdf(d,:) = data(d).pdf;
-    %     figure(1)
-    %     plot(0,1000,'kx','MarkerSize',20)
-    %     hold on
+%         figure(2+d)
+%         hold on
     for i = 1:length(states)
-        %        plot(states{i}(end,12),states{i}(end,11), [colors{d},'o'])
+%         plot(states{i}(:,ienergy),states{i}(:,idrag))
         final(d,i,:) = states{i}(end,:);
         
     end
@@ -225,8 +231,8 @@ for d = 1:length(data)
     
 end
 
-figure
 for d = 1:length(data)
+    
     figure(1)
     hold all
     plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
@@ -239,16 +245,28 @@ for d = 1:length(data)
     xlabel('CR (km)')
     ylabel('DR (km)')
 end
+legend(label{:})
+Ellipse([0,905],2,2,0,{'r--','LineWidth',2})
+Ellipse([0,905],5,5,0,{'k--','LineWidth',2})
+Ellipse([0,905],10,10,0,'b--')
 
-dist = sqrt(sum(final(1,:,12).^2 +(final(1,:,11)-905).^2,1));
+for i =1:length(data)
+dist = sqrt(sum(final(i,:,12).^2 +(final(i,:,11)-905.2).^2,1));
+disp(['Mean miss distance ', num2str(mean(dist)),' km'])
+% disp(['Std dev miss distance ', num2str(std(dist)),' km'])
+disp(['Variance miss distance ', num2str(var(dist)),' km^2'])
+disp(' ')
+
 ntotal = length(dist);
-mean(dist)
 n2 = length(dist(dist>2));
 n5 = length(dist(dist>5));
 n10 = length(dist(dist>10));
 p2 = 1-n2/ntotal;
 p5 = 1-n5/ntotal;
 p10 = 1-n10/ntotal;
+h = (final(d,:,5)-3397e3)/1000;
+n_min_alt = length(h(h < 0.52));
+p_min_alt = n_min_alt/ntotal;
 
 figure
 hold on
@@ -256,7 +274,7 @@ Ellipse([0,905],2,2,0,{'r--','LineWidth',2})
 Ellipse([0,905],5,5,0,{'k--','LineWidth',2})
 Ellipse([0,905],10,10,0,'b--')
 
-scatter(final(1,:,12),final(1,:,11),[],pdf(1,:)/max(pdf(1,:)))
+scatter(final(i,:,12),final(i,:,11),[],pdf(i,:)/max(pdf(i,:)))
 legend([' 2 km (',num2str(p2*100),'% inside)'], [' 5 km (',num2str(p5*100),'% inside)'], ['10 km (',num2str(p10*100),'% inside)'])
 xlabel('CR (km)')
 ylabel('DR (km)')
@@ -264,22 +282,23 @@ axis equal
 box on
 grid on
 
+% figure
+% scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],pdf(i,:)/max(pdf(i,:)))
+% xlabel('Velocity (m/s)')
+% ylabel('Altitude (km)')
+% title('Colored by probability')
+% box on
+% grid on
 figure
-scatter(final(1,:,8),(final(1,:,5)-3397e3)/1000,[],pdf(1,:)/max(pdf(1,:)))
+scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],dist)
 xlabel('Velocity (m/s)')
 ylabel('Altitude (km)')
-title('Colored by probability')
+title(['Colored by miss distance, ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
 box on
 grid on
-figure
-scatter(final(1,:,8),(final(1,:,5)-3397e3)/1000,[],dist)
-xlabel('Velocity (m/s)')
-ylabel('Altitude (km)')
-title('Colored by miss distance')
-box on
-grid on
-colorbar
-figure
-scatter(samples(1,:),samples(2,:),[],pdf(1,:)/max(pdf(1,:)))
-figure
-scatter(samples(3,:),samples(4,:),[],pdf(1,:)/max(pdf(1,:)))
+end
+% colorbar
+% figure
+% scatter(samples(1,:),samples(2,:),[],pdf(1,:)/max(pdf(1,:)))
+% figure
+% scatter(samples(3,:),samples(4,:),[],pdf(1,:)/max(pdf(1,:)))

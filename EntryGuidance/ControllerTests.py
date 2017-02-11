@@ -18,8 +18,8 @@ def test_controller():
     from Uncertainty import getUncertainty
     from InitialState import InitialState
     import MPC as mpc
-    from Riccati import controller as SDRE
-    from SDC import time as sdc
+    # from Riccati import controller as SDRE
+    # from SDC import time as sdc
     import Apollo
     
     # Plan the nominal profile:
@@ -34,7 +34,8 @@ def test_controller():
     drag_ref = references['drag']
     # reference_sim.plot(plotEnergy=True)
     # plt.show()
-    aeg_gains = Apollo.gains(reference_sim)
+    use_energy=True
+    aeg_gains = Apollo.gains(reference_sim,use_energy=use_energy)
     
     if 1:
         # Create the simulation model:
@@ -49,7 +50,7 @@ def test_controller():
         input = { 'states' : states,
                   'conditions' : conditions }
                   
-        sim = Simulation(cycle=Cycle(0.1), output=True, **input)
+        sim = Simulation(cycle=Cycle(1), output=True, **input)
 
         # Create some guidance laws
         
@@ -61,7 +62,8 @@ def test_controller():
         mpc_heading = partial(headAlign.controller, control_options=option_dict_heading, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
         mpc_range = partial(mpc.controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
         pre = partial(mpc.constant, value=bankProfile(time=0))
-        aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(pi/9.,pi/1.25), get_heading=get_heading)
+        aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(pi/9.,pi/1.25), get_heading=get_heading,use_energy=use_energy) # This is what the MC have been conducted with
+        # aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(np.radians(5),pi/1.25), get_heading=get_heading,use_energy=use_energy)
 
         # A,B,C=sdc()
         # R = lambda x: np.array([[1e6*x[1]**2]]) # Schedule with dynamic pressure
@@ -78,6 +80,7 @@ def test_controller():
         # sample = perturb.sample()
         # print sample
         # sample = [.1,-.1,-.05,0]
+        # sample = [.133,-.133,.0368,.0014] # Worst case sample from Apollo runs
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
         x0_nav = x0 # + Errors in velocity and mass
         x0_full = InitialState(1) #np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] + x0_nav + [1,1] + [np.radians(-15),0])
@@ -95,15 +98,15 @@ def test_controller():
                 sim.plot(compare=False)
             
             else: # Multiple
-                N = 2000
+                N = 1000
                 sim.set_output(False)
-                samples = perturb.sample(N,'L')
+                samples = perturb.sample(N,'S')
                 p = perturb.pdf(samples)
                 
                 if 1: # List comprehension, and save the results
                     stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples.T]
                     saveDir = './data/'
-                    savemat(saveDir+'MC_Apollo_{}'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
+                    savemat(saveDir+'MC_Apollo_{}_K4p5_energy'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
                     
                 else: # Raw loop, graph each trajectory
                 
