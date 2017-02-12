@@ -365,6 +365,7 @@ class Simulation(Machine):
         # Energy as independent variable
         ref['dragcos'] = interp1d(energy[:i_emax],dragcos[:i_emax], fill_value=(dragcos[0],dragcos[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['drag_energy'] = interp1d(energy[:i_emax], drag[:i_emax], fill_value=(drag[0],drag[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
+        ref['drag_rate_energy'] = interp1d(energy[:i_emax],drag_rate[:i_emax], fill_value=(drag_rate[0],drag_rate[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
 
         return ref
         
