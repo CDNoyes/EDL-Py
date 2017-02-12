@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 # To do: Turn this into a class and use the init method to set the reference and probably also "get_heading". 
 # Then, replanning is simply a matter of running the optimizer from HEP, and recomputing the gains needed.
 
-def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.077, use_energy=False, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, **kwargs):
 
     if use_energy:
         IV = energy
@@ -68,19 +68,6 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     lod = lift*np.cos(bank)/drag
     altrate = vel*np.sin(fpa)
     
-    # Cartesian coords
-    # x_rel = radius*sin(lon)*cos(azi)
-    # y_rel = radius*sin(lon)*sin(azi)
-    # z_rel = radius*cos(lon)
-    
-    # r_corrected = np.array([np.dot(C3(-t*w),[x,y,z]).T for t,x,y,z in zip(time,x_rel,y_rel,z_rel)]) # Position vector
-    
-    # Vc = np.array([vel*sin(fpa),vel*cos(fpa)*cos(azi),vel*cos(fpa)*sin(azi)])
-    # Vp_rel = np.array([np.dot(C3(-theta), np.dot(C2(phi),vc)) for theta, phi, vc in zip(lon,lat,Vc.T)])
-
-    # omega = np.array([[0, -w, 0],[w, 0, 0], [0,0,0]])
-    # Vp = Vp_rel + np.dot(omega,r_corrected.T).T # Velocity vector with planet rotation
-    
     # Prep for backwards integration of adjoints
     l1 = 1.0                # s
     l2 = 0.0                # v
@@ -136,12 +123,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         l4 -= dt*dl4
         l5 -= dt*dl5
     
-    # import matplotlib.pyplot as plt
-    # plt.plot(vref[:iv],f1[:iv],label='f1')
-    # plt.plot(vref,f2,label='f2')
-    # plt.plot(vref,f3,label='f3')
-    # plt.legend(loc='best')
-    # plt.show()
+  
     
     # build the output dictionary
     if use_energy:
@@ -159,13 +141,43 @@ def gains(sim, use_energy=False, use_drag_rate=False):
              'DDTREF' : interp1d(vi,ddtref[:iv], fill_value=(ddtref[0],ddtref[iv]), assume_sorted=True, bounds_error=False),
              'LOD'    : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
              'U'      : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
-             'K'      : 4.5
-             }
+             'K'      : 1
+
              
     return data
+ 
+def plot_rp(output, reference, use_energy=True):
+    import matplotlib.pyplot as plt
     
+    vel = output[:,7]
+    range = output[-1,10]-output[:,10] # Range to go
+    drag = output[:,13]
+    hdot = vel*np.sin(np.radians(output[:,8]))
+    energy = output[:,1]
+    bank = np.sign(output[:,2])
+    signchange = ((np.roll(bank, 1) - bank) != 0).astype(int)
+    pos = hdot >= 0
+    iv = np.argmax(vel)
+
+    if use_energy:
+        vi = energy[iv:]
+    else:
+        vi = vel[iv:]
+    
+    plt.figure()
+    rp = predict_range(vi, drag[iv:], hdot[iv:], reference)
+    
+    plt.plot(vi,rp-range[iv:]) 
+    # plt.plot(vi[pos[iv:]],rp[pos[iv:]]-range[iv:][pos[iv:]],'o') 
+    plt.xlabel('')
+    plt.ylabel('Predicted range error (km)')
+    plt.title('Negative -> undershoot, Positive -> overshoot')
+    plt.plot(vi[signchange[iv:]],rp[signchange[iv:]]-range[iv:][signchange[iv:]],'o') 
+    # plt.show()
+
+ 
 def predict_range(V, D, r_dot, ref):
-    return ref['RTOGO'](V) + (ref['F1'](V))*(D-ref['DREF'](V)) + ref['F2'](V)*(r_dot-ref['RDTREF'](V))
+    return ref['RTOGO'](V) + ref['F1'](V)*(D-ref['DREF'](V)) + ref['F2'](V)*(r_dot-ref['RDTREF'](V))
     
     
 def LoD_command(V, R, Rp, ref):
