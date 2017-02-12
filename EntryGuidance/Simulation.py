@@ -341,6 +341,7 @@ class Simulation(Machine):
         drag_rate = np.flipud(np.diff(self.output[:,13])/np.diff(self.output[:,0]))
         dragcos = np.flipud(self.output[:,13]/np.cos(np.radians(self.output[:,8])))
         bank = np.flipud(self.output[:,2])
+        hdot = vel*np.flipud(np.sin(np.radians(self.output[:,8])))
         
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum downward so the reference is monotonic
         
@@ -365,6 +366,7 @@ class Simulation(Machine):
         # Energy as independent variable
         ref['dragcos'] = interp1d(energy[:i_emax],dragcos[:i_emax], fill_value=(dragcos[0],dragcos[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
         ref['drag_energy'] = interp1d(energy[:i_emax], drag[:i_emax], fill_value=(drag[0],drag[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
+        ref['altitude_rate'] = interp1d(energy[:i_emax], hdot[:i_emax], fill_value=(hdot[0],hdot[i_emax]), assume_sorted=True, bounds_error=False, kind='cubic')
 
         return ref
         
