@@ -14,6 +14,11 @@ def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, lo
     else:
         IV = velocity
         
+        
+    alt_rate = velocity*sin(fpa)
+    hs = 9345.5 # Nominal scale height
+    g = 3.71    # Close enough
+    drag_rate = drag*(-alt_rate/hs - 2*drag/velocity - 2*g*sin(fpa)/velocity)
     Rp = predict_range(IV, drag, velocity*sin(fpa), reference)  
         
     LoD_com = LoD_command(IV, rangeToGo/1000., Rp, reference)
@@ -40,7 +45,7 @@ def lateral(bank_sign, heading, latitude, longitude, max_error, compute_heading)
         return bank_sign
 
 
-def gains(sim, use_energy=False):
+def gains(sim, use_energy=False, use_drag_rate=False):
     """ Determines the sensitivities based on a reference trajectory. 
     
     """ 
@@ -94,6 +99,7 @@ def gains(sim, use_energy=False):
     rref  = interp1d(time, radius)(tfine)
     rdtref = interp1d(time, altrate)(tfine)
     dref = interp1d(time, drag)(tfine)
+    ddtref = np.diff(dref)/np.diff(tfine)
     lodref = interp1d(time, lod)(tfine)
     
     gamma = interp1d(time, fpa)(tfine)
@@ -112,7 +118,10 @@ def gains(sim, use_energy=False):
     for i in range(tfine.shape[0]):
         
         f1.append(-hs/dref[i]*l4/akm) # Divide this gain by 1000 if I use rtogo in km
-        f2.append(l3/(vref[i]*cg[i]*akm))
+        if use_drag_rate:
+            f2.append(l3/(-cg[i]/dref[i]*(vref[i]/hs + 2*3.71/vref[i])))
+        else:
+            f2.append(l3/(vref[i]*cg[i]*akm))
         f3.append(l5/akm)
         
         dl1 = 0
@@ -141,15 +150,16 @@ def gains(sim, use_energy=False):
         vi = vref[0:iv]
         
     f3[f3<0.01] = 0.01
-    data = { 'F1'    : interp1d(vi,f1[:iv], fill_value=(f1[0],f1[iv]), assume_sorted=True, bounds_error=False),
-             'F2'    : interp1d(vi,f2[:iv], fill_value=(f2[0],f2[iv]), assume_sorted=True, bounds_error=False),
-             'F3'    : interp1d(vi,f3[:iv], fill_value=(f3[0],f3[iv]), assume_sorted=True, bounds_error=False),
-             'RTOGO' : interp1d(vi,rtogo[:iv], fill_value=(rtogo[0],rtogo[iv]), assume_sorted=True, bounds_error=False),
-             'RDTREF': interp1d(vi,rdtref[:iv], fill_value=(rdtref[0],rdtref[iv]), assume_sorted=True, bounds_error=False),
-             'DREF'  : interp1d(vi,dref[:iv], fill_value=(dref[0],dref[iv]), assume_sorted=True, bounds_error=False),
-             'LOD'   : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
-             'U'     : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
-             'K'    : 4.5
+    data = { 'F1'     : interp1d(vi,f1[:iv], fill_value=(f1[0],f1[iv]), assume_sorted=True, bounds_error=False),
+             'F2'     : interp1d(vi,f2[:iv], fill_value=(f2[0],f2[iv]), assume_sorted=True, bounds_error=False),
+             'F3'     : interp1d(vi,f3[:iv], fill_value=(f3[0],f3[iv]), assume_sorted=True, bounds_error=False),
+             'RTOGO'  : interp1d(vi,rtogo[:iv], fill_value=(rtogo[0],rtogo[iv]), assume_sorted=True, bounds_error=False),
+             'RDTREF' : interp1d(vi,rdtref[:iv], fill_value=(rdtref[0],rdtref[iv]), assume_sorted=True, bounds_error=False),
+             'DREF'   : interp1d(vi,dref[:iv], fill_value=(dref[0],dref[iv]), assume_sorted=True, bounds_error=False),
+             'DDTREF' : interp1d(vi,ddtref[:iv], fill_value=(ddtref[0],ddtref[iv]), assume_sorted=True, bounds_error=False),
+             'LOD'    : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
+             'U'      : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
+             'K'      : 4.5
              }
              
     return data
