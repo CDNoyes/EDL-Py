@@ -47,7 +47,7 @@ def InitialState(full_state=False, **kwargs):
         
     if full_state:
 
-        return array([r0, theta0, phi0, v0, gamma0, psi0, s0, m0]*2 + [1,1] + [radians(-30),0])
+        return array(x0*2 + [1,1] + [radians(-30),0])
     else:    
         return array(x0)
         
