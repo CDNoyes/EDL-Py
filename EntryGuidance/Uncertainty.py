@@ -20,7 +20,7 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
         CL          = cp.Normal(0, 0.15/3)   # CL
         rho0        = cp.Normal(0, 0.0333*1.5)      # rho0
         # scaleHeight = cp.Uniform(-0.02,0.01)    # scaleheight        
-        scaleHeight = cp.Normal(0,0.02/3)    # scaleheight        
+        scaleHeight = cp.Normal(0,0.02/3)    # scaleheight        # Positive delta scale height results in slower decay, i.e. thicker atm at the same altitude
         perturbations['parametric'] = cp.J(CD,CL,rho0,scaleHeight)
         
     if knowledge:
