@@ -8,6 +8,9 @@ def mcfilter(B, NB, input_names=None, threshold=0, plot=False, fontsize=16):
     from scipy.stats import ks_2samp as kstest2
     
     # Input checking
+    if not B.shape[1] or not NB.shape[1]:
+        print "Cannot filter data due to 100% behavioral or non-behavioral.\n"
+        return 
     if input_names is None or (len(input_names) != B.shape[0]):
         input_names = ["Input{}".format(i) for i in range(B.shape[0])] # Generic names
     else:
@@ -59,7 +62,7 @@ def mcsplit(inputs, outputs, criteria):
     
     b = np.array([criteria(output) for output in outputs],dtype=bool)
     nb = np.array([not bb for bb in b], dtype=bool)
-    print "{} cases ({}%) are non-behavioral.".format(np.sum(nb), 100*np.sum(nb)/inputs.shape[1])
+    print "{} cases ({}%) are non-behavioral.".format(np.sum(nb), 100.0*np.sum(nb)/float(inputs.shape[1]))
     B = inputs[:,b]
     NB = inputs[:,nb]
     return B, NB
