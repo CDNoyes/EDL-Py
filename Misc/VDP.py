@@ -13,9 +13,9 @@ import time
 from itertools import product 
 
 def box_grid(bounds, N, interior=False):
-    # n-dimensional box grid, either just the exterior, or with interior points as well
-    # bounds is an n-length list/tuple with each element being the (min,max) along that dimension
-    # N is the number of samples per dimension, either a scalar or N-length list of integers.
+    """ n-dimensional box grid, either just the exterior, or with interior points as well
+    bounds is an n-length list/tuple with each element being the (min,max) along that dimension
+    N is the number of samples per dimension, either a scalar or N-length list of integers. """
     try:
         N[0]
     except:
@@ -42,8 +42,6 @@ def box_grid(bounds, N, interior=False):
                     new_points[:,dim_] = np.tile(corner[dim_-1],(N[dim]))
                 else:
                     new_points[:,dim_] = vectors[dim]
-                    
-                    
 
             grid_points.append(np.copy(new_points))
     return np.vstack(grid_points)

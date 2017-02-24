@@ -153,7 +153,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
              
     return data
  
-def plot_rp(output, reference, use_energy, use_drag_rate):
+def plot_rp(output, reference, use_energy, use_drag_rate, fignum=None, title=None, label=None, components=True):
     import matplotlib.pyplot as plt
     
     vel = output[:,7]
@@ -183,15 +183,27 @@ def plot_rp(output, reference, use_energy, use_drag_rate):
         rp_rate = predict_range(vi, drag[iv:], hdot[iv:], reference, a=0)
         rp_drag = predict_range(vi, drag[iv:], hdot[iv:], reference, b=0)
     
-    plt.figure()
+    if fignum is None:
+        plt.figure()
+    else:
+        plt.figure(fignum)
     
-    plt.plot(vi,rp-range[iv:],label='Total predicted range error') 
-    plt.plot(vi,rp_rate-range[iv:],'--',label='rate component') 
-    plt.plot(vi,rp_drag-range[iv:],'--',label='drag component') 
+    if label is not None:
+        total_label = label
+    else:
+        total_label = 'Total predicted range error'
+    
+    plt.plot(vi,rp-range[iv:],label=total_label) 
+    if components:
+        plt.plot(vi,rp_rate-range[iv:],'--',label='rate component') 
+        plt.plot(vi,rp_drag-range[iv:],'--',label='drag component') 
     # plt.plot(vi[pos[iv:]],rp[pos[iv:]]-range[iv:][pos[iv:]],'o') 
     plt.xlabel('')
     plt.ylabel('Predicted range error (km)')
-    plt.title('Negative -> undershoot, Positive -> overshoot')
+    if title is None:
+        plt.title('Negative -> undershoot, Positive -> overshoot')
+    else:
+        plt.title(title)
     plt.legend(loc='best')
     # plt.plot(vi[signchange[iv:]],rp[signchange[iv:]]-range[iv:][signchange[iv:]],'o') 
     # plt.show()
