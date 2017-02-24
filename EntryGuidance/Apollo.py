@@ -128,7 +128,10 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         l4 -= dt*dl4
         l5 -= dt*dl5
     
-    
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.plot(eref,f2)
+    # plt.show()
     # build the output dictionary
     if use_energy:
         vi = eref[0:iv]
@@ -173,26 +176,33 @@ def plot_rp(output, reference, use_energy, use_drag_rate):
     drag_rate = drag*(-hdot/hs - 2*drag/vel - 2*g*hdot/vel**2)  
     if use_drag_rate:
         rp = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference)
+        rp_rate = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, a=0)
+        rp_drag = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, b=0)
     else:
         rp = predict_range(vi, drag[iv:], hdot[iv:], reference)
+        rp_rate = predict_range(vi, drag[iv:], hdot[iv:], reference, a=0)
+        rp_drag = predict_range(vi, drag[iv:], hdot[iv:], reference, b=0)
     
     plt.figure()
     
-    plt.plot(vi,rp-range[iv:]) 
+    plt.plot(vi,rp-range[iv:],label='Total predicted range error') 
+    plt.plot(vi,rp_rate-range[iv:],'--',label='rate component') 
+    plt.plot(vi,rp_drag-range[iv:],'--',label='drag component') 
     # plt.plot(vi[pos[iv:]],rp[pos[iv:]]-range[iv:][pos[iv:]],'o') 
     plt.xlabel('')
     plt.ylabel('Predicted range error (km)')
     plt.title('Negative -> undershoot, Positive -> overshoot')
-    plt.plot(vi[signchange[iv:]],rp[signchange[iv:]]-range[iv:][signchange[iv:]],'o') 
+    plt.legend(loc='best')
+    # plt.plot(vi[signchange[iv:]],rp[signchange[iv:]]-range[iv:][signchange[iv:]],'o') 
     # plt.show()
 
  
-def predict_range(V, D, r_dot, ref):
-    return ref['RTOGO'](V) + ref['F1'](V)*(D-ref['DREF'](V)) + 0*ref['F2'](V)*(r_dot-ref['RDTREF'](V))
+def predict_range(V, D, r_dot, ref, a=1, b=1):
+    return ref['RTOGO'](V) + a*ref['F1'](V)*(D-ref['DREF'](V)) + b*ref['F2'](V)*(r_dot-ref['RDTREF'](V))
     
-def predict_range_dr(V, D, D_dot, ref):
+def predict_range_dr(V, D, D_dot, ref, a=1, b=1):
     ''' Experimental version using drag rate instead of altitude rate. '''
-    return ref['RTOGO'](V) + ref['F1'](V)*(D-ref['DREF'](V)) + ref['F2'](V)*(D_dot-ref['DDTREF'](V))    
+    return ref['RTOGO'](V) + a*ref['F1'](V)*(D-ref['DREF'](V)) + b*ref['F2'](V)*(D_dot-ref['DDTREF'](V))    
     
 def LoD_command(V, R, Rp, ref):
     return ref['LOD'](V) + ref['K']*(R-Rp)/ref['F3'](V)
