@@ -74,7 +74,7 @@ class VDP(object):
         
     def simulate(self, sample, tf, p, return_stm=False):
         ''' Integrate a single sample. '''
-        t = np.linspace(0,tf,61)
+        t = np.linspace(0,tf,161)
         x = odeint(self.__dynamics__, [sample[0],sample[1],p], t, args=(sample[2],))
         stm = self.integrate_stm(t, x, sample[2])
         if return_stm:
@@ -305,5 +305,8 @@ def test_box_grid():
 
 if __name__ == '__main__':    
     vdp = VDP()
-    vdp.test()
+    # vdp.test()
+    sample = [3, 3, 1]
+    states, stms = vdp.simulate(sample, 6, 0, return_stm=True)
+    print stms[-1]
     # test_box_grid()
