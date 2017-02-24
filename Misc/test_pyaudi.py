@@ -2,7 +2,6 @@ from pyaudi import gdual_double as gd
 import DA as da
 import numpy as np
 from scipy.integrate import odeint
-from ode45 import ode45
 import matplotlib.pyplot as plt
 import time
 
