@@ -18,14 +18,12 @@ def test_controller():
     from Uncertainty import getUncertainty
     from InitialState import InitialState
     import MPC as mpc
-    # from Riccati import controller as SDRE
-    # from SDC import time as sdc
     import Apollo
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
     bankProfile = lambda **d: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609], minBank=np.radians(30))
-    # bankProfile = lambda **d: np.sin(d['time']/20)
+    # bankProfile = lambda **d: np.radians(-30)
                                                 
     x0 = InitialState()
     output = reference_sim.run(x0,[bankProfile])
@@ -33,7 +31,8 @@ def test_controller():
     references = reference_sim.getRef()
     drag_ref = references['drag']
     # reference_sim.plot(plotEnergy=True)
-    # plt.show()
+    plt.plot(output[:,1],output[:,2])
+    plt.show()
     use_energy=True
     aeg_gains = Apollo.gains(reference_sim,use_energy=use_energy)
     
@@ -63,13 +62,7 @@ def test_controller():
         mpc_range = partial(mpc.controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
         pre = partial(mpc.constant, value=bankProfile(time=0))
         aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(pi/9.,pi/1.25), get_heading=get_heading,use_energy=use_energy) # This is what the MC have been conducted with
-        # aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(np.radians(5),pi/1.25), get_heading=get_heading,use_energy=use_energy)
-
-        # A,B,C=sdc()
-        # R = lambda x: np.array([[1e6*x[1]**2]]) # Schedule with dynamic pressure
-        # Q = lambda x: np.array([[100000000]])
-        # z = lambda v: np.array([[drag_ref(v)]])
-        # sdre = partial(SDRE,A=A,B=B,C=C,Q=Q,R=R,z=z)
+        # aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(0.1,pi/1.25), get_heading=get_heading,use_energy=use_energy) 
         
         # controls = [pre, mpc_range, mpc_heading]
         controls = [pre, aeg, mpc_heading]
@@ -82,8 +75,9 @@ def test_controller():
         # sample = [.1,-.1,-.05,0]
         # sample = [.133,-.133,.0368,.0014] # Worst case sample from Apollo runs
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
+        
         x0_nav = x0 # + Errors in velocity and mass
-        x0_full = InitialState(1) #np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 2804.0] + x0_nav + [1,1] + [np.radians(-15),0])
+        x0_full = InitialState(1, range=s0) 
 
         if 0:
             output = sim.run(x0, controls, sample, FullEDL=False)
@@ -92,11 +86,11 @@ def test_controller():
             sim.plot(compare=False)
 
         else:
-            if 0: # Single trajectory
+            if 1: # Single trajectory
                 reference_sim.plot(plotEnergy=True, legend=False)
                 output = sim.run(x0_full, controls, sample, FullEDL=True)
                 sim.plot(compare=False)
-            
+                Apollo.plot_rp(output, aeg_gains, use_energy)
             else: # Multiple
                 N = 1000
                 sim.set_output(False)
