@@ -2,18 +2,6 @@
 
 import numpy as np
 from pyaudi import gdual_double as gd
-
-
-
-# def gradient_dict(da, da_vars):
-    # g = np.zeros(len(da_vars.keys()))   # preallocate
-    # z = {key:0 for key in da_vars.keys()}
-    # for key,val in da_vars.items():
-        # z[key] = 1
-        # g[val] = da.get_derivative(z)
-        # z[key] = 0
-    # return g
-
     
 def gradient(da, da_vars):
     """ da_vars is 1-d list/array with string names in the order the gradient should be given """
@@ -30,7 +18,28 @@ def gradient(da, da_vars):
 def jacobian(da_array, da_vars):
     return np.array([gradient(da,da_vars) for da in da_array])
     
-# def hessian(da):
+def hessian(da, da_vars):
+    n = len(da_vars)
+    g = np.zeros((n,n))
+    
+    if da.order < 2: # Return zeros if insufficient order 
+        return g
+        
+    da_vars = ['d'+x for x in da_vars]
+    
+    
+    z = {(key):0 for key in da_vars}
+    
+    # This will get the diagonal elements:
+    for ind,var in enumerate(da_vars):
+        z[var] = 2
+        g[ind,ind] = da.get_derivative(z)
+        z[var] = 0
+        
+    # Off diagonal elements:    
+        
+        
+    return g        
 
 
 def const(da_array, array=False):
