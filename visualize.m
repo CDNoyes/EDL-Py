@@ -196,34 +196,36 @@ histogram(err)
 
 %%
 clc;clear
-% addpath('C:\Users\cdnoyes\Documents\Experimental\Matlab')
 dtr = pi/180;
-% data(1) = load('E:\Documents\EDL\data\MC_nominalHEP_small.mat');
-% data(2) =  load('E:\Documents\EDL\data\MC_RSHEP_small.mat');
-% data(3) =  load('E:\Documents\EDL\data\MC_smallLD.mat');
-% data(4) =  load('E:\Documents\EDL\data\MC_smalllift.mat');
+data_path = 'E:\Documents\EDL\data\'; % Desktop
+data_path = 'C:\Users\cdnoyes\Documents\EDL\data\'; % Laptop
 
-% data(3) = load('E:\Documents\EDL\data\MC_nominalHEP.mat');
-% data(4) =  load('E:\Documents\EDL\data\MC_RSHEP.mat');
-% data(1) = load('E:\Documents\EDL\data\MC_Apollo_20.mat');
-% data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1.mat');
-% data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K6.mat');
-data(1) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K1_energy.mat');
-data(2) = load('C:\Users\cdnoyes\Documents\EDL\data\MC_Apollo_1000_K4p5_energy.mat'); % This also has the 0.077 rad corridor
+data(1) = load([data_path, 'MC_Apollo_1000_K1_energy.mat']);
+data(2) = load([data_path, 'MC_Apollo_1000_K1_energy_drag_rate.mat']);
+data(3) = load([data_path, 'MC_Apollo_1000_K1_energy_no_rate.mat']);
 
 idrag = 14;
 ienergy = 2;
+irange = 11;
+ialt = 5;
+ifpa = 9;
+ibank = 3;
 final = zeros(length(data),length(data(1).pdf),27);
-label = {'V','E'};
+label = {'Alt. Rate','Drag Rate','No Rate'};
 colors = {'r','b','g','m'};
 for d = 1:length(data)
     states = data(d).states;
     samples = data(d).samples;
     pdf(d,:) = data(d).pdf;
-%         figure(2+d)
-%         hold on
+        figure(2+d)
+        hold on
     for i = 1:length(states)
-%         plot(states{i}(:,ienergy),states{i}(:,idrag))
+        if 0
+            plot(states{i}(:,irange),states{i}(:,ialt)/1000-3397)
+        else
+            plot(states{i}(:,ienergy),(states{i}(:,ibank)))   
+        end
+        title(label{d})
         final(d,i,:) = states{i}(end,:);
         
     end
@@ -264,7 +266,7 @@ n10 = length(dist(dist>10));
 p2 = 1-n2/ntotal;
 p5 = 1-n5/ntotal;
 p10 = 1-n10/ntotal;
-h = (final(d,:,5)-3397e3)/1000;
+h = (final(i,:,5)-3397e3)/1000;
 n_min_alt = length(h(h < 0.52));
 p_min_alt = n_min_alt/ntotal;
 
@@ -290,10 +292,10 @@ grid on
 % box on
 % grid on
 figure
-scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],dist)
+scatter(final(i,:,8),h,[],dist)
 xlabel('Velocity (m/s)')
 ylabel('Altitude (km)')
-title(['Colored by miss distance, ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
+title([label{i}, ', ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
 box on
 grid on
 end
