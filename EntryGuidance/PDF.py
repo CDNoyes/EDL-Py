@@ -12,11 +12,10 @@
           Increase test example to 3D, then compare 2-d bivariate distributions in addition to marginals
 """
 
-from numba import jit
+# from numba import jit
 import numpy as np
 from scipy.integrate import simps as trapz
 
-# @jit
 def grid(data, density, bins=50):
     ''' 
     This method partitions the domain defined by data into equal intervals defined by bins.
@@ -70,7 +69,6 @@ def grid(data, density, bins=50):
 
     return centers, Pest
    
-# @jit
 def integrate_pdf(grid_points, pdf, return_all=False):  
     ''' Given a grid of points and the probability density in each grid point, compute the integral over the entire domain. 
     
@@ -99,7 +97,6 @@ def integrate_pdf(grid_points, pdf, return_all=False):
     else:
         return M[-1]
 
-# @jit        
 def marginal(grid_points, pdf, index=None):
     ''' Given n-dimensional data, compute the univariate marginal distributions corresponding the
         directions given by index. Set index to None to compute all n marginals.
@@ -126,7 +123,7 @@ def expectation_from_marginal(x, px):
     return trapz(x*px, x)
     
     
-@jit    
+# @jit    
 def permute_data(grid_points, pdf, index):
     ''' Permutes the grid_points list and pdf ndarray such that the dimension specified by index becomes the first dimension. '''
     n = len(grid_points)
@@ -146,7 +143,6 @@ def permute_data(grid_points, pdf, index):
     pdf = np.transpose(pdf, indices)
     return grid_points, pdf
     
-# @jit    
 def allocate(n, N):
     ''' 
         Pre-allocates a list of tensors in decreasing dimension. 
