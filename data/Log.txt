@@ -8,3 +8,5 @@ A version controlled log of data sets. Perhaps an excel document or something fo
 2/11/17 - MC_Apollo_1000_K1_energy_no_rate - Uses neither altitude rate nor drag rate in feedback, only the drag portion
 2/11/17 - MC_Apollo_1000_K1_energy_no_drag - Uses exclusively altitude rate (and range to go) in feedback, neglecting the drag portion
 2/11/17 - MC_Apollo_1000_K1_energy_no_drag_dr - Uses exclusively drag rate (and range to go) in feedback, neglecting the drag portion
+
+2/24/17 - Box_3sig_Apollo_K1_energy - The 16 vertices of the 4-uncertain parameters evaluted at their 3-sigma values
