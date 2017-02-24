@@ -1,0 +1,9 @@
+A version controlled log of data sets. Perhaps an excel document or something formatted would be cleaner.
+
+
+2/3/17  - MC_Apollo_1000_K6_velocity - Standard Apollo with overcontrol set to 6
+2/5/17  - MC_Apollo_1000_K1_velocity - Standard Apollo with overcontrol set to 1
+2/6/17  - MC_Apollo_1000_K1_energy - Energy variant of Apollo with overcontrol set to 1
+2/11/17 - MC_Apollo_1000_K1_energy_drag_rate - Uses drag rate in feedback in place of altitude rate
+2/11/17 - MC_Apollo_1000_K1_energy_no_rate - Uses neither altitude rate nor drag rate in feedback, only the drag portion
+2/11/17 - MC_Apollo_1000_K1_energy_no_drag - Uses exclusively altitude rate (and range to go) in feedback, neglecting the drag portion

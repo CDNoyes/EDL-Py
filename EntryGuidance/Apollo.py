@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 # To do: Turn this into a class and use the init method to set the reference and probably also "get_heading". 
 # Then, replanning is simply a matter of running the optimizer from HEP, and recomputing the gains needed.
 
-def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, use_drag_rate=False, **kwargs):
 
     if use_energy:
         IV = energy
@@ -16,10 +16,15 @@ def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, lo
         
         
     alt_rate = velocity*sin(fpa)
-    hs = 9345.5 # Nominal scale height
-    g = 3.71    # Close enough
-    drag_rate = drag*(-alt_rate/hs - 2*drag/velocity - 2*g*sin(fpa)/velocity)
-    Rp = predict_range(IV, drag, velocity*sin(fpa), reference)  
+    
+    if use_drag_rate:
+        hs = 9345.5 # Nominal scale height
+        g = 3.71    
+        drag_rate = drag*(-alt_rate/hs - 2*drag/velocity - 2*g*sin(fpa)/velocity)    
+        Rp = predict_range_dr(IV, drag, drag_rate, reference)  
+    else:
+        Rp = predict_range(IV, drag, alt_rate, reference)  
+
         
     LoD_com = LoD_command(IV, rangeToGo/1000., Rp, reference)
     sigma = bank_command(lift/drag, LoD_com)   
@@ -106,7 +111,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         
         f1.append(-hs/dref[i]*l4/akm) # Divide this gain by 1000 if I use rtogo in km
         if use_drag_rate:
-            f2.append(l3/(-cg[i]/dref[i]*(vref[i]/hs + 2*3.71/vref[i])))
+            f2.append(l3/(-cg[i]*dref[i]*(vref[i]/hs + 2*3.71/vref[i]))/akm)
         else:
             f2.append(l3/(vref[i]*cg[i]*akm))
         f3.append(l5/akm)
@@ -123,7 +128,6 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         l4 -= dt*dl4
         l5 -= dt*dl5
     
-  
     
     # build the output dictionary
     if use_energy:
@@ -142,11 +146,11 @@ def gains(sim, use_energy=False, use_drag_rate=False):
              'LOD'    : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
              'U'      : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
              'K'      : 1
-
+            }
              
     return data
  
-def plot_rp(output, reference, use_energy=True):
+def plot_rp(output, reference, use_energy, use_drag_rate):
     import matplotlib.pyplot as plt
     
     vel = output[:,7]
@@ -164,8 +168,15 @@ def plot_rp(output, reference, use_energy=True):
     else:
         vi = vel[iv:]
     
+    hs = 9345.5 # Nominal scale height
+    g = 3.71    
+    drag_rate = drag*(-hdot/hs - 2*drag/vel - 2*g*hdot/vel**2)  
+    if use_drag_rate:
+        rp = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference)
+    else:
+        rp = predict_range(vi, drag[iv:], hdot[iv:], reference)
+    
     plt.figure()
-    rp = predict_range(vi, drag[iv:], hdot[iv:], reference)
     
     plt.plot(vi,rp-range[iv:]) 
     # plt.plot(vi[pos[iv:]],rp[pos[iv:]]-range[iv:][pos[iv:]],'o') 
@@ -177,8 +188,11 @@ def plot_rp(output, reference, use_energy=True):
 
  
 def predict_range(V, D, r_dot, ref):
-    return ref['RTOGO'](V) + ref['F1'](V)*(D-ref['DREF'](V)) + ref['F2'](V)*(r_dot-ref['RDTREF'](V))
+    return ref['RTOGO'](V) + ref['F1'](V)*(D-ref['DREF'](V)) + 0*ref['F2'](V)*(r_dot-ref['RDTREF'](V))
     
+def predict_range_dr(V, D, D_dot, ref):
+    ''' Experimental version using drag rate instead of altitude rate. '''
+    return ref['RTOGO'](V) + ref['F1'](V)*(D-ref['DREF'](V)) + ref['F2'](V)*(D_dot-ref['DDTREF'](V))    
     
 def LoD_command(V, R, Rp, ref):
     return ref['LOD'](V) + ref['K']*(R-Rp)/ref['F3'](V)
