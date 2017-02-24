@@ -8,20 +8,24 @@ import matplotlib.pyplot as plt
 
 
 def filter():
-    mcdata = loadmat('./data/MC_Apollo_1000.mat')
+    # mcdata = loadmat('./data/Box_3sig_Apollo_K1_energy.mat')
+    # mcdata = loadmat('./data/MC_Apollo_1000_K1_energy.mat')
+    mcdata = loadmat('./data/MC_Apollo_1000_K1_energy_no_rate.mat')
     
-    inputs = mcdata['samples']
     outputs = mcdata['states'].flatten()
+    inputs = mcdata['samples']
+    if inputs.shape[0] == outputs.shape[0]:
+        inputs = inputs.T
     
-    print "Cases on the lower altitude boundary:"
-    data = MCF.mcsplit(inputs,outputs,low_alt)
-    MCF.mcfilter(*data, input_names=['CD','CL','p0','hs'], plot=False) 
+    # print "Cases on the lower altitude boundary:"
+    # data = MCF.mcsplit(inputs,outputs,low_alt)
+    # MCF.mcfilter(*data, input_names=['CD','CL','p0','hs'], plot=False) 
     
-    print "Cases more than 10 m/s different than nominal ignition velocity:"
-    data = MCF.mcsplit(inputs,outputs,high_vel)
-    MCF.mcfilter(*data, input_names=['CD','CL','p0','hs'], plot=False) 
+    # print "Cases more than 10 m/s different than nominal ignition velocity:"
+    # data = MCF.mcsplit(inputs,outputs,high_vel)
+    # MCF.mcfilter(*data, input_names=['CD','CL','p0','hs'], plot=False) 
     
-    print "Cases more than 5 km from the target downrange:"
+    print "Cases more than 1 km from the target downrange:"
     data = MCF.mcsplit(inputs,outputs,large_miss)
     MCF.mcfilter(*data, input_names=['CD','CL','p0','hs'], plot=True) 
     
@@ -38,8 +42,8 @@ def high_vel(output):
     
 def large_miss(output):    
     xf = output[-1]
-    range = np.abs(output[-1,10]-905) # Range to go
-    return range < 5
+    range = np.abs(output[-1,10]-905.5) # Range to go
+    return range < 1
 
 if __name__ == "__main__":
     filter()
