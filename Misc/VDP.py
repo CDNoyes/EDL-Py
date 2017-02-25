@@ -8,43 +8,9 @@ import sys
 from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 from EntryGuidance.PDF import grid, marginal
+
 import time
 
-from itertools import product 
-
-def box_grid(bounds, N, interior=False):
-    """ n-dimensional box grid, either just the exterior, or with interior points as well
-    bounds is an n-length list/tuple with each element being the (min,max) along that dimension
-    N is the number of samples per dimension, either a scalar or N-length list of integers. """
-    try:
-        N[0]
-    except:
-        N = [N for _ in bounds]
-    n = len(bounds)    
-    vectors = [np.linspace(b[0],b[1],ni) for b,ni in zip(bounds,N)] # Each one of these will be used 2**(n-1) times
-    # nTotal = np.product(N)
-    grid_points = []
-
-    if interior:
-        bounds = vectors
-
-    for dim in range(n):
-        reduced_bounds = list(bounds[:])
-        reduced_bounds.pop(dim)
-        new_points = np.zeros((N[dim],n)) # Preallocate
-        dim_iter = range(n)
-            
-        for corner in product(*reduced_bounds):
-            for dim_ in dim_iter:
-                if dim_ < dim:
-                    new_points[:,dim_] = np.tile(corner[dim_],(N[dim]))
-                elif dim_ > dim:    
-                    new_points[:,dim_] = np.tile(corner[dim_-1],(N[dim]))
-                else:
-                    new_points[:,dim_] = vectors[dim]
-
-            grid_points.append(np.copy(new_points))
-    return np.vstack(grid_points)
 
 class VDP(object):
     ''' A van der pol oscillator class '''
@@ -291,15 +257,6 @@ class VDP(object):
 
         plt.show()    
         
-def test_box_grid():
-    
-    # 2-d example
-    
-    pts = box_grid(((-3,3),(-1,1)), (20,10),interior=True)
-    plt.figure()
-    plt.plot(pts[:,0],pts[:,1],'o')
-    plt.show()
-
 
 if __name__ == '__main__':    
     vdp = VDP()
