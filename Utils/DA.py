@@ -5,17 +5,11 @@ from pyaudi import gdual_double as gd
     
 def gradient(da, da_vars):
     """ da_vars is 1-d list/array with string names in the order the gradient should be given """
-    
-    da_syms = ['d'+x for x in da_vars if x in da.symbol_set]
-    da_vars = ['d'+x for x in da_vars]
-   
+     
     g = np.zeros(len(da_vars))
-    z = {(key):0 for key in da_syms}
-    for var in da_syms:
+    for var in da.symbol_set:
         ind = da_vars.index(var)
-        z[var] = 1
-        g[ind] = da.get_derivative(z)
-        z[var] = 0
+        g[ind] = da.partial(var).constant_cf
     return g
     
     
