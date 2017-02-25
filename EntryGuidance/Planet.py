@@ -1,4 +1,5 @@
-from numpy import exp
+from pyaudi import exp
+
 
 class Planet:
     def __init__(self, name='Mars', rho0=0, scaleHeight=0, model='exp'):
