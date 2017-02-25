@@ -20,7 +20,19 @@ def boxgrid(bounds, N, interior=False):
         bmax = np.array(bounds)[:,1]
         ikeep = []
         for i,pt in enumerate(grid_points):
-            if np.any( np.asarray(pt)-bmin == 0) or np.any( np.asarray(pt)-bmax == 0):
+            if np.any( pt-bmin == 0) or np.any( pt-bmax == 0):
                 ikeep.append(i)
         grid_points = grid_points[ikeep]        
     return grid_points
+    
+def test_boxgrid():
+    
+    # 2-d example
+    import matplotlib.pyplot as plt
+    pts = boxgrid(((-3,3),(-1,1)), (7,4),interior=True)
+    plt.figure()
+    plt.plot(pts[:,0],pts[:,1],'o')
+    plt.show()    
+    
+if __name__ == "__main__":
+    test_boxgrid()
