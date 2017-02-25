@@ -10,7 +10,7 @@ import sys
 from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 
-class Entry:
+class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
     
     def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, Powered = False):
