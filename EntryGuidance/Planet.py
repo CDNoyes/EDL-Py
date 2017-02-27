@@ -1,4 +1,4 @@
-from math import exp
+from pyaudi import exp
 
 
 class Planet:

@@ -1,4 +1,4 @@
-from numpy import sin, cos, tan
+from pyaudi import sin, cos, tan
 import numpy as np
 from functools import partial
 
@@ -6,7 +6,11 @@ from EntryVehicle import EntryVehicle
 from Planet import Planet
 from Filter import FadingMemory
 
-class Entry:
+import sys
+from os import path
+sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+
+class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
     
     def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, Powered = False):
@@ -119,9 +123,17 @@ class Entry:
         ''' Returns the full jacobian of the entry dynamics model. The dimension will be [nx, nx+nu].'''
         if self.__jacobian is None:
             from numdifftools import Jacobian
-            self.__jacobian = Jacobian(self.__dynamics(), method='complex')            
+            self.__jacobian = Jacobian(self.__dynamics())            #, method='complex'
         return self.__jacobian(np.concatenate((x,u)))
-        
+    
+    def jacobian_(self, x, u):
+        ''' try the pyaudi jacobian '''
+        from Utils import DA as da
+        vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
+        X = da.make(np.concatenate((x,u)), vars, 1, array=True)
+        f = self.__dynamics()(X)
+        return da.jacobian(f, vars)
+    
     def __dynamics(self):
         ''' Used in jacobian. Returns an object callable with a single combined state '''
         if self.powered:

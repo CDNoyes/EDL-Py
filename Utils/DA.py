@@ -5,18 +5,16 @@ from pyaudi import gdual_double as gd
     
 def gradient(da, da_vars):
     """ da_vars is 1-d list/array with string names in the order the gradient should be given """
-    da_vars = ['d'+x for x in da_vars]
+     
     g = np.zeros(len(da_vars))
-    z = {(key):0 for key in da_vars}
-    for ind,var in enumerate(da_vars):
-        z[var] = 1
-        g[ind] = da.get_derivative(z)
-        z[var] = 0
+    for var in da.symbol_set:
+        ind = da_vars.index(var)
+        g[ind] = da.partial(var).constant_cf
     return g
     
     
 def jacobian(da_array, da_vars):
-    return np.array([gradient(da,da_vars) for da in da_array])
+    return np.array([gradient(da, da_vars) for da in da_array])
     
 def hessian(da, da_vars):
     n = len(da_vars)
