@@ -8,6 +8,66 @@ from Triggers import DeployParachute, findTriggerPoint
 from InitialState import InitialState
 
 
+def HEPNR(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians(85.)):
+    """ A version of the 3 switch planner with no reversals planned (and thus only two switches). May be useful in schemes like Apollo. """
+    isScalar = False
+    bank = []
+    if isinstance(T,(float,int,np.float32,np.float64)):
+        T = [T]
+        isScalar = True
+
+    for t in T:
+        if t <= t1:
+            bank.append(minBank)
+        elif t > t1 and t <= t2:
+            bank.append(maneuver(t, t1, minBank,maxBank))
+        elif t > t2:
+            bank.append(maneuver(t, t2, maxBank,minBank))
+            
+    if isScalar:
+            try:
+                return bank[0]
+            except:
+                print "Bank angle comp failed"
+                return -1.
+    else:
+        return bank
+    
+def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=np.radians(5)):
+    """ Optimal maneuver from one bank angle to another subject to constraint on rate and acceleration. """
+    
+    dt = maxRate/maxAcc                                         # Amount of time to go from 0 bank rate to max or vice versa
+    tm = np.sqrt(np.abs(bank_current-bank_desired)/maxAcc)      # Amount of time to reach the midpoint of the maneuver assuming max acc the whole time
+    
+    if tm <= dt:        # No max rate because the angles are too close together
+        t1a = t0 + tm
+        t1v = t1a                                               # Never enter the middle phase 
+        t1d = t1a + tm
+        dbank = np.abs(bank_current-bank_desired)/2
+        maxRate = maxAcc*tm                                     # The maximum rate achieved during the maneuver
+    else:
+        dbank = 0.5*(maxRate**2)/maxAcc                         # Angle traversed during max accel for dt seconds
+        
+        t1a = t0 + dt
+        t1v = t0 + np.abs(bank_current-bank_desired)/maxRate
+        t1d = t1v + dt
+    
+    s = np.sign(bank_desired-bank_current)
+
+    if t >= t0 and t <= t1a:                                                # Max acceleration phase
+        bank = (bank_current + 0.5*s*maxAcc*(t-t0)**2)
+        
+    elif t > t1a and t <= t1v:                                              # Max velocity phase ( if present )
+        bank = (bank_current + s*dbank + s*maxRate*(t-t1a))
+        
+    elif t > t1v and t <= t1d:
+        bank = (bank_current + s*dbank + s*maxRate*(t-t1a) - s*0.5*maxAcc*(t-t1v)**2 ) # Max deceleration
+        
+    elif t > t1d:
+        bank = (bank_desired)                                               # Post-arrival
+    
+    return bank
+
 def HEPBankReduced(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians(85.)):
     maxRate = np.radians(20.)
     ti1 = t1 + 2*(maxBank)/maxRate
@@ -139,7 +199,7 @@ def HEPBankSmooth(T, t1, t2, t3, minBank=np.radians(15.), maxBank=np.radians(85.
     t1v = t1 + (minBank+maxBank)/maxRate
     t1d = t1v + dt
     
-    t2a = t2+dt                                             # Acceleration phase
+    t2a = t2 + dt                                           # Acceleration phase
     t2v = t2 + 2*maxBank/maxRate                            # Max velocity phase
     t2d = t2v + dt                                          # Max deceleration phase    #Future: check that this is less than t3
     
@@ -402,11 +462,34 @@ if __name__ == '__main__':
     # from Simulation import Simulation, Cycle, EntrySim
 
     # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    sim,sol = OptimizeSRP()
-    print sol.x
+    # sim,sol = OptimizeSRP()
+    # print sol.x
     # perturb = getUncertainty()['parametric']
     # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
     # print "RS cost of nominal optimized profile: {}".format(SRPCostRS(p, sim, perturb))
     # OptimizeSRPRS()
     
     # testExpansion()
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # t = np.linspace(9.8, 19,500)
+    t = np.linspace(0, 25,5000)
+    # b = HEPBankSmooth(t,10,50,200,minBank = np.radians(15.), maxBank = np.radians(85.))    
+    b = HEPNR(t,5,15,minBank = np.radians(15.), maxBank = np.radians(85.))    
+    # b = [maneuver(T, 0, np.radians(-80), np.radians(-80)) for T in t]
+    b = np.degrees(b)
+    
+    # t -= t[0]
+    # print 
+    # for deg in [3,9]:
+        # p = np.polyfit(t,b,deg)
+        # print p
+        # bp = np.polyval(p,t)
+        # plt.plot(t,np.abs(b-bp),'--',label=str(deg))
+    
+    
+    plt.plot(t,b,'k',label='Truth')
+    plt.legend(loc='best')
+    plt.show()
+    
