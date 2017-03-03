@@ -176,12 +176,15 @@ def plot_rp(output, reference, use_energy, use_drag_rate, fignum=None, title=Non
     drag_rate = drag*(-hdot/hs - 2*drag/vel - 2*g*hdot/vel**2)  
     if use_drag_rate:
         rp = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference)
-        rp_rate = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, a=0)
-        rp_drag = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, b=0)
+        rp_range = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, a=0,b=0)
+        rp_rate = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, a=0)-rp_range
+        rp_drag = predict_range_dr(vi, drag[iv:], drag_rate[iv:], reference, b=0)-rp_range
+        
     else:
         rp = predict_range(vi, drag[iv:], hdot[iv:], reference)
-        rp_rate = predict_range(vi, drag[iv:], hdot[iv:], reference, a=0)
-        rp_drag = predict_range(vi, drag[iv:], hdot[iv:], reference, b=0)
+        rp_range = predict_range(vi, drag[iv:], hdot[iv:], reference, a=0, b=0)
+        rp_rate = predict_range(vi, drag[iv:], hdot[iv:], reference, a=0) - rp_range
+        rp_drag = predict_range(vi, drag[iv:], hdot[iv:], reference, b=0) - rp_range
     
     if fignum is None:
         plt.figure()
@@ -195,8 +198,9 @@ def plot_rp(output, reference, use_energy, use_drag_rate, fignum=None, title=Non
     
     plt.plot(vi,rp-range[iv:],label=total_label) 
     if components:
-        plt.plot(vi,rp_rate-range[iv:],'--',label='rate component') 
-        plt.plot(vi,rp_drag-range[iv:],'--',label='drag component') 
+        plt.plot(vi,rp_rate,'--',label='rate component') 
+        plt.plot(vi,rp_drag,'--',label='drag component') 
+        plt.plot(vi,rp_range-range[iv:],'--',label='range component') 
     # plt.plot(vi[pos[iv:]],rp[pos[iv:]]-range[iv:][pos[iv:]],'o') 
     plt.xlabel('')
     plt.ylabel('Predicted range error (km)')
