@@ -1,7 +1,11 @@
-""" Utilities for working differential algebraic variables """
+""" Utilities for working with differential algebraic variables """
 
 import numpy as np
 from pyaudi import gdual_double as gd
+
+# TODO: This gradient gets the first derivative of a function wrt each variable.
+# Need to write a second that uses the polynomial differentiation method to obtain the gradient of the expansion?
+# Map inversion method?
     
 def gradient(da, da_vars):
     """ da_vars is 1-d list/array with string names in the order the gradient should be given """
@@ -18,26 +22,23 @@ def jacobian(da_array, da_vars):
     
 def hessian(da, da_vars):
     n = len(da_vars)
-    g = np.zeros((n,n))
     
-    if da.order < 2: # Return zeros if insufficient order 
-        return g
-        
-    da_vars = ['d'+x for x in da_vars]
+    # Get the gradient but without taking the constant term
+    g = np.zeros(len(da_vars), dtype=type(da))
+    for var in da.symbol_set:
+        ind = da_vars.index(var)
+        g[ind] = da.partial(var)
     
-    
-    z = {(key):0 for key in da_vars}
-    
-    # This will get the diagonal elements:
-    for ind,var in enumerate(da_vars):
-        z[var] = 2
-        g[ind,ind] = da.get_derivative(z)
-        z[var] = 0
+    # Now the hessian is simply the gradient of each element of the gradient
+    # h = np.zeros((n,n))
+    # for ind2,gda in enumerate(g):
+        # for var in da.symbol_set:
+            # ind1 = da_vars.index(var)
+            # h[ind1,ind2] == gda.partial(var).constant_cf
+
+    h = [gradient(gda,da_vars) for gda in g]    # This is nice but we can cut the work nearly in half
         
-    # Off diagonal elements:    
-        
-        
-    return g        
+    return np.array(h)        
 
 
 def const(da_array, array=False):
