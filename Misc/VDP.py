@@ -13,7 +13,15 @@ import time
 
 
 class VDP(object):
-    ''' A van der pol oscillator class '''
+    ''' A van der pol oscillator class.
+            This serves as a simple 2D testbed for research in dynamic systems.
+            The system is linear when the parameter mu is 0.
+            
+            The system dynamics have been augmented with the Perron-Frobenius operator for uncertainty propagation.
+            An analytical expression for the system jacobian is available. 
+            First order sensitivities are available in both forward (i.e. STM) and reverse (i.e. adjoint) methodologies.
+
+    '''
     
     def __init__(self):
         print "Initialized"
@@ -27,21 +35,30 @@ class VDP(object):
         
     def __pf__(self, x, mu):
         """ Perron-Frobenius operator dynamics """
-        return -mu*(1-x[0]**2)*x[2]
+        return -mu*(1-x[0]**2)*x[2];
             
     def __stm__(self, stm, t, x, mu):   
-        """ State-transition matrix dynamics """
+        """ State-transition matrix dynamics for forward sensitivity analysis """
         stm.shape = (3,3)
         A = self.__jacobian__(x(t), mu)
-        
         return np.dot(A,stm).flatten()
+        
+    def __adjoint__(self, costate, t, x, mu):
+        """ Adjoint dynamics for reverse sensitivity analysis """
+        A = self.__jacobian__(x(t), mu)
+        return np.dot(-A.T,costate)
         
     def simulate(self, sample, tf, p, return_stm=False):
         ''' Integrate a single sample. '''
         t = np.linspace(0,tf,161)
         x = odeint(self.__dynamics__, [sample[0],sample[1],p], t, args=(sample[2],))
-        stm = self.integrate_stm(t, x, sample[2])
+        
+        l = self.integrate_adjoint(t, x, sample[2])
+        
         if return_stm:
+            stm = self.integrate_stm(t, x, sample[2])
+            print l 
+            print stm[-1]
             return x, stm
         else:
             return x
@@ -53,6 +70,17 @@ class VDP(object):
         stm_vec = odeint(self.__stm__, stm0, t, args=(X,mu))
         
         return np.array([np.reshape(stm,(3,3)) for stm in stm_vec])
+        
+    def integrate_adjoint(self,t,x,mu):
+        """ Integrate the adjoint backward along a trajectory to determine sensitivity """
+        
+        I = np.eye(3) # Partial of each final state to the final state vector
+        # I[2,2] = 0
+        X = interp1d(t, x, kind='cubic', axis=0, bounds_error=False, assume_sorted=True,fill_value=(x[0],x[-1]))
+        
+        costates = [odeint(self.__adjoint__, x0, t[::-1], args=(X,mu))[-1] for x0 in I]
+        
+        return np.array(costates)
         
     def monte_carlo(self, samples, tf, pdf):
         ''' Performs a Monte Carlo. Samples is an (N,3) array-like of deltas [x1,x2,mu] '''
@@ -205,7 +233,7 @@ class VDP(object):
         tf = 0.5
         Mu = 1
         
-        samples = delta.sample(20000,'L').T
+        samples = delta.sample(200,'L').T
         # samples = box_grid(((2.7,3.3),(2.4,3.6)), N=50, interior=True)
         pdf = delta.pdf(samples.T)
         samples=np.append(samples,Mu*np.ones((samples.shape[0],1)),1)
