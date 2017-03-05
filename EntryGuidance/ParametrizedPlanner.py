@@ -2,7 +2,8 @@ import numpy as np
 import chaospy as cp
 from scipy.integrate import odeint
 from functools import partial
-
+# from pyaudi import abs, sqrt
+from numpy import abs, sqrt
 from EntryEquations import Entry
 from Triggers import DeployParachute, findTriggerPoint
 from InitialState import InitialState
@@ -12,7 +13,7 @@ def HEPNR(T,t1,t2,minBank = np.radians(15.), maxBank = np.radians(85.)):
     """ A version of the 3 switch planner with no reversals planned (and thus only two switches). May be useful in schemes like Apollo. """
     isScalar = False
     bank = []
-    if isinstance(T,(float,int,np.float32,np.float64)):
+    if not isinstance(T,(list,np.ndarray)):
         T = [T]
         isScalar = True
 
@@ -37,19 +38,19 @@ def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=n
     """ Optimal maneuver from one bank angle to another subject to constraint on rate and acceleration. """
     
     dt = maxRate/maxAcc                                         # Amount of time to go from 0 bank rate to max or vice versa
-    tm = np.sqrt(np.abs(bank_current-bank_desired)/maxAcc)      # Amount of time to reach the midpoint of the maneuver assuming max acc the whole time
+    tm = sqrt(abs(bank_current-bank_desired)/maxAcc)      # Amount of time to reach the midpoint of the maneuver assuming max acc the whole time
     
     if tm <= dt:        # No max rate because the angles are too close together
         t1a = t0 + tm
         t1v = t1a                                               # Never enter the middle phase 
         t1d = t1a + tm
-        dbank = np.abs(bank_current-bank_desired)/2
+        dbank = abs(bank_current-bank_desired)/2
         maxRate = maxAcc*tm                                     # The maximum rate achieved during the maneuver
     else:
         dbank = 0.5*(maxRate**2)/maxAcc                         # Angle traversed during max accel for dt seconds
         
         t1a = t0 + dt
-        t1v = t0 + np.abs(bank_current-bank_desired)/maxRate
+        t1v = t0 + abs(bank_current-bank_desired)/maxRate
         t1d = t1v + dt
     
     s = np.sign(bank_desired-bank_current)
@@ -322,22 +323,24 @@ def OptimizeSRP():
     x0 = InitialState()
 
     if 1:
-        # bounds = [(0,250),(100,350)]
-        bounds = [(0,250),(100,400),(100,550)]
+        bounds = [(0,250),(100,500)]
+        # bounds = [(0,250),(100,400),(100,550)]
         sol = differential_evolution(SRPCost,args = (sim,x0), bounds=bounds, tol=1e-1, disp=True, polish=False)
     else:
         sol = minimize(SRPCost,[ 165.4159422 ,  308.86420218,  399.53393904], args=(sim,x0), method='Nelder-Mead', tol=1e-5, options={'disp':True})
         
     # bankProfile = lambda **d: HEPBankReducedSmooth(d['time'],*sol.x)
-    bankProfile = lambda **d: HEPBankSmooth(d['time'], *sol.x, minBank=np.radians(30))
+    # bankProfile = lambda **d: HEPBankSmooth(d['time'], *sol.x, minBank=np.radians(30))
+    bankProfile = lambda **d: HEPNR(d['time'], *sol.x, minBank=np.radians(30))
     
-                                                 
+    print sol.x
     output = sim.run(x0,[bankProfile])
     
     sim.plot()
     sim.show()
     
     return sim,sol 
+    
 def SRPCost(p, sim, x0, sample=None):
 
     dr_target = 900
@@ -348,7 +351,8 @@ def SRPCost(p, sim, x0, sample=None):
     if J > 300:
         return J
     
-    bankProfile = lambda **d: HEPBankSmooth(d['time'],*p, minBank=np.radians(30))
+    # bankProfile = lambda **d: HEPBankSmooth(d['time'],*p, minBank=np.radians(30))
+    bankProfile = lambda **d: HEPNR(d['time'],*p, minBank=np.radians(30))
                                                 
     output = sim.run(x0,[bankProfile],sample)
 
@@ -359,7 +363,7 @@ def SRPCost(p, sim, x0, sample=None):
     dr = Xf[10]
     cr = Xf[11]
     
-    J = -hf + (0*(dr_target-dr)**2 + (cr_target-cr)**2)**0.5 
+    J = -hf + (0*(dr_target-dr)**2 + 0*(cr_target-cr)**2)**0.5 
 
     return J
 
@@ -462,7 +466,7 @@ if __name__ == '__main__':
     # from Simulation import Simulation, Cycle, EntrySim
 
     # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    # sim,sol = OptimizeSRP()
+    sim,sol = OptimizeSRP()
     # print sol.x
     # perturb = getUncertainty()['parametric']
     # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
@@ -470,6 +474,7 @@ if __name__ == '__main__':
     # OptimizeSRPRS()
     
     # testExpansion()
+    
     import matplotlib.pyplot as plt
     import numpy as np
     
@@ -489,7 +494,7 @@ if __name__ == '__main__':
         # plt.plot(t,np.abs(b-bp),'--',label=str(deg))
     
     
-    plt.plot(t,b,'k',label='Truth')
-    plt.legend(loc='best')
-    plt.show()
+    # plt.plot(t,b,'k',label='Truth')
+    # plt.legend(loc='best')
+    # plt.show()
     
