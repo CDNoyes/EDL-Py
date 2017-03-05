@@ -1,9 +1,13 @@
 from pyaudi import gdual_double as gd
+from pyaudi import gdual_vdouble as gdv
 from pyaudi import sin
+
 import sys
 from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 import Utils.DA as da
+from Utils.RK4 import RK4
+
 import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
@@ -53,8 +57,7 @@ class VDP(object):
         # Test the utilities for getting coefficieints
         stm = np.array([da.jacobian(xi, vars) for xi in x])
         
-        print x[-1]
-        print stm[-1]
+        # print stm[-1]
         
         # Test the evaluation method
         import chaospy as cp
@@ -75,7 +78,6 @@ class VDP(object):
         t_int = time.time()-t0
         
         err = np.linalg.norm(new_xf-new_xf_true,axis=1)
-        print err.shape
         print "Single propagation time:    {}".format(t_prop)
         print "Polynomial evaluation time: {}".format(t_eval)
         print "                            -------------------"
@@ -145,21 +147,7 @@ def test_smooth_bank():
     print da.gradient(F,['t'])
     # print da.hessian(F,['t'])
     
-def RK4(fun, x0, iv, args):
-    x = [np.array(x0)]
-    div = np.diff(iv)
-    for t,dt in zip(iv,div):
-        x.append(rk4_step(fun, t, x[-1], dt, args))
-    return np.array(x)
 
-def rk4_step(f, iv, x, h, args):
-    
-    k1 = f(x,          iv,       *args)
-    k2 = f(x+0.5*h*k1, iv+0.5*h, *args)
-    k3 = f(x+0.5*h*k2, iv+0.5*h, *args)
-    k4 = f(x+    h*k3, iv+h,     *args)  
-    
-    return x + h*(k1 + 2*k2 + 2*k3 + k4)/6.0
         
 if __name__ == "__main__":
     vdp = VDP()
