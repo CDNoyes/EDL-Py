@@ -7,10 +7,11 @@ from scipy.interpolate import interp1d
 # To do: Turn this into a class and use the init method to set the reference and probably also "get_heading". 
 # Then, replanning is simply a matter of running the optimizer from HEP, and recomputing the gains needed.
 
-def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, use_drag_rate=False, **kwargs):
+def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, use_drag_rate=False, use_lateral=True, **kwargs):
 
     if use_energy:
         IV = energy
+        dIV = -drag*velocity
     else:
         IV = velocity
         
@@ -23,20 +24,20 @@ def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, lo
         drag_rate = drag*(-alt_rate/hs - 2*drag/velocity - 2*g*sin(fpa)/velocity)    
         Rp = predict_range_dr(IV, drag, drag_rate, reference)  
     else:
-        Rp = predict_range(IV, drag, alt_rate, reference)  
+        Rp = predict_range(IV, drag, alt_rate, reference,b=1)  
 
         
     LoD_com = LoD_command(IV, rangeToGo/1000., Rp, reference)
     sigma = bank_command(lift/drag, LoD_com)   
     
     # Lateral logic here
-    if 1: # Bank corridor logic:
+    if use_lateral: # Bank corridor logic:
         if rangeToGo < 0:
             sign = np.sign(bank)
         else:
             sign = lateral(np.sign(bank), heading, latitude, longitude, heading_error, get_heading)
     else: # Reverse at same velocity/energy as the reference trajectory
-        sign = np.sign(reference['U'](IV))
+        sign = np.sign(reference['U'](IV+dIV*5.5))
             
     return np.clip(sigma, *bounds)*sign
     
@@ -77,8 +78,10 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     l1 = 1.0                # s
     l2 = 0.0                # v
     l3 = 0.0                # gamma
-    l4 = -1.0/tan(fpa[-1])  # h
+    l4 = 0*-1.0/tan(fpa[-1])  # h
     l5 = 0.0                # u
+    
+    L = [[l1,l2,l3,l4,l5]]
     
     hs = edl.planet.scaleHeight
     akm = 1000.0
@@ -127,10 +130,14 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         l3 -= dt*dl3
         l4 -= dt*dl4
         l5 -= dt*dl5
-    
+        L.append([l1,l2,l3,l4,l5]) # This is just to keep them for plotting
+        
     # import matplotlib.pyplot as plt
     # plt.figure()
-    # plt.plot(eref,f2)
+    # plt.plot(eref[0:iv],f1[0:iv],label='D')
+    # plt.plot(eref[0:iv],f2[0:iv],label='h-dot')
+    # plt.plot(eref[0:iv],f3[0:iv],label='u')
+    # plt.legend(loc='best')
     # plt.show()
     # build the output dictionary
     if use_energy:
@@ -200,7 +207,7 @@ def plot_rp(output, reference, use_energy, use_drag_rate, fignum=None, title=Non
     if components:
         plt.plot(vi,rp_rate,'--',label='rate component') 
         plt.plot(vi,rp_drag,'--',label='drag component') 
-        plt.plot(vi,rp_range-range[iv:],'--',label='range component') 
+        plt.plot(vi,-range[iv:]+rp_range,'--',label='range component') 
     # plt.plot(vi[pos[iv:]],rp[pos[iv:]]-range[iv:][pos[iv:]],'o') 
     plt.xlabel('')
     plt.ylabel('Predicted range error (km)')
@@ -242,3 +249,146 @@ def C3(x):
     return np.array([[np.cos(x), np.sin(x), 0],
                      [-np.sin(x), np.cos(x), 0],                   
                      [0, 0, 1]])
+                     
+                     
+def ctrb():
+    """ For a given reference trajectory (and therefore a fixed set of Apollo gains), 
+        computes the (vel, fpa) subset of the controllable set to the target downrange.
+        Trajectories terminate at the target downrange unless either the maximum altitude 
+        or maximum velocity constraints are violated.
+    
+    """
+    from Simulation import Simulation, Cycle, EntrySim, SRP
+    from ParametrizedPlanner import HEPBankSmooth
+    import HeadingAlignment as headAlign
+    from Triggers import SRPTrigger, AccelerationTrigger
+    from Uncertainty import getUncertainty
+    from InitialState import InitialState
+    from MPC import constant
+    
+    from functools import partial
+    from numpy import pi
+    from scipy.io import savemat
+    
+     # Plan the nominal profile:
+    reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    bankProfile = lambda **d: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609], minBank=np.radians(30))
+                                                
+    x0 = InitialState()
+    output = reference_sim.run(x0,[bankProfile])
+
+    references = reference_sim.getRef()
+    drag_ref = references['drag']
+    use_energy=True
+    use_drag_rate=False
+    use_lateral=True
+    aeg_gains = gains(reference_sim,use_energy=use_energy, use_drag_rate=use_drag_rate)
+    
+    # Create the full simulation model:
+    states = ['PreEntry','RangeControl']
+    conditions = [AccelerationTrigger('drag',2), SRPTrigger(0.5,700,10)]
+    input = { 'states' : states,
+              'conditions' : conditions }
+              
+    sim = Simulation(cycle=Cycle(1), output=False, **input)
+
+    # Create the guidance laws
+    get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]), lon_target=np.radians(output[-1,5]))
+    pre = partial(constant, value=bankProfile(time=0))
+    aeg = partial(controller, reference=aeg_gains,bounds=(0.5*pi/9.,pi/1.25), get_heading=get_heading,
+                  use_energy=use_energy, use_drag_rate=use_drag_rate, use_lateral=use_lateral) 
+
+    controls = [pre, aeg]
+    
+    # Run the simulations
+    perturb = getUncertainty()['parametric']
+    sample = None 
+    s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
+
+    rtg_limit = 1000 # meters
+    max_iter = 12
+    tol = 0.05
+    theta = np.linspace(0, 2*pi*0.98, 100)
+    # theta = [3*pi/2]
+    ctrb_set = []
+    count = 0
+    for a,b in zip(np.sin(theta),np.cos(theta)):
+        print "Direction {}/{}".format(count,len(theta))
+        count += 1
+        iter = 0
+        scale = 0.5
+
+        # for each direction defined by theta, find the maximum value of s such that the final range to go is less than the defined limit    
+        # First we need to bracket it
+        rtg_final = rtg_limit-1
+        while np.abs(rtg_final) < rtg_limit:
+            scale += 0.5
+            iter += 1
+            dv = 100*a*scale
+            dfpa = 0.15*b*scale
+            x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+dv, fpa=np.radians(-14.15 + dfpa)) 
+            output = sim.run(x0_full, controls, sample, FullEDL=True)
+            rtg_final = sim.x[6]
+            
+        print "Bracketing completed in {} iterations".format(iter)    
+        print "Upper bound in dir [{},{}] = {}".format(a,b,scale)
+
+        
+        # Now we refine it until s_max-s_min < tol
+        if iter>1:
+            scale_min = scale-0.5
+        else:
+            scale_min = 0
+        scale_max = scale
+        iter = 0
+        diff = scale_max-scale_min
+        
+        while diff > tol and iter < max_iter:
+            scale = 0.5*(scale_min + scale_max)
+
+            iter += 1
+            dv = 100*a*scale
+            dfpa = 0.15*b*scale
+            x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+dv, fpa=np.radians(-14.15 + dfpa)) 
+            output = sim.run(x0_full, controls, sample, FullEDL=True)
+            rtg_final = sim.x[6]
+            if np.abs(rtg_final) < rtg_limit:
+                scale_min = scale
+            else:
+                scale_max = scale
+            
+            diff = scale_max-scale_min
+        print "Refining terminated in {} iterations".format(iter)    
+        print "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max)
+        print "delta V0 = {}".format(dv) 
+        print "delta efpa = {}".format(dfpa)     
+        ctrb_set.append([dv,dfpa])
+        savemat('./data/Apollo_CTRB.mat', {'delta':ctrb_set})
+        
+        
+def plot_ctrb(file):
+    from scipy.io import loadmat
+    import matplotlib.pyplot as plt 
+    data = loadmat(file)
+    d = np.array(data['delta'])
+    plt.figure()
+    # plt.scatter(d[:,0],d[:,1])
+    plt.plot(d[:,0],d[:,1],'*--')
+    plt.xlabel('Change in initial velocity (m/s)')
+    plt.ylabel('Change in entry flight path angle (deg)')
+    plt.show()
+    
+if "__main__" == __name__:
+    # ctrb()
+    # plot_ctrb(file='./data/Apollo_CTRB_50_1km.mat')
+    
+    from numpy import pi
+    theta = np.linspace(0, 2*pi*0.98, 100)
+   
+    dv = 100*sin(theta)
+    dfpa = 0.15*cos(theta)
+    import matplotlib.pyplot as plt 
+    
+    plt.plot(dv,dfpa,'o--')
+    plt.plot(dv*1.1,dfpa*1.1,'o--')
+    plt.show()
