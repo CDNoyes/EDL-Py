@@ -10,3 +10,7 @@ A version controlled log of data sets. Perhaps an excel document or something fo
 2/11/17 - MC_Apollo_1000_K1_energy_no_drag_dr - Uses exclusively drag rate (and range to go) in feedback, neglecting the drag portion
 
 2/24/17 - Box_3sig_Apollo_K1_energy - The 16 vertices of the 4-uncertain parameters evaluted at their 3-sigma values
+
+3/30/17 - Apollo_CTRB_50_1km - Controllable set estimation for a fixed reference trajectory. Reference bank: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609], minBank=np.radians(30))
+                               Maximum downrange to be considered in the set is 1 km, and 50 pts were used to estimate the boundary.
+        - Apollo_CTRB_100_1km
