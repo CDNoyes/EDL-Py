@@ -43,11 +43,19 @@ def InitialState(full_state=False, **kwargs):
     x0 = [r0, theta0, phi0, v0, gamma0, psi0, s0, m0]
     
     for key in kwargs:
-        x0[ind[key]] = kwargs[key]
+        try:
+            x0[ind[key]] = kwargs[key]
+        except:
+            pass
+        
+    if 'bank' in kwargs:
+        bank = kwargs['bank']
+    else:
+        bank = radians(-30)
         
     if full_state:
 
-        return array(x0*2 + [1,1] + [radians(-30),0])
+        return array(x0*2 + [1,1] + [bank,0])
     else:    
         return array(x0)
         
