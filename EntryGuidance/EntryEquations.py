@@ -110,6 +110,9 @@ class Entry(object):
         else:
             return r-self.planet.radius
             
+    def radius(self, h):
+            return h + self.planet.radius
+            
     def energy(self, r, v, Normalized=True):
         """ Computes the current energy at a given radius and velocity. """
         
@@ -156,6 +159,8 @@ class Entry(object):
             L[i] = f*cL*self.lift_ratio
             D[i] = f*cD*self.drag_ratio
         return L,D
+    def gravity(self, r):
+        return self.planet.mu/r**2
         
 def EDL(InputSample=np.zeros(4)):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
