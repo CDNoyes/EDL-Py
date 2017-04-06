@@ -28,7 +28,7 @@ class Planet:
             
             if model is 'exp':
                 self.rho0 = (1+rho0)*0.0158
-                self.scaleHeight = (1+scaleHeight)*9345.5
+                self.scaleHeight = (1+scaleHeight)*9354.5
                 self.atmosphere = self.__exp_model_mars            
         
             else:
