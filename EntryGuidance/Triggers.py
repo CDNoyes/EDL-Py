@@ -12,7 +12,9 @@ class Trigger(object):
     def __call__(self, input):
         return self.__trigger(**input)
 
-
+    def update_info(self, info):
+        self.__info = info
+        
     def dump(self):
         print self.__info
 
@@ -94,9 +96,12 @@ class SRPTrigger(Trigger):
     def __Trigger(self, altitude, velocity, rangeToGo, **kwargs):
         if altitude <= self.__at: # Force ignition if too low
             self.__info = 'SRP phase triggered due to altitude constraint'
+            super(SRPTrigger,self).update_info('SRP phase triggered due to altitude constraint')
             return True
         if rangeToGo <= self.__rtg and velocity<=self.__vt: # Ignite if slow enough and we reached the target DR
-            self.__info = 'SRP phase triggered due because range to go is 0 and velocity is slow enough'
+            self.__info = 'SRP phase triggered due because range to go is < {} m and velocity < {} m/s'.format(self.__rtg,self.__vt)
+            super(SRPTrigger,self).update_info('SRP phase triggered due because range to go is < {} m and velocity < {} m/s'.format(self.__rtg,self.__vt))
+
             return True
         return False
         
