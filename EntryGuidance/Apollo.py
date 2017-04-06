@@ -37,7 +37,8 @@ def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, lo
         else:
             sign = lateral(np.sign(bank), heading, latitude, longitude, heading_error, get_heading)
     else: # Reverse at same velocity/energy as the reference trajectory
-        sign = np.sign(reference['U'](IV+dIV*5.5))
+        # sign = np.sign(reference['U'](IV+dIV*5.5))
+        sign = np.sign(bank)
             
     return np.clip(sigma, *bounds)*sign
     
@@ -281,8 +282,22 @@ def ctrb():
     drag_ref = references['drag']
     use_energy=True
     use_drag_rate=False
-    use_lateral=True
+    use_lateral=False       # Bank reversals?
+    perturb_params=True     # Perturb IC or model params?
+    perturb_atm=False       # Perturb atm or aero?
     aeg_gains = gains(reference_sim,use_energy=use_energy, use_drag_rate=use_drag_rate)
+    # Prepare text for file name
+    if use_lateral:
+        lat_text = ''
+    else:
+        lat_text = '_NR'
+    if perturb_params:
+        if perturb_atm:
+            type = '_atm'
+        else:
+            type = '_aero'
+    else:
+        type = ''
     
     # Create the full simulation model:
     states = ['PreEntry','RangeControl']
@@ -305,10 +320,10 @@ def ctrb():
     sample = None 
     s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
 
-    rtg_limit = 1000 # meters
+    rtg_limit = 500 # meters
     max_iter = 12
     tol = 0.05
-    theta = np.linspace(0, 2*pi*0.98, 100)
+    theta = np.linspace(0, 2*pi*0.99, 100)
     # theta = [3*pi/2]
     ctrb_set = []
     count = 0
@@ -323,10 +338,19 @@ def ctrb():
         rtg_final = rtg_limit-1
         while np.abs(rtg_final) < rtg_limit:
             scale += 0.5
+            print "Iteration: {}".format(iter)
             iter += 1
-            dv = 100*a*scale
-            dfpa = 0.15*b*scale
-            x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+dv, fpa=np.radians(-14.15 + dfpa)) 
+            if not perturb_params:
+                dv = 100*a*scale
+                dfpa = 0.15*b*scale
+                x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+dv, fpa=np.radians(-14.15 + dfpa)) 
+            else:
+                x0_full = InitialState(1,range=s0)
+                if perturb_atm:
+                    sample = [0,0,0.2*a*scale,0.05*b*scale] # Modify density parameters
+                else:
+                    sample = [0.4*a*scale,0.4*b*scale,0,0] # Modify lift and drag
+                
             output = sim.run(x0_full, controls, sample, FullEDL=True)
             rtg_final = sim.x[6]
             
@@ -347,9 +371,16 @@ def ctrb():
             scale = 0.5*(scale_min + scale_max)
 
             iter += 1
-            dv = 100*a*scale
-            dfpa = 0.15*b*scale
-            x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+dv, fpa=np.radians(-14.15 + dfpa)) 
+            if not perturb_params:
+                dv = 100*a*scale
+                dfpa = 0.15*b*scale
+                x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+dv, fpa=np.radians(-14.15 + dfpa)) 
+            else:    
+                x0_full = InitialState(1,range=s0)
+                if perturb_atm:
+                    sample = [0,0,0.2*a*scale,0.05*b*scale] # Modify density parameters
+                else:
+                    sample = [0.4*a*scale,0.4*b*scale,0,0] # Modify lift and drag
             output = sim.run(x0_full, controls, sample, FullEDL=True)
             rtg_final = sim.x[6]
             if np.abs(rtg_final) < rtg_limit:
@@ -358,37 +389,63 @@ def ctrb():
                 scale_max = scale
             
             diff = scale_max-scale_min
-        print "Refining terminated in {} iterations".format(iter)    
-        print "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max)
-        print "delta V0 = {}".format(dv) 
-        print "delta efpa = {}".format(dfpa)     
-        ctrb_set.append([dv,dfpa])
-        savemat('./data/Apollo_CTRB.mat', {'delta':ctrb_set})
+        
+        if perturb_params:
+            print "Refining terminated in {} iterations".format(iter)    
+            print "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max)
+            if perturb_atm:
+                print "delta rho0 = {}".format(sample[2]) 
+                print "delta hs = {}".format(sample[3])     
+
+            else:
+                print "delta Cd = {}".format(sample[0]) 
+                print "delta Cl = {}".format(sample[1])     
+            print "\n"
+            ctrb_set.append(sample)
+        else:
+            print "Refining terminated in {} iterations".format(iter)    
+            print "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max)
+            print "delta V0 = {}".format(dv) 
+            print "delta efpa = {}".format(dfpa)     
+            print "\n"
+            ctrb_set.append([dv,dfpa])
+    
+
+        savemat('./data/Apollo_CTRB_{}_{}m{}{}.mat'.format(len(theta),rtg_limit,type,lat_text), {'delta':ctrb_set})
         
         
-def plot_ctrb(file):
+def plot_ctrb(file, figure=True, show=True):
     from scipy.io import loadmat
     import matplotlib.pyplot as plt 
     data = loadmat(file)
     d = np.array(data['delta'])
-    plt.figure()
-    # plt.scatter(d[:,0],d[:,1])
-    plt.plot(d[:,0],d[:,1],'*--')
-    plt.xlabel('Change in initial velocity (m/s)')
-    plt.ylabel('Change in entry flight path angle (deg)')
-    plt.show()
+    if figure:
+        plt.figure()
+    
+    if 'aero' in file:
+        plt.xlabel('delta CD')
+        plt.ylabel('delta CL')
+        LoD = [0.15, 0.18, 0.21, 0.24, 0.27, 0.30]
+        cd = np.linspace(d[:,0].min(),d[:,0].max())
+        for lod in LoD:
+            plt.plot(cd,lod*cd,label='{}'.format(lod))
+        plt.legend()   
+    elif 'atm' in file:
+        plt.plot(d[:,2],d[:,3],'*--')
+
+        plt.xlabel('delta rho0')
+        plt.ylabel('delta hs')   
+    else:
+        plt.plot(d[:,0],d[:,1],'*--')
+
+        plt.xlabel('Change in initial velocity (m/s)')
+        plt.ylabel('Change in entry flight path angle (deg)')
+    if show:
+        plt.show()
     
 if "__main__" == __name__:
     # ctrb()
-    # plot_ctrb(file='./data/Apollo_CTRB_50_1km.mat')
+    # plot_ctrb(file='./data/Apollo_CTRB_100_500m_NR.mat',show=False)
+    # plot_ctrb(file='./data/Apollo_CTRB_150_500m.mat',figure=False)
+    plot_ctrb(file='./data/Apollo_CTRB_100_500m_atm_NR.mat')
     
-    from numpy import pi
-    theta = np.linspace(0, 2*pi*0.98, 100)
-   
-    dv = 100*sin(theta)
-    dfpa = 0.15*cos(theta)
-    import matplotlib.pyplot as plt 
-    
-    plt.plot(dv,dfpa,'o--')
-    plt.plot(dv*1.1,dfpa*1.1,'o--')
-    plt.show()
