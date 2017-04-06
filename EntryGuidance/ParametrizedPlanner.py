@@ -2,9 +2,11 @@ import numpy as np
 import chaospy as cp
 from scipy.integrate import odeint
 from functools import partial
+import matplotlib.pyplot as plt
+
 # from pyaudi import abs, sqrt
 from numpy import abs, sqrt
-from EntryEquations import Entry
+from EntryEquations import Entry, EDL
 from Triggers import DeployParachute, findTriggerPoint
 from InitialState import InitialState
 
@@ -438,7 +440,178 @@ def ExpandBank():
         hepPCE = cp.fit_regression(polynomials, nodes, samples,rule='T')
     return hepPCE
 
+def DragProfile(n, m):
+    ''' Uses symbolic math to simplify the drag profile prior to use in DragPlanner 
+        n is the degree of approximating polynomial
+        m is the number of mesh splits - i.e. m=1 means two polynomials of order are used
+    '''
+    import sympy as sym
+    
 
+    coeff, Ak, Bk = DragKnots(n,m)
+    Abc, Bbc = DragBC(n,m)
+       
+    # Concatenate these matrices to form the complete set of linear constraints
+    A = sym.Matrix(Ak+Abc)
+    B = sym.Matrix(Bk+Bbc)
+    print A 
+    print B
+    
+    s = sym.linsolve((A,B),coeff)
+    print s
+    
+def DragBC(n, m):
+    ''' Sets up symbolic math for the two altitude boundary conditions '''
+    import sympy as sym
+    ds = sym.symbols(['d{}'.format(i) for i in range(1,n+1)])
+    # v = sym.Symbol('v')
+    v0 = sym.Symbol('v0')
+    vf = sym.Symbol('vf')
+    
+    D0 = sym.Symbol('D0')
+    Df = sym.Symbol('Df')
+    
+    A0 = [v0**i for i in range(1,n+1)] + [0]*n*m
+    Af = [0]*n*m + [vf**i for i in range(1,n+1)]
+    A = [A0,Af]
+    b = [D0,Df]
+    
+    return A,b
+    
+    
+def DragKnots(n=6, m=1):
+    ''' Solves the linear system defining the continuity conditions at a knot point. '''
+
+    import sympy as sym
+
+    ds = sym.symbols(['d{}'.format(i) for i in range(1,2*n+1)])
+    vs = sym.Symbol('vs') # split velocity
+    
+    if m == 0:
+        return ds, [], []
+        
+    A1p = [vs**i for i in range(1,n+1)]
+    A1n = [-a for a in A1p]
+    A1 = A1p + A1n
+    A2 = [sym.diff(a,vs) for a in A1]
+    A3 = [sym.diff(a,vs) for a in A2]
+    A = [A1,A2,A3]
+    b = [0]*3
+    
+    # print len(ds)
+    # s = sym.linsolve((A,b),ds)
+    # print s
+    return ds, A, b
+    
+def DragPlanner():
+    # from scipy.integrate import cumtrapz
+    from Utils.trapz import cumtrapz
+    from pyaudi import gdual_double as gd
+    from InitialState import InitialState
+    from Utils import DA as da
+    edl = EDL()
+    x0 = InitialState()
+    
+    # vars = ['D1','D2','D3','D4','D5']
+    # vals = (-8.2931,9.7341,-1.5803,0.1057,-0.0033)
+    # D0 = 4.2643
+    vals = '1.30575967020474e-07	-1.41198624451222e-05	0.000600124327551634	-0.0138971614274694	0.198664313828484	-1.85640234286750	11.6152838992996	-48.8247269033992	136.234831743230	-246.631224418153	281.651083129391	-177.907118367548'
+    vals = [float(v) for v in vals.split()[::-1]]
+    D0 = 50.0267
+    
+    use_da = True
+    if use_da:
+        from pyaudi import log, asin, acos, sin, cos
+
+        vars = ['D{}'.format(i+1) for i in range(len(vals))]
+        
+        bounds = [(-0.6,0.1),(-1,6),(-26,6),(-15,41),(-13,18)]
+        das = [gd(val,x,2) for x,val in zip(vars,vals)]
+    else:
+        from numpy import log, sin, cos
+        from numpy import arcsin as asin
+        from numpy import arccos as acos
+        das = vals
+        
+    # Get the independent variable and corresponding drag profile
+    Vf = 470  # Final velocity is sort of a design variable as well.
+    V0 = 5400 # Velocity is not monotonic from V0 so this is the second time that the velocity reaches V0
+    V = np.linspace(Vf, V0, 500)
+    Vscaled = V/500
+    M = V/235 # Assume M is linear in V, decent approximation. This could work instead of Vscaled
+    D = D0
+    for i,val in enumerate(vals):
+        D += das[i]*Vscaled**(i+1)
+        
+    # Estimate altitude and energy
+    cd,cl = edl.vehicle.aerodynamic_coefficients(M)
+    L = cl*D/cd
+    beta = edl.vehicle.BC(mass=x0[7], Mach=M)
+    if use_da:
+        h = np.array([-edl.planet.scaleHeight*log(2*Dd*betad/(Vd**2)/edl.planet.rho0) for Dd,Vd,betad in zip(D,V,beta)])
+    else:
+        h = -edl.planet.scaleHeight*log(2*D*beta/(V**2)/edl.planet.rho0)
+    r = edl.radius(h)
+    E = edl.energy(r, V, False)
+    
+    # Get the remaining quantities (range, fpa, bank)
+    dh = np.diff(h)
+    dE = np.diff(E)
+    sfpa = -(dh/dE)*D[:-1]
+    
+    if use_da:
+        fpa = np.array([asin(sfpa_) for sfpa_ in sfpa])
+        cfpa = np.array([cos(fpa_) for fpa_ in fpa])
+    else:
+        fpa = asin(sfpa)
+        cfpa = cos(fpa)
+        
+    dfpa = np.diff(fpa)
+    cbank = ( (dfpa/dE[1:]) + cfpa[1:]/r[2:]/V[2:]/D[2:] - edl.gravity(r)[2:]*cfpa[1:]/(D[2:]*V[2:]**2) )*(-D[2:]*V[2:]**2/L[2:])
+    if use_da:
+        bank = np.array([acos(c) for c in np.clip(da.const(cbank,array=True),0,1)])
+    else:
+        bank = acos(np.clip(cbank,0,1))
+    
+    downrange = cumtrapz(-cfpa/D[:-1], E[:-1], initial=0)
+    downrange -= downrange[-1]
+    
+    if use_da:
+        plt.figure()
+        plt.plot(V,da.const(h, array=True)/1000,'k--')
+        pts = np.random.random([20,5])
+        for i in range(pts.shape[1]):
+            # pts[:,i] = bounds[i][0] + pts[:,i]*bounds[i][1] 
+            pts[:,i] *= vals[i]/(100)        # each component can vary by 1% of the nominal value
+        hnew = da.evaluate(h, vars, pts)
+        for hn in hnew:
+            if hn.max() < 90e3:
+                plt.plot(V, hn/1000)
+        # print hnew.shape
+        plt.figure()
+        plt.plot(V[1:], da.const(downrange/1000, array=True),'k--')
+        # snew = da.evaluate(downrange, vars, pts)
+        # for sn in snew:
+            # plt.plot(V[1:], sn/1000)
+        # plt.plot(da.const(E[1:]), da.const(fpa, array=True)*180/np.pi)
+        # plt.figure()
+        plt.plot(V[1:], da.const(fpa, array=True)*180/np.pi)
+        # plt.figure()
+        # plt.plot(V[2:], da.const(cbank, array=True))
+    else:
+        plt.figure()
+        plt.plot(V,h/1000)
+        plt.figure()
+        plt.plot(V[:-1],downrange/1000)
+        # plt.plot(E[:-1],downrange/1000)
+    plt.figure()
+    plt.plot(V[2:], bank*180/np.pi)
+
+    plt.show()
+
+    
+    # TODO: evaluate expansions at various design points based on gradient and hessian info
+    
 def testExpansion():
     '''
     Conclusions from running this over and over with different inputs:
@@ -466,7 +639,7 @@ if __name__ == '__main__':
     # from Simulation import Simulation, Cycle, EntrySim
 
     # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    sim,sol = OptimizeSRP()
+    # sim,sol = OptimizeSRP()
     # print sol.x
     # perturb = getUncertainty()['parametric']
     # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])
@@ -474,16 +647,18 @@ if __name__ == '__main__':
     # OptimizeSRPRS()
     
     # testExpansion()
-    
-    import matplotlib.pyplot as plt
-    import numpy as np
+    DragProfile(5,1)
+    # DragKnots()
+    # DragPlanner()
+    # 
+    # import numpy as np
     
     # t = np.linspace(9.8, 19,500)
-    t = np.linspace(0, 25,5000)
+    # t = np.linspace(0, 25,5000)
     # b = HEPBankSmooth(t,10,50,200,minBank = np.radians(15.), maxBank = np.radians(85.))    
-    b = HEPNR(t,5,15,minBank = np.radians(15.), maxBank = np.radians(85.))    
+    # b = HEPNR(t,5,15,minBank = np.radians(15.), maxBank = np.radians(85.))    
     # b = [maneuver(T, 0, np.radians(-80), np.radians(-80)) for T in t]
-    b = np.degrees(b)
+    # b = np.degrees(b)
     
     # t -= t[0]
     # print 
