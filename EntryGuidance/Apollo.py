@@ -445,7 +445,7 @@ def plot_ctrb(file, figure=True, show=True):
     
 if "__main__" == __name__:
     # ctrb()
-    # plot_ctrb(file='./data/Apollo_CTRB_100_500m_NR.mat',show=False)
-    # plot_ctrb(file='./data/Apollo_CTRB_150_500m.mat',figure=False)
-    plot_ctrb(file='./data/Apollo_CTRB_100_500m_atm_NR.mat')
+    plot_ctrb(file='./data/Apollo_CTRB_100_500m_NR.mat',show=False)
+    plot_ctrb(file='./data/Apollo_CTRB_150_500m.mat',figure=False)
+    # plot_ctrb(file='./data/Apollo_CTRB_100_500m_atm_NR.mat')
     

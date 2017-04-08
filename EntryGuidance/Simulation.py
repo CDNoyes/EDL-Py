@@ -1,4 +1,9 @@
-import os, sys, inspect
+import sys
+from os import path
+sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+from Utils.RK4 import RK4
+
+
 import numpy as np
 from scipy.integrate import odeint, trapz
 from scipy import linalg
@@ -39,7 +44,7 @@ class Simulation(Machine):
         
     '''
     
-    def __init__(self, states, conditions, cycle=None, output=True, find_transitions=True):
+    def __init__(self, states, conditions, cycle=None, output=True, find_transitions=True, use_da=False):
 
         if len(states) != len(conditions):
             raise ValueError("Number of fsm states must equal number of transition conditions.")
@@ -53,6 +58,7 @@ class Simulation(Machine):
         self.__states = states
         self.__output = output
         self.__find_transitions = find_transitions
+        self.__use_da = use_da
         
         self.cycle = cycle          # The guidance cycle governing the simulation. Data logging and control updates occur every cycle.duration seconds while trigger checking happens 10x per cycle
         self.time = 0.0             # Current simulation time
@@ -75,11 +81,13 @@ class Simulation(Machine):
             transitions[0]['after'] = 'bank_reversal'
         except:
             pass
+            
         try:
             iSRP = states.index('SRP')
             transitions[iSRP-1]['after'] = 'ignite'
         except:
             pass
+            
         Machine.__init__(self, model=None, states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
     
@@ -105,15 +113,18 @@ class Simulation(Machine):
             throttle = 0.
             mu = 0.
             
-            
-        X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,10))
+        if self.__use_da:
+            X = RK4(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
+        else:    
+            X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
 
         
-    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1)):
+    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10):
         """ Runs the simulation from a given a initial state, with the specified controllers in each phase, and using a chosen sample of the uncertainty space """
         
         self.reset()
+        self.spc = StepsPerCycle
         
         if InputSample is None:
             InputSample = np.zeros(4)
@@ -142,6 +153,7 @@ class Simulation(Machine):
         self.control_history.append(self.u)                     # So that the control history has the same length as the data;
         self.control_history = np.vstack(self.control_history[1:]) 
         
+        # print self.x[0]
         return self.postProcess()
 
        
@@ -257,7 +269,11 @@ class Simulation(Machine):
         
     
     def postProcess(self):
-
+        if self.__use_da:
+            from Utils.DA import degrees, radians
+        else:
+            from numpy import degrees, radians
+            
         if self.fullEDL:
             bank_cmd = np.degrees(self.control_history[:,0])
 
@@ -290,15 +306,16 @@ class Simulation(Machine):
         
             data = np.c_[self.times, energy, bank_cmd, h,   r,      theta,       phi,      v,         gamma,     psi,       range,     L,      D,
                                      energy_nav, bank, h_nav, r_nav, theta_nav,  phi_nav,  v_nav,     gamma_nav, psi_nav,   range_nav, L_nav,  D_nav]
+                                     
         else:
-            bank_cmd = np.degrees(self.control_history[:,0])
+            bank_cmd = degrees(self.control_history[:,0])
 
-            r,theta,phi = self.history[:,0], np.degrees(self.history[:,1]), np.degrees(self.history[:,2])
-            v,gamma,psi = self.history[:,3], np.degrees(self.history[:,4]), np.degrees(self.history[:,5])
+            r,theta,phi = self.history[:,0], degrees(self.history[:,1]), degrees(self.history[:,2])
+            v,gamma,psi = self.history[:,3], degrees(self.history[:,4]), degrees(self.history[:,5])
             s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
             
             x0 = self.history[0,:]
-            range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=np.radians(lon),latc=np.radians(lat),km=True) for lon,lat in zip(theta,phi)]
+            range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=radians(lon),latc=radians(lat),km=True) for lon,lat in zip(theta,phi)]
             energy = self.edlModel.energy(r,v,Normalized=False)
                 
             h = [self.edlModel.altitude(R,km=True) for R in r]
@@ -592,6 +609,12 @@ def EntrySim():
     trigger = [VelocityTrigger(500)]
     # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
+    
+def TimedSim(time=30):
+    from Triggers import TimeTrigger
+    states = ['Entry']
+    trigger = [TimeTrigger(time)]
+    return {'states':states, 'conditions':trigger}    
     
 def testSim():
 

@@ -4,8 +4,8 @@ from scipy.integrate import odeint
 from functools import partial
 import matplotlib.pyplot as plt
 
-# from pyaudi import abs, sqrt
-from numpy import abs, sqrt
+from pyaudi import abs, sqrt
+# from numpy import abs, sqrt
 from EntryEquations import Entry, EDL
 from Triggers import DeployParachute, findTriggerPoint
 from InitialState import InitialState
@@ -40,9 +40,9 @@ def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=n
     """ Optimal maneuver from one bank angle to another subject to constraint on rate and acceleration. """
     
     dt = maxRate/maxAcc                                         # Amount of time to go from 0 bank rate to max or vice versa
-    tm = sqrt(abs(bank_current-bank_desired)/maxAcc)      # Amount of time to reach the midpoint of the maneuver assuming max acc the whole time
+    tm = sqrt(abs(bank_current-bank_desired)/maxAcc)            # Amount of time to reach the midpoint of the maneuver assuming max acc the whole time
     
-    if tm <= dt:        # No max rate because the angles are too close together
+    if tm <= dt:                                                # No max rate because the angles are too close together
         t1a = t0 + tm
         t1v = t1a                                               # Never enter the middle phase 
         t1d = t1a + tm
@@ -55,7 +55,8 @@ def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=n
         t1v = t0 + abs(bank_current-bank_desired)/maxRate
         t1d = t1v + dt
     
-    s = np.sign(bank_desired-bank_current)
+    # s = np.sign(bank_desired-bank_current)
+    s = (bank_desired-bank_current)/abs(bank_desired-bank_current)
 
     if t >= t0 and t <= t1a:                                                # Max acceleration phase
         bank = (bank_current + 0.5*s*maxAcc*(t-t0)**2)
@@ -443,64 +444,132 @@ def ExpandBank():
 def DragProfile(n, m):
     ''' Uses symbolic math to simplify the drag profile prior to use in DragPlanner 
         n is the degree of approximating polynomial
-        m is the number of mesh splits - i.e. m=1 means two polynomials of order are used
+        m is the number of mesh splits - i.e. m=1 means two polynomials of order n are used
     '''
     import sympy as sym
     
-
-    coeff, Ak, Bk = DragKnots(n,m)
+    coeff, Ak, Bk = DragKnots(n,m,1)
     Abc, Bbc = DragBC(n,m)
        
     # Concatenate these matrices to form the complete set of linear constraints
     A = sym.Matrix(Ak+Abc)
     B = sym.Matrix(Bk+Bbc)
-    print A 
-    print B
     
     s = sym.linsolve((A,B),coeff)
     print s
+    print s.free_symbols
+    # The symbolic variables to be replaced are V0,Vf,D0,Df, the m switches vsi, and the design variable(s)
+    v0 = sym.Symbol('v0')
+    vi = sym.Symbol('vi')
+    vf = sym.Symbol('vf')
+    
+    D0 = sym.Symbol('D0')
+    Di = sym.Symbol('Di')
+    Df = sym.Symbol('Df')
+    vs = [sym.Symbol('vs{}'.format(i)) for i in range(1,m+1)]
+    # vars = [v0, vi, vf, D0, Di, Df] + vs
+    vars = [v0, vf, D0, Df] + vs
+    design = [sy for sy in s.free_symbols if not sy in vars]
+    print design
+    sfun = sym.lambdify([vars+design], list(s), "numpy") # we may not want numpy if we don't end up using the vectorization
+    
+    return sfun
+    
+def sampleDragProfiles(n,m):
+    
+    ndesign = int(np.ceil(n*(m+1) - 2 - 2*m))
+    print "Number of free variables: {}".format(ndesign)
+    coeff = DragProfile(n,m)
+    
+    Vscale = 500
+    V0 = 5000/Vscale 
+    Vi = 3700/Vscale # has to be greater than vs1 with current implementation
+    Vf = 500/Vscale
+    Vs = list(np.linspace(V0,Vf,m+2))
+    
+    sf = 300e3 
+    gamma0 = np.radians(-8.2)
+    hf = 1.4e3
+    h0 = 23.16e3
+    D0 = 44
+    Dj = 81
+    Df = 4.5 
+    
+    
+    v = np.linspace(V0,Vf,200)
+    for _ in range(5000):
+        C = (-1+2*np.random.random(ndesign))/200
+        # Di = [c for c in coeff([V0, Vi, Vf, D0, Dj, Df] + Vs[1:-1] + list(C))[0]]
+        Di = [c for c in coeff([V0, Vf, D0, Df] + Vs[1:-1] + list(C))[0]]
+       
+        # Reconstruct the drag profile from coefficients          
+        D = np.zeros_like(v)
+        for j, Vsj in enumerate(Vs[:-1]):
+            D[v<=Vsj] = sum([Di[n*j + i]*v[v<=Vsj]**i for i in range(n)])
+            
+            
+        if np.all(np.array(D)>0) and np.all(np.array(D)<(Dj+5)):
+            print C
+            plt.plot(v*Vscale, D)
+    
+    
+    # Plot a true optimal drag profile for comparison
+    vals = '1.30575967020474e-07	-1.41198624451222e-05	0.000600124327551634	-0.0138971614274694	0.198664313828484	-1.85640234286750	11.6152838992996	-48.8247269033992	136.234831743230	-246.631224418153	281.651083129391	-177.907118367548'
+    das = [float(vv) for vv in vals.split()[::-1]]
+    Dtrue0 = 50.0267
+    Dtrue = Dtrue0
+    for i,val in enumerate(das):
+        Dtrue += val*v**(i+1)
+        
+    plt.plot(v*Vscale,Dtrue,'k--')    
+    plt.show()
     
 def DragBC(n, m):
     ''' Sets up symbolic math for the two altitude boundary conditions '''
     import sympy as sym
-    ds = sym.symbols(['d{}'.format(i) for i in range(1,n+1)])
-    # v = sym.Symbol('v')
     v0 = sym.Symbol('v0')
+    vi = sym.Symbol('vi')
     vf = sym.Symbol('vf')
     
     D0 = sym.Symbol('D0')
+    Di = sym.Symbol('Di')
     Df = sym.Symbol('Df')
     
-    A0 = [v0**i for i in range(1,n+1)] + [0]*n*m
-    Af = [0]*n*m + [vf**i for i in range(1,n+1)]
+    A0 = [v0**i for i in range(n)] + [0]*n*m
+    Ai = [vi**i for i in range(n)] + [0]*n*m
+    Af = [0]*n*m + [vf**i for i in range(n)]
     A = [A0,Af]
     b = [D0,Df]
     
     return A,b
     
     
-def DragKnots(n=6, m=1):
-    ''' Solves the linear system defining the continuity conditions at a knot point. '''
+def DragKnots(n, m, nderivs=1):
+    ''' Solves the linear system defining the continuity conditions at m knot points. '''
 
     import sympy as sym
 
-    ds = sym.symbols(['d{}'.format(i) for i in range(1,2*n+1)])
-    vs = sym.Symbol('vs') # split velocity
-    
+    ds = sym.symbols(['d{}'.format(i) for i in range(n*(m+1))])
     if m == 0:
         return ds, [], []
         
-    A1p = [vs**i for i in range(1,n+1)]
-    A1n = [-a for a in A1p]
-    A1 = A1p + A1n
-    A2 = [sym.diff(a,vs) for a in A1]
-    A3 = [sym.diff(a,vs) for a in A2]
-    A = [A1,A2,A3]
-    b = [0]*3
+    A = []    
+    for k in range(1,m+1):    
+        vs = sym.Symbol('vs{}'.format(k)) # kth split velocity
     
-    # print len(ds)
-    # s = sym.linsolve((A,b),ds)
-    # print s
+    
+        A1p = [vs**i for i in range(n)]
+        A1n = [-a for a in A1p]
+        A1 = [0]*n*(k-1) + A1p + A1n + [0]*n*(m-k)
+        Atemp = [A1]
+
+        for _ in range(nderivs):
+            Atemp.append([sym.diff(a,vs) for a in Atemp[-1]])
+
+        A.extend(Atemp) 
+    
+    b = [0]*(nderivs+1)*m
+    
     return ds, A, b
     
 def DragPlanner():
@@ -519,7 +588,7 @@ def DragPlanner():
     vals = [float(v) for v in vals.split()[::-1]]
     D0 = 50.0267
     
-    use_da = True
+    use_da = False
     if use_da:
         from pyaudi import log, asin, acos, sin, cos
 
@@ -574,7 +643,9 @@ def DragPlanner():
         bank = acos(np.clip(cbank,0,1))
     
     downrange = cumtrapz(-cfpa/D[:-1], E[:-1], initial=0)
+    downrange_approx = cumtrapz(-1/D[:-1], E[:-1], initial=0) # assume cos(fpa) = 1 (we could also assu,e cos(fpa)=constant=cos(fpa0)
     downrange -= downrange[-1]
+    downrange_approx -= downrange_approx[-1]
     
     if use_da:
         plt.figure()
@@ -590,6 +661,7 @@ def DragPlanner():
         # print hnew.shape
         plt.figure()
         plt.plot(V[1:], da.const(downrange/1000, array=True),'k--')
+        plt.plot(V[1:], da.const(downrange_approx/1000, array=True),'b--')
         # snew = da.evaluate(downrange, vars, pts)
         # for sn in snew:
             # plt.plot(V[1:], sn/1000)
@@ -603,6 +675,7 @@ def DragPlanner():
         plt.plot(V,h/1000)
         plt.figure()
         plt.plot(V[:-1],downrange/1000)
+        plt.plot(V[:-1],downrange_approx/1000)
         # plt.plot(E[:-1],downrange/1000)
     plt.figure()
     plt.plot(V[2:], bank*180/np.pi)
@@ -647,8 +720,9 @@ if __name__ == '__main__':
     # OptimizeSRPRS()
     
     # testExpansion()
-    DragProfile(5,1)
-    # DragKnots()
+    # DragProfile(3,0)
+    # sampleDragProfiles(7,0,4)
+    sampleDragProfiles(7,0)
     # DragPlanner()
     # 
     # import numpy as np

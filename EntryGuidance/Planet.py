@@ -78,7 +78,11 @@ class Planet:
         
     def range(self,lon0,lat0,heading0,lonc,latc,km=False):
         '''Computes the downrange and crossrange between two lat/lon pairs with a given initial heading.'''
-        from numpy import arccos, arcsin, sin, cos, pi, nan_to_num, zeros_like
+        # from numpy import arccos, arcsin, sin, cos, pi, nan_to_num, zeros_like
+        from numpy import pi, nan_to_num, zeros_like
+        from pyaudi import sin, cos
+        from pyaudi import asin as arcsin 
+        from pyaudi import acos as arccos 
         
         LF = arccos(sin(latc)*sin(lat0)+cos(latc)*cos(lat0)*cos(lonc-lon0))
         if LF < 1e-5:
@@ -97,6 +101,9 @@ class Planet:
     def coord(self,lon0,lat0,heading0,dr,cr):
         '''Computes the coords of a target a given downrange and crossrange from an initial location and heading.'''
         from numpy import arccos, arcsin, sin, cos, pi
+        from pyaudi import sin, cos
+        from pyaudi import asin as arcsin 
+        from pyaudi import acos as arccos 
 
         LF = arccos(cos(dr/self.radius)*cos(cr/self.radius))
         zeta = arcsin(sin(CR/self.radius)/sin(LF))

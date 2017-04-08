@@ -61,7 +61,7 @@ def lateral(bank_sign, velocity, drag, fpa, heading, latitude, longitude, T, ban
 
     heading_desired = compute_heading(longitude,latitude)
     # print "Heading error: {} deg".format(np.degrees(heading-heading_desired))
-    if np.abs(heading-heading_desired)>.07:
+    if np.abs(heading-heading_desired)>.06:
         return np.sign(heading-heading_desired), False # Any reason to clip if we're commanding a change already?
     else:        
         return bank_sign, False
@@ -130,7 +130,13 @@ def cost(u, sim, state, ratios, reference, scalar):
         if vel[0]<5300 and False:                                  # Add drag rate, like an derivative term in PID. Shouldn't start until the reference makes sense
             drag_rate_ref = reference['drag_rate'](vel)
             drag_rate = np.insert(np.diff(drag)/np.diff(time), 0, drag_rate_ref[0])
-            integrand += 40/vel[0]*(drag_rate-drag_rate_ref)**2    
+            integrand += 40/vel[0]*(drag_rate-drag_rate_ref)**2  
+            
+        if True:                                                    # Altitude rate ala Apollo
+            hdot = vel*np.sin(fpa)
+            hdot_ref = reference['altitude_rate'](energy)
+            integrand += 0.1*(hdot-hdot_ref)**2
+            
     
     # if 0:
         # alt_ref = reference['altitude'](vel)
@@ -216,7 +222,7 @@ def testNMPC():
         get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]), lon_target=np.radians(output[-1,5]))
         
         mpc_heading = partial(headAlign.controller, control_options=option_dict_heading, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
-        mpc_range = partial(controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
+        mpc_range = partial(controller, control_options=option_dict, control_bounds=(pi/12,pi/1.5), references=references, desired_heading=get_heading)
         pre = partial(constant, value=bankProfile(time=0))
         controls = [pre, mpc_range, mpc_heading]
         
@@ -225,6 +231,7 @@ def testNMPC():
         # sample = None 
         sample = perturb.sample()
         # sample = [.1,-.1,-.05,0]
+        sample = [.133,-.133,.0368,.0014] 
         print sample
 
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
