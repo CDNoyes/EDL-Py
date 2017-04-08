@@ -7,6 +7,25 @@ from pyaudi import gdual_double as gd
 # Need to write a second that uses the polynomial differentiation method to obtain the gradient of the expansion?
 # Map inversion method?
     
+def invert(map):
+    # First subtract the constant part of the Map such that Map(0)=0
+    # Let Map = M + N  where M is the linear part and N is the remaining nonlinear part
+    # Then the Map's inverse derivatives can be found via fixed point iteration: Map^-1 = M^-1 o (IMap - N o Map^-1)
+    return
+    
+def odeint(f, x0, args, integrationOrder=None):
+    ''' If integrationOrder is None then the order of the expansion of the initial conditions is used. '''
+    
+    
+    return
+    
+def __step(fun, zi, ti,tnew, args, integrationOrder):
+    ''' Used in odeint '''
+    for _ in range(integrationOrder+1):
+        f = fun(ti, zi, *args) # Get the taylor polynomials of the ode, including wrt to ti (or maybe tnew?)
+        # zi = zi + antiderivation(f) # no idea what to do. Map inverse? integrate componentwise?
+    
+    return zi
     
 def evaluate(da_array, da_vars, pts):
     """ 
@@ -20,7 +39,7 @@ def evaluate(da_array, da_vars, pts):
     for pt in pts:
         # eval_pt = {da_var:element for da_var,element in zip(delta,pt)} # This is probably slow since we're constructing a new dict every time
         eval_pt.update(zip(delta,pt))
-        new_pt = [da.evaluate(eval_pt) for da in da_array]
+        new_pt = [da.evaluate(eval_pt) if isinstance(da,gd) else da for da in da_array]
         new_pts.append(new_pt)    
     
     return np.array(new_pts)
@@ -80,3 +99,9 @@ def make(values, names, orders, array=False):
 
     else:    
         return [gd(v,n,o) for v,n,o in zip(values, names, orders)]
+        
+def radians(x):
+    return x*np.pi/180.0
+    
+def degrees(x):
+    return x*180.0/np.pi 
