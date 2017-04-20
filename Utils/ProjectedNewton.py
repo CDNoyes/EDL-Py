@@ -3,14 +3,23 @@
 
 import numpy as np 
 
-def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-3):
+def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6):
     """
+    Solves the quadratic problem:
+    min F(x) = 0.5*x'*hessian*x + gradient'*x
+    subject to bounds[0] <= x <= bounds[1]]
+    
     Inputs:
-    x0          -   an initial guess, need not be feasible, length n 
-    hessian     -   curvature matrix of cost function, nxn matrix 
-    gradient    -   derivative of cost function, length n  
-    bounds      -   tuple of (nlower bounds, nupper bounds)
-    tol         -   convergence tolerance 
+        x0          -   an initial guess, need not be feasible, length n 
+        hessian     -   curvature matrix of cost function, nxn matrix 
+        gradient    -   derivative of cost function, length n  
+        bounds      -   tuple of (nlower bounds, nupper bounds)
+        tol         -   convergence tolerance 
+        
+    Outputs:
+        x           -   the converged solution, or the last iteration if max iterations is reached
+        hff         -   the decomposition of the free directions of the Hessian 
+        fopt        -   the value of the quadratic objective function evaluated at x 
     
     """
     iter = 0
@@ -79,27 +88,17 @@ def fQuad(h,g):
 
         
 if __name__ == "__main__":
-    from cvxopt import matrix, solvers 
-
-    n = 5 
-    N = 1
+    from Regularize import Regularize 
+    
+    n = 1 
+    N = 100
     for _ in range(N):
-        # H = (-1 + 2*np.random.random((n,n)))*3
-        # H = H + H.T 
-        # if np.any(np.linalg.eig(H) <= 0):
-            # continue
-        # g = (-1 + 2*np.random.random((n,)))*5
-        # x = (-1 + 2*np.random.random((n,)))*3.2 
+        H = (-1 + 2*np.random.random((n,n)))*3
+        H = H + H.T 
+        H = Regularize(H, 0.01)
+        g = (-1 + 2*np.random.random((n,)))*5
+        x = (-1 + 2*np.random.random((n,)))*3.2 
             
             
-        H = [[0.445559125751092, 0.460509519133971, 0.272841851368651, 0.342556661724221],
-             [0.460509519133971, 0.821399742708505, 0.499350636886254, 0.660007784502588],
-             [0.272841851368651, 0.499350636886254, 0.486524324830995, 0.526963515711530],
-             [0.342556661724221, 0.660007784502588, 0.526963515711530, 0.824087784145914]]    
-        g = [-1.75534815532079,
-            1.14171055676707,
-            0.777433897360988,
-            1.48967862142558]
-        x = [6.8,7.7,3.9,9.95]
         ProjectedNewton(x,H,g,[-3,5])
         
