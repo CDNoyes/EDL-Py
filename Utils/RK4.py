@@ -6,7 +6,8 @@ def RK4(fun, x0, iv, args):
     div = np.diff(iv)
     for t,dt in zip(iv,div):
         x.append(rk4_step(fun, t, x[-1], dt, args))
-    return np.array(x)
+    
+    return np.asarray(x)
 
 def rk4_step(f, iv, x, h, args):
     """ Takes a single 4th-order step """
