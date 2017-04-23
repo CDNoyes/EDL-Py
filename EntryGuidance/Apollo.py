@@ -76,11 +76,11 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     altrate = vel*np.sin(fpa)
     
     # Prep for backwards integration of adjoints
-    l1 = 1.0                # s
-    l2 = 0.0                # v
-    l3 = 0.0                # gamma
-    l4 = 0*-1.0/tan(fpa[-1])  # h
-    l5 = 0.0                # u
+    l1 = 1.0                  # s
+    l2 = 0.0                  # v
+    l3 = 0.0                  # gamma
+    l4 = -1.0/tan(fpa[-1])    # h
+    l5 = 0.0                  # u
     
     L = [[l1,l2,l3,l4,l5]]
     
@@ -89,7 +89,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
 
     tfine = np.linspace(time[-1],time[0],1000) # backwards
     dt = tfine[-2]
-    rtogo = interp1d(time, rtgo)(tfine) # Do I want this in meters or km?
+    rtogo = interp1d(time, rtgo)(tfine) 
     vref  = interp1d(time, vel)(tfine)
     eref  = interp1d(time, energy)(tfine)
     rref  = interp1d(time, radius)(tfine)
@@ -113,7 +113,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     
     for i in range(tfine.shape[0]):
         
-        f1.append(-hs/dref[i]*l4/akm) # Divide this gain by 1000 if I use rtogo in km
+        f1.append(-hs/dref[i]*l4/akm) 
         if use_drag_rate:
             f2.append(l3/(-cg[i]*dref[i]*(vref[i]/hs + 2*3.71/vref[i]))/akm)
         else:
@@ -156,7 +156,9 @@ def gains(sim, use_energy=False, use_drag_rate=False):
              'DDTREF' : interp1d(vi,ddtref[:iv], fill_value=(ddtref[0],ddtref[iv]), assume_sorted=True, bounds_error=False),
              'LOD'    : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
              'U'      : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
-             'K'      : 1
+             'K'      : 1,
+             'L'      : np.array(L[:iv]), # These last two are not used by the controller 
+             'IV'     : vi 
             }
              
     return data
@@ -251,6 +253,47 @@ def C3(x):
                      [-np.sin(x), np.cos(x), 0],                   
                      [0, 0, 1]])
                      
+# TODO: compare adjoint sensitivity to stm sensitivity                      
+def compare():
+    from Simulation import Simulation, Cycle, EntrySim, TimedSim
+    from ParametrizedPlanner import HEPNR
+    from InitialState import InitialState
+    import matplotlib.pyplot as plt 
+    from Utils import DA as da 
+    from Utils.Regularize import Regularize 
+    reference_sim = Simulation(cycle=Cycle(1),output=True,**EntrySim())
+    da_sim = Simulation(cycle=Cycle(1), output=True, use_da=True, **EntrySim())
+    bankProfile = lambda **d: HEPNR(d['time'],*[9.3607, 136.276], minBank=np.radians(30))
+                                                
+    x0 = InitialState()
+    output = reference_sim.run(x0,[bankProfile])
+    gainz = gains(reference_sim, use_energy=False)
+    plot = plt.plot # can easily switch between semilogs this way 
+    plot(gainz['IV'],gainz['L'])
+    plt.legend(['s, adj','v, adj','fpa, adj','h, adj','u, adj'])
+    
+    vars = ['r','theta','phi','v','gamma','psi','s','m']
+    x0 = da.make(x0, vars, [1,1,1,1,1,1,1,1])
+    da_output = da_sim.run(x0,[bankProfile])
+    V = da.const(da_output[:,7],array=True)
+    keep = V < gainz['IV'][-1]
+    
+    STM = np.array([da.jacobian(da_state[[0,3,4,6]],vars) for da_state in da_sim.history]) # The stm trajectory 
+    print STM[-1,:,[0,3,4,6]]
+    # print STM[0].shape
+    # print STM[-1,:8].shape
+    STMi = np.array([np.dot(STM[-1,:,[0,3,4,6]].T, np.linalg.inv(stmi[:,[0,3,4,6]])) for stmi in STM]) # The stagewise transitions, i.e. from one time step to the final state 
+    print STMi[-1]
+    # plot(V[keep], STMi[keep,3,3],'--',label='s, stm')
+    # plot(V[keep], STMi[keep,3,1],'--',label='v, stm')
+    # plot(V[keep], STMi[keep,3,2],'--',label='fpa, stm')
+    # plot(V[keep], STMi[keep,3,0],'--',label='h, stm')
+    # plt.legend()
+    plt.figure()
+    plot(V[keep], STM[keep,-1,[0,3,4,6]])
+
+    
+    plt.show()
                      
 def ctrb():
     """ For a given reference trajectory (and therefore a fixed set of Apollo gains), 
@@ -445,7 +488,7 @@ def plot_ctrb(file, figure=True, show=True):
     
 if "__main__" == __name__:
     # ctrb()
-    plot_ctrb(file='./data/Apollo_CTRB_100_500m_NR.mat',show=False)
-    plot_ctrb(file='./data/Apollo_CTRB_150_500m.mat',figure=False)
+    # plot_ctrb(file='./data/Apollo_CTRB_100_500m_NR.mat',show=False)
+    # plot_ctrb(file='./data/Apollo_CTRB_150_500m.mat',figure=False)
     # plot_ctrb(file='./data/Apollo_CTRB_100_500m_atm_NR.mat')
-    
+    compare()
