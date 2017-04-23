@@ -1,11 +1,15 @@
 import numpy as np
 
 def trapz(y,x):
+    y = np.asarray(y)
+    x = np.asarray(x)
     dx = np.diff(x)
     res = np.sum(dx*(y[:-1] + y[1:]) / 2.0, axis=0)
     return res 
 
 def cumtrapz(y,x,initial=0):
+    y = np.asarray(y)
+    x = np.asarray(x)
     dx = np.diff(x)
     res = np.cumsum(dx*(y[:-1] + y[1:]) / 2.0, axis=0)
     
