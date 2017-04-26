@@ -2,7 +2,7 @@
 
 import numpy as np
 from pyaudi import gdual_double as gd
-
+from pyaudi import abs 
 # TODO: This gradient gets the first derivative of a function wrt each variable.
 # Need to write a second that uses the polynomial differentiation method to obtain the gradient of the expansion?
 # Map inversion method?
@@ -43,13 +43,22 @@ def evaluate(da_array, da_vars, pts):
         new_pts.append(new_pt)    
     
     return np.array(new_pts)
-def gradient(da, da_vars):
-    """ da_vars is 1-d list/array with string names in the order the gradient should be given """
-     
-    g = np.zeros(len(da_vars))
+    
+def differentiate(da, da_vars):
+    g = np.zeros(len(da_vars), dtype=gd)
     for var in da.symbol_set:
         ind = da_vars.index(var)
-        g[ind] = da.partial(var).constant_cf
+        g[ind] = da.partial(var)
+    return g
+    
+    
+def gradient(da, da_vars):
+    """ da_vars is 1-d list/array with string names in the order the gradient should be given """ 
+    g = np.zeros(len(da_vars))
+    if isinstance(da,gd): # It may be the case that the DA was differentiated and became a constant 
+        for var in da.symbol_set:
+            ind = da_vars.index(var)
+            g[ind] = da.partial(var).constant_cf
     return g
     
     
@@ -57,15 +66,11 @@ def jacobian(da_array, da_vars):
     """ Forms the Jacobian matrix, i.e. the gradient of a vector valued function """
     return np.array([gradient(da, da_vars) for da in da_array])
     
+    
 def hessian(da, da_vars):
     """ Retrieves the 2nd order coefficients forming the 2D Hessian matrix of a scalar function """
     n = len(da_vars)
-    
-    # Get the gradient but without taking the constant term
-    g = np.zeros(len(da_vars), dtype=type(da))
-    for var in da.symbol_set:
-        ind = da_vars.index(var)
-        g[ind] = da.partial(var)
+    g = differentiate(da, da_vars)
     
     # Now the hessian is simply the gradient of each element of the gradient
     # h = np.zeros((n,n))
@@ -78,18 +83,28 @@ def hessian(da, da_vars):
         
     return np.array(h)        
 
+    
 def vhessian(da_array,da_vars):
     """ Computes the tensor comprising the hessian of a vector valued function """
     return np.array([hessian(da,da_vars) for da in da_array])
 
+    
 def const(da_array, array=False):
     """ Collects the constant part of each generalized dual variable and returns a list or numpy array. """
-    # TODO: What if not all the variables in the array are gd?
-    if isinstance(da_array, list) and not array:
-        return [da.constant_cf for da in da_array]
+    if not array:
+        return [da.constant_cf if isinstance(da,gd) else da for da in da_array]
     else:
-        return np.array([da.constant_cf for da in da_array])
-        
+        return np.array([da.constant_cf if isinstance(da,gd) else da for da in da_array])
+      
+def const_dict(da_dict):
+       
+    for key,val in da_dict.items():
+        try:
+            da_dict[key] = val.constant_cf
+        except:
+            pass
+    return da_dict
+    
 def make(values, names, orders, array=False):
     """ Turn an array of constant values into an array of generalized duals with specified names and orders. Orders may be an integer. """
     if isinstance(orders, int):
@@ -99,9 +114,21 @@ def make(values, names, orders, array=False):
 
     else:    
         return [gd(v,n,o) for v,n,o in zip(values, names, orders)]
-        
+  
+  
 def radians(x):
     return x*np.pi/180.0
     
+    
 def degrees(x):
     return x*180.0/np.pi 
+    
+def sign(x):
+    if isinstance(x,gd):
+        xc = x.constant_cf 
+    else:
+        xc = x
+    if abs(xc)<1e-6:
+        return x-xc             # So its still a DA variable but with absolutely 0 part 
+    else:
+        return xc/abs(xc)       # This will never be a DA variable so we can use the numerical value

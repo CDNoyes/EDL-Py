@@ -10,7 +10,7 @@ def Regularize(A, eps=0):
     is guaranteed to be positive definite with minimum eigenvalue equal to
     EPSILON. 
     """
-
+    A = np.asarray(A)
     B = (A+A.T)/2.0
     
     eigvals,eigvecs = np.linalg.eig(B)

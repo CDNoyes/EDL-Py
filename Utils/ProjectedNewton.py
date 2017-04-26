@@ -46,9 +46,12 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6):
         f = np.where(f)[0] # bool array to raw indices 
 
         hff =  hessian[f,:][:,f]
-        gf = gradient[f] + np.dot(hff,x[f])
+        if len(f):
+            gf = gradient[f] + np.dot(hff,x[f])
+        else:
+            gf = np.zeros_like(gradient)
 
-        if np.any(c):
+        if np.any(c) and not np.all(c):
             # print "Some clamped direction"
             c = np.where(c)[0]
             hfc =  hessian[f,:][:,c]
@@ -65,9 +68,9 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6):
         iter += 1
         
     fopt = fQuad(hessian,gradient)(x)
-    print "Total iterations: {}".format(iter)
-    print x 
-    print fopt 
+    # print "Total iterations: {}".format(iter)
+    # print x 
+    # print fopt 
     return x, hff, fopt
     
 def armijo(f,x,dx,g,xl,xu):
@@ -83,7 +86,7 @@ def armijo(f,x,dx,g,xl,xu):
         
 def fQuad(h,g):
     def fQuadFun(x):
-        return 0.5*np.dot(x.T, np.dot(H,x)) + np.dot(g.T,x)
+        return 0.5*np.dot(x.T, np.dot(h,x)) + np.dot(g.T,x)
     return fQuadFun
 
         
