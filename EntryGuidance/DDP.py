@@ -10,7 +10,7 @@ from HPC import profile
 from Simulation import Simulation 
 from InitialState import InitialState 
 
-# from Utils.RK4 import RK4
+from Utils.RK4 import RK4
 from Utils.trapz import trapz, cumtrapz
 from Utils.ProjectedNewton import ProjectedNewton as solveQP
 from Utils.Regularize import Regularize 
@@ -156,7 +156,7 @@ def DDP(simulation, dynamics, mayerCost, lagrangeCost, finalConstraints, finalTi
 class SRP(object):
     def __init__(self,dim=2):
         # Algorithm settings 
-        self.maxIter = 3 
+        self.maxIter = 5
         self.convergenceTolerance = 1e-3 
                
         # System info 
@@ -165,16 +165,16 @@ class SRP(object):
         
         # Dynamic params 
         self.param = [3.71, 2.7e3] # gravity, exit velocity  
-        self.umax = 6e5 
+        self.umax = 6.e5 
         self.umin = 3.5e5 
         
         
         # Boundary conditions 
-        self.h0 = 2700 
-        self.hf = 15 
+        self.h0 = 2700.
+        self.hf = 0.
         if dim == 3:
             self.x0 = [-3200,400,625,-60,-270,8500]
-            self.xf = [0,0,0,0,-5,8500]
+            self.xf = [0,0,0,0,-15,8500]
             self.ul = [self.umin, 0, -np.pi]
             self.uu = [self.umax, 2*np.pi, np.pi]
             self.iw = 5
@@ -186,139 +186,200 @@ class SRP(object):
             self.fu = self.__fu2d__
             self.fuu = self.__fuu2d__
             self.iw = 2 # Index of the vertical velocity, which plays in an important role in converting terms to altitude as IV
-            self.x0 = np.array([-3200, 625,-270, 8500]);
-            self.xl = np.array([-1e6, -1e6, -1e6, 0])
-            self.xu = np.array([1e6, 1e6, -1, 1e6])
-            self.xf = np.array([0,0,-5,8500])
-            self.ul = np.array([self.umin, 0])
-            self.uu = np.array([self.umax, 2*np.pi])
+            self.x0 = np.array([-3200., 625.,-270., 8500.]);
+            self.xl = np.array([-1.e6, -1.e6, -1.e6, 0.])
+            self.xu = np.array([1.e6, 1.e6, -1., 1.e6])
+            self.xf = np.array([0.,0.,-5.,8500.])
+            self.ul = np.array([self.umin, np.pi/2])
+            self.uu = np.array([self.umax, np.pi*1.2])
             
         # Cost function terms 
         self.q = np.diag([1]*(self.nx-1) + [0])*1e-7
-        self.qf = np.diag([1]*(self.nx-1) + [0])*1e-4
+        self.qf = np.diag([1]*(self.nx-1) + [0])*10
         # self.r = np.eye(self.nu)*1e-7
-        self.r = np.diag([1/self.umax, 1])*1e-5
-        self.uf = np.array([self.umax, 1.5*np.pi])
-        self.N = 50
+        self.r = np.diag([1/self.umax, 1])*1e-6
+        self.uf = np.array([self.umax, np.pi/2])
+        self.N = 200
         self.dh = (self.hf-self.h0)/(self.N-1) 
         self.h = np.linspace(self.h0,self.hf,self.N)
+    
+    def poly(self):
         
-    # def compare(self):
-        # u = np.array([[self.umax, 2.69] for _ in self.h])
-        # x = self.propagate(u)
+        tf = 9
+        Ai = [[tf, tf**2],[tf**2/2, tf**3/3]]
         
-    def debug(self,state,control):
+        Au = np.concatenate((Ai,np.zeros_like(Ai)),axis=1)
+        Al = np.concatenate((np.zeros_like(Ai),Ai),axis=1)
+        A = np.concatenate((Au,Al),axis=0)
+        B = [self.xf[1]-self.x0[1], self.xf[0]-self.x0[0]-self.x0[1]*tf, self.xf[2]-self.x0[2], self.hf-self.h0-self.x0[2]*tf]
+        
+        C = np.linalg.solve(A,B)
+        
+        t = np.linspace(0,tf,self.N)
+        
+        x = self.x0[0] + self.x0[1]*t + C[0]*0.5*t**2 + C[1]/3.*t**3
+        z = self.h0 + self.x0[2]*t + C[2]*0.5*t**2 + C[3]/3.*t**3
+        
+        u = self.x0[1] + C[0]*t + C[1]*t**2
+        w = self.x0[2] + C[2]*t + C[3]*t**2
+        
+        udot = C[0] + 2*C[1]*t
+        wdot = C[2] + 2*C[3]*t
+        
+        mu = (np.arctan2(wdot + self.param[0], udot))%(np.pi*2)
+        
+        gam = -(wdot + self.param[0])/(self.param[1]*np.sin(mu))
+        m = self.x0[-1]*np.exp(cumtrapz(gam,t))
+        T = -m*gam*self.param[1]
+        
+        
+        U = zip(T,mu)
+        U = np.clip(U,self.ul,self.uu)    
+        iter = 0
+        X = self.propagate(U)
+        t = cumtrapz(1/X[:,self.iw],self.h)
+
+        plt.figure(1)
+        plt.plot(X[:,0], self.h, '--',label="{}".format(iter))
+        plt.title('Altitude vs Distance to Target')
+        
+        plt.figure(2)
+        plt.plot(X[:,1],X[:,2], '--',label="{}".format(iter))
+        plt.title('Vertical Velocity vs Horizontal Velocity')
+        
+        plt.figure(3)
+        plt.plot(t,X[:,3], '--',label="{}".format(iter))
+        plt.title('Mass vs time')
+        
+        
+        plt.figure(1)
+        plt.plot(x,z)
+        plt.figure(2)
+        plt.plot(u,w)
+        plt.figure(5)
+        plt.plot(t,mu)
+        plt.plot(t,U[:,1])
+        plt.figure(4)
+        plt.plot(t,T)
+        plt.plot(t,U[:,0])
+        plt.show()
+        
+        return zip(T,mu)
+        
+        
+    def debug(self,time, state, control):
         
         g = np.array([self.fx(s,c) for s,c in zip(state,control)])
         # H = [self.fxx(s,c) for s,c in zip(state,control)]
-        print g.shape
-        plt.semilogy(self.h,np.abs(g[:,0,0]),label='dx/dx')
-        plt.semilogy(self.h,np.abs(g[:,0,1]),label='dx/du')
-        plt.semilogy(self.h,np.abs(g[:,0,2]),label='dx/dw')
-        plt.semilogy(self.h,np.abs(g[:,0,3]),label='dx/dm')
+
+        plt.plot(time,(g[:,0,0])/self.dh,label='dx/dx')
+        plt.plot(time,(g[:,0,1])/self.dh,label='dx/du')
+        plt.plot(time,(g[:,0,2])/self.dh,label='dx/dw')
+        plt.plot(time,(g[:,0,3])/self.dh,label='dx/dm')
         plt.legend()
+        
+        plt.figure()
+        plt.plot(time, state)
+        
         plt.show()
         
         
     def DDP(self):
-        u = np.array([[self.umax*0.5, 2.69] for _ in self.h])
-            
+        # u = self.poly()
+        u = np.array([[self.umax, 3.0] for _ in self.h])
+        u = np.clip(u,self.ul,self.uu) 
+        
+  
         J = []
         
         #iterate 
-        iter = 0 
-        x = self.propagate(u)
-        # self.debug(x,u)
-        L = self.lagrange(x,u)
-        Lx = self.lx(x,u)
-        Lxx = self.lxx(x,u)
-        Lux = self.lux(x,u)
-        Lu = self.lu(x,u)
-        Luu = self.luu(x,u)
-        LN = self.mayer(x[-1])
-        J.append(np.sum(L) + LN)
-        
-        plt.plot(self.h,L)
-        plt.figure()
-        plt.plot(self.h,Lx)
-        plt.figure()
-        plt.plot(self.h,Lu)
-        plt.show()
-        
-        # if len(J) > 1:
-            # if np.abs(J[-1]-J[-2]) < self.convergenceTolerance:
-                # break
-        # if iter < 4 or not (iter+1)%10:            
-        # plt.figure(1)
-        # plt.plot(x[:,0], self.h, '--',label="{}".format(iter))
-        # plt.title('Altitude vs Distance to Target')
-        
-        # plt.figure(2)
-        # plt.plot(x[:,1],x[:,2], '--',label="{}".format(iter))
-        # plt.title('Vertical Velocity vs Horizontal Velocity')
-        
-        # plt.figure(3)
-        # plt.plot(self.h,x[:,3], '--',label="{}".format(iter))
-        # plt.title('Mass vs altitude')
-    
-        # plt.figure(4)
-        # plt.plot(self.h,u[:,0], '--',label="{}".format(iter))
-        # plt.title('Thrust vs altitude')
-    
-        # plt.show()
-        
-        # Final conditions on Value function and its derivs
-        # V = LN  # Unused?
-        Vx = self.mx(x[-1])
-        Vxx = self.mxx(x[-1])
-        
-        # Backward propagation
-        k = np.zeros((self.N,self.nu))
-        K = np.zeros((self.N,self.nu,self.nx))
-        for i in range(self.N)[::-1]:
-            # print self.fx(x[i],u[i])
-            Qx  = Lx[i]  + self.fx(x[i],u[i]).T.dot(Vx) 
-            Qu  = Lu[i]  + self.fu(x[i],u[i]).T.dot(Vx)
-            Qxx = Lxx[i] + self.fx(x[i],u[i]).T.dot(Vxx).dot(self.fx(x[i],u[i])) + 1*np.sum([Vxi*fxxi for Vxi,fxxi in zip(Vx,self.fxx(x[i],u[i]))],axis=0)
-            Qux = Lux[i] + self.fu(x[i],u[i]).T.dot(Vxx).dot(self.fx(x[i],u[i])) + 1*np.sum([Vxi*fxui.T for Vxi,fxui in zip(Vx,self.fxu(x[i],u[i]))],axis=0) # Fxu is transposed because we need Fux 
-            Quu = Luu[i] + self.fu(x[i],u[i]).T.dot(Vxx).dot(self.fu(x[i],u[i])) + 1*np.sum([Vxi*fuui for Vxi,fuui in zip(Vx,self.fuu(x[i],u[i]))],axis=0)
+        for iter in range(self.maxIter):
+            print "Iteration: {}".format(iter+1)
+            x = self.propagate(u)
+            t = cumtrapz(1/x[:,self.iw],self.h)
+            # self.debug(t,x,u)
+            
+            L = self.lagrange(x,u)
+            Lx = self.lx(x,u)
+            Lxx = self.lxx(x,u)
+            Lux = self.lux(x,u)
+            Lu = self.lu(x,u)
+            Luu = self.luu(x,u)
+            LN = self.mayer(x[-1])
+            J.append(np.sum(L) + LN)
+            
+            # plt.plot(self.h,L)
+            # plt.figure()
+            # plt.plot(self.h,Lx)
+            # plt.figure()
+            # plt.plot(self.h,Lu)
+            # plt.show()
+            
+            if len(J) > 1:
+                if np.abs(J[-1]-J[-2]) < self.convergenceTolerance:
+                    break
+            if iter < 4 or not (iter+1)%10:            
+                plt.figure(1)
+                plt.plot(x[:,0], self.h, '--',label="{}".format(iter))
+                plt.title('Altitude vs Distance to Target')
+                
+                plt.figure(2)
+                plt.plot(x[:,1],x[:,2], '--',label="{}".format(iter))
+                plt.title('Vertical Velocity vs Horizontal Velocity')
+                
+                plt.figure(3)
+                plt.plot(t,x[:,3], '--',label="{}".format(iter))
+                plt.title('Mass vs time')
+            
+                plt.figure(4)
+                plt.plot(t,u[:,0], '--',label="{}".format(iter))
+                plt.title('Thrust vs time')
+                
+                plt.figure(5)
+                plt.plot(t,u[:,1], '--',label="{}".format(iter))
+                plt.title('Thrust angle vs time')
+                # if not iter:
+                    # plt.show()
+            # Final conditions on Value function and its derivs
+            # V = LN  # Unused?
+            Vx = self.mx(x[-1])
+            Vxx = self.mxx(x[-1])
+            
+            # Backward propagation
+            k = np.zeros((self.N,self.nu))
+            K = np.zeros((self.N,self.nu,self.nx))
+            for i in range(self.N)[::-1]:
+                Qx  = Lx[i]  + self.fx(x[i],u[i]).T.dot(Vx) 
+                Qu  = Lu[i]  + self.fu(x[i],u[i]).T.dot(Vx)
+                Qxx = Lxx[i] + self.fx(x[i],u[i]).T.dot(Vxx).dot(self.fx(x[i],u[i])) + 1*np.sum([Vxi*fxxi for Vxi,fxxi in zip(Vx,self.fxx(x[i],u[i]))],axis=0)
+                Qux = Lux[i] + self.fu(x[i],u[i]).T.dot(Vxx).dot(self.fx(x[i],u[i])) + 1*np.sum([Vxi*fxui.T for Vxi,fxui in zip(Vx,self.fxu(x[i],u[i]))],axis=0) # Fxu is transposed because we need Fux 
+                Quu = Luu[i] + self.fu(x[i],u[i]).T.dot(Vxx).dot(self.fu(x[i],u[i])) + 1*np.sum([Vxi*fuui for Vxi,fuui in zip(Vx,self.fuu(x[i],u[i]))],axis=0)
 
-            # No control limits 
-            if False:
-                Quu = Regularize(Quu, 1)
-                k[i] = -np.dot(np.linalg.inv(Quu),Qu)
-                K[i] = -np.dot(np.linalg.inv(Quu),Qux)
-            # Bounded controls:
-            else:
-                print Qu 
-                print Quu 
-                Quu = Regularize(Quu, 1e-5)
-                k[i],Quuf = solveQP(np.zeros((self.nu)), Quu, Qu, ([self.ul-u[i]], [self.uu-u[i]]),debug=False)
-                K[i] = -np.linalg.inv(Quuf).dot(Qux) 
-
-            # V += -0.5*k[i].T.dot(Quu).dot(k[i]) # Unused? 
-            Vx = (Qx-K[i].T.dot(Quu).dot(k[i]))
-            Vxx = (Qxx-K[i].T.dot(Quu).dot(K[i]))
-        
-        # Forward correction
-        x,u = self.update(x,u,k,K)
-        
-        plt.figure(1)
-        plt.plot(x[:,0], self.h, '--',label="{}".format(iter))
-        plt.title('Altitude vs Distance to Target')
-        
-        plt.figure(2)
-        plt.plot(x[:,1],x[:,2], '--',label="{}".format(iter))
-        plt.title('Vertical Velocity vs Horizontal Velocity')
-        
-        plt.figure(3)
-        plt.plot(self.h,x[:,3], '--',label="{}".format(iter))
-        plt.title('Mass vs altitude')
+                # No control limits 
+                if False:
+                    Quu = Regularize(Quu, 1)
+                    k[i] = -np.dot(np.linalg.inv(Quu),Qu)
+                    K[i] = -np.dot(np.linalg.inv(Quu),Qux)
+                # Bounded controls:
+                else:
+                    print Qu 
+                    print Quu 
+                    Quu = Regularize(Quu, 1e-3)
+                    k[i],Quuf = solveQP(np.zeros((self.nu)), Quu, Qu, ([self.ul-u[i]], [self.uu-u[i]]),debug=False)
+                    print np.linalg.cond(Quuf)
+                    if np.linalg.cond(Quuf) < 100:
+                        K[i] = -np.linalg.solve(Quuf,Qux)
+                    
+                # V += -0.5*k[i].T.dot(Quu).dot(k[i]) # Unused? 
+                Vx = (Qx-K[i].T.dot(Quu).dot(k[i]))
+                Vxx = (Qxx-K[i].T.dot(Quu).dot(K[i]))
+            
+            # Forward correction
+            x,u = self.update(x,u,k,K)
     
-        plt.figure(4)
-        plt.plot(self.h,u[:,0], '--',label="{}".format(iter))
-        plt.title('Thrust vs altitude')
-    
+        plt.figure()
+        plt.plot(J,'o')
+        plt.title('Cost vs Iteration')
         plt.show()
         
         
@@ -346,11 +407,13 @@ class SRP(object):
     def propagate(self,controls):
         x = [self.x0]
         for control in controls[:-1]:
-            x.append(np.clip(self.step(x[-1],control),self.xl,self.xu))
+            # x.append(np.clip(self.step(x[-1],control),self.xl,self.xu))
+            x.append(self.step(x[-1],control))
         return np.array(x) 
         
     def step(self, state, control):
-        return odeint(self.dynamics, state, [0,self.dh],args=(control,))[-1]
+        # return odeint(self.dynamics, state, [0,self.dh],args=(control,))[-1] # doesn't work with DA 
+        return RK4(self.dynamics, state, [0,self.dh],args=(control,))[-1]
         
         
     # Define the continuous time dynamics as well as the jacobian and hessian     
@@ -368,7 +431,8 @@ class SRP(object):
         g,Ve = self.param 
         T,theta = control 
         x,u,w,m = state 
-        return np.eye(self.nx) + np.array([[0, 1/w, -u/w**2, 0],
+        print -u/(w**2)
+        return np.eye(self.nx) + np.array([[0, 1/w, -u/(w**2), 0],
                          [0, 0, -T*cos(theta)/(m*w**2), -T*cos(theta)/(m**2*w)],
                          [0, 0, -(T*sin(theta)/m - g)/w**2, -T*sin(theta)/(m**2*w)],
                          [0, 0, T/(Ve*w**2), 0]])*self.dh
@@ -431,13 +495,13 @@ class SRP(object):
     def lagrange(self, states, control):
         L = np.array([np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf))) for state in states])
         Lu = np.array([(u-self.uf).T.dot(self.r).dot(u-self.uf) for u in control])
-        return  (L + Lu)*self.dh/states[:,2]           # No angle inclusion in the control term 
+        return  0.5*(L + Lu)*self.dh/states[:,2]           # No angle inclusion in the control term 
         
     def lx(self, states, control):    
-        return np.array([self.q.dot(state-self.xf)/state[2] -  np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf)))/state[2]**2 for state in states])*self.dh
+        return np.array([self.q.dot(state-self.xf)/state[2] -  0*np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf)))/state[2]**2 for state in states])*self.dh
         
     def lxx(self,states,control):  
-        return np.array([self.q/state[2] - 2*(self.q.dot(state-self.xf)/state[2] -  np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf)))/state[2]**2)/state[2] for state in states])*self.dh
+        return np.array([self.q/state[2] - 0*(self.q.dot(state-self.xf)/state[2] -  np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf)))/state[2]**2)/state[2] for state in states])*self.dh
         
     def lu(self, states, control):   
         return np.array([self.r.dot(u-self.uf)/w for u,w in zip(control,states[:,2])])*self.dh
@@ -448,6 +512,39 @@ class SRP(object):
     def luu(self,state,control):
         return np.array([self.r/w for w in state[:,2]])*self.dh
             
+     
+    def discrete(self, state, control):
+        print control 
+        return state + self.dh*self.dynamics(state, 0, control)
+    
+    def estimate(self):
+        x = np.array([self.x0])
+        u = np.array([[5e5,2.9]])
+        L = self.lagrange(x,u)
+        Lx = self.lx(x,u)
+        Lxx = self.lxx([self.x0],[[5e5,2.9]])
+        # print L
+        # print Lx
+        # print Lxx
+        
+        vars = ['x','u','w','m']
+        X = da.make(x[0], vars, 2, array=True)
+        Lda = self.lagrange(np.array([X]),u)
+        # print Lda
+        print "L Gradient errors:"
+        print Lx - da.jacobian(Lda,vars)
+        print "L Hessian errors:"
+        print Lxx - da.hessian(Lda[0],vars)
+        
+        # F = self.discrete(X,u[0])
+        F = self.step(X,u[0])
+        Fx = self.fx(x[0],u[0])
+        Fxx = self.fxx(x[0],u[0])
+        print "Dynamic Jacobian errors:"
+        print Fx - da.jacobian(F, vars)
+        print "Dynamic Hessian errors:"
+        print Fxx[0] - da.hessian(F[0], vars)
+        
     
 # Specific implementations like this may be better than a general formulation like the above. Too much stuff to pass...
 class testProblem():
@@ -520,9 +617,9 @@ class testProblem():
                     K[i] = (-Qux/Quu)
                 # Bounded controls:
                 else:
-                    if Quu < 0:
-                        Quu = 0.1 
-                    k[i],Quuf = solveQP([0], [[Quu]], [Qu], ([-self.umax-u[i]], [self.umax-u[i]]),debug=False)
+                    # if Quu < 0:
+                        # Quu = 0.1 
+                    k[i], Quuf = solveQP([0], [[Quu]], [Qu], ([-self.umax-u[i]], [self.umax-u[i]]), debug=False)
                     if len(Quuf):
                         Quuf = Quuf.flatten()[0] 
                         if Quuf != 0: 
@@ -641,11 +738,11 @@ if __name__ == "__main__":
     
     
     # Simplest test problem imaginable 
-    system = testProblem()
-    uOpt = system.DDP()
-    # uNew = system.DDP(uOpt)
+    # system = testProblem()
+    # uOpt = system.DDP()
     
-    # srp = SRP()
+    srp = SRP()
+    srp.estimate()
     # uSRP = srp.DDP()
     
     # Confirm backward integration 
