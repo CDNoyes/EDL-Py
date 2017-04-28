@@ -22,7 +22,106 @@ def controller(A, B, C, Q, R, z, method='SDRE',**kwargs):
 #                                State Dependent Riccati Equation                                #
 # ################################################################################################
 
+def SDREC(x, tf, A, B, C, Q, R, Sf, r, n_points=200, h=0):
+    """ Version of SDRE from the Lunar Lander paper with terminal constraints 
+        Assumes Q,R,Sf are constant matrices 
+        r is the vector of final constraints such that Cx=r
+    """
+    from scipy.linalg import solve_continuous_are as care
+    
+    T = np.linspace(0, tf, n_points)
+    dt = tf/(n_points-1.0)
+    X = [x] 
+    U = [np.zeros(R.shape[0])]
+    K = []
+    
+    for iter, t in zip(range(n_points), T):
+        if not (iter)%np.ceil(n_points/10.):
+            print "Step {}".format(iter)
+            
+        a = A(x)
+        b = B(x)
+        c = C(x)
+        
+        S = DRE(t, tf, Sf, a,b,Q,R,n_points-iter)
+        Kall = [sdre_feedback(b,R,s) for s in S]
+        K.append(Kall[-1])
+        V = integrateV(dt, c.T, a, b, Kall)
+        P = integrateP(dt, b, R, V)
 
+        u = -(Kall[-1] - np.linalg.solve(R,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],V[-1].T))).dot(x) - np.linalg.solve(R,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],r))
+        U.append(u)
+
+        x = step(x,dt,u,a,b)
+        X.append(x)
+        
+    
+    
+    # J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
+    # print "Cost: {}".format(J)
+    
+    return np.array(X), np.array(U), np.array(K)   
+
+def sdrec_dynamics(x,t,a,b,u):
+    return a.dot(x) + b.dot(u)
+    
+def step(x, dt, u, a, b):
+    
+    return odeint(sdrec_dynamics,x,[0,dt],args=(a,b,u))[-1]
+    #dx = a*x + b*u
+    
+    
+def integrateP(dt, B, R, V): 
+    
+    nConstraints = V[0].shape[1]
+    P = [np.zeros((nConstraints**2,))]
+    
+    for i,v in enumerate(V):
+        P.append(odeint(P_dynamics, P[-1], [0,dt], args=(B,R,v))[-1])
+    
+    return np.array([p.reshape((nConstraints,nConstraints)) for p in P])     
+    
+    
+def P_dynamics(P,T, B,R,V):
+    n = int(np.sqrt(P.size))
+    P.shape = ((n,n))
+    
+    Pdot = -V.T.dot(B).dot(np.linalg.solve(R,B.T.dot(V)))
+    return Pdot.flatten()
+    
+    
+def riccati_dynamics(S,T,A,B,Q,R):    
+    n = int(np.sqrt(S.size))
+    S.shape = (n,n) # Turn into a matrix 
+    # print A.shape 
+    # print B.shape 
+    # print Q.shape 
+    # print R.shape 
+    dS = A.T.dot(S) + S.dot(A) - S.dot(B).dot(np.linalg.solve(R,B.T.dot(S))) + Q 
+    
+    return dS.flatten()
+    
+def DRE(tcurrent, tfinal, Sf, A,B,Q,R,nRemaining):
+    x0 = Sf.flatten()
+    n = int(x0.size**0.5)
+    Svec = odeint(riccati_dynamics, x0, np.linspace(tcurrent, tfinal,nRemaining), args=(A,B,Q,R))
+    
+    S = [s.reshape((n,n)) for s in Svec]
+    return np.array(S)
+    
+def V_dynamics(V,T,A,B,K,Vshape):
+    V.shape = Vshape 
+    Vdot = (A - B.dot(K)).T.dot(V)
+    return Vdot.flatten()
+    
+def integrateV(dt, Vf, A, B, K): 
+    Vshape = Vf.shape 
+    V = [Vf.flatten()]
+    for i,k in enumerate(K):
+        V.append(odeint(V_dynamics, V[-1], [0,dt], args=(A,B,k,Vshape))[-1])
+
+    return np.array([v.reshape(Vshape) for v in V])    
+    
 def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):  
     """ 
         Inputs:
@@ -34,6 +133,9 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
             Q(x)  -   function returning LQR tracking error matrix
             R(t)  -   function returning LQR control weight matrix
             z(t)  -   function returning the reference signal(s) at each value of the independent variable. Single step version can take a single value instead of function.
+            
+        Optional Inputs:
+            Qf   -    final state error matrix, also the final condition for the Riccati equation when solving a terminally constrained problem 
             
         Outputs:
             x     -   state vector at n_points
@@ -61,6 +163,8 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
 
         # Solve the CARE:
         p = care(a, b, qc, r)
+            
+            
         K.append(sdre_feedback(b,r,p))
         
         # Solve the feedforward control:
@@ -137,6 +241,7 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
     tb = t[::-1]                            # For integrating backward in time
     
     converge = tol + 1
+    print "Approximating Sequence of Riccati Equations"
     print "Max iterations: {}".format(max_iter)
     
     for iter in range(max_iter):
@@ -282,6 +387,40 @@ def replace_nan(x,replace=1.):
     else:
         return x
 
+        
+# ############## 2D SRP ##############  
+def SRP_A(x):
+    return np.array([[0,0,1,0],[0,0,0,1],[0,0,0,0],[0,-3.71/x[1],0,0]])
+    
+def SRP_B(x):
+    return np.concatenate((np.zeros((2,2)),np.eye(2)),axis=0)
+    
+def SRP_C(x):
+    return np.eye(4)
+    
+def SRP():
+    m0 = 8500.
+    x0 = np.array([-3200., 2700, 625.,-270.]);
+    tf = 13     
+    r = np.zeros((4,))
+    R = np.eye(2)
+    Q = np.zeros((4,4))
+    S = Q
+    
+    x,u,K = SDREC(x0, tf, SRP_A, SRP_B, SRP_C, Q, R, S, r, n_points=100)
+    t = np.linspace(0,tf,u.shape[0])
+    
+    plt.figure(1)
+    plt.plot(x[:,0],x[:,1])
+    plt.figure(3)
+    plt.plot(x[:,2],x[:,3])
+    
+    plt.figure(2)
+    plt.plot(t,u,label='SDRE')
+    plt.title('Control history')
+    plt.legend()
+    plt.show() 
+    
 # ############## Inverted Pendulum ##############        
 def IP_A(x):
     return np.array([[0,1],[4*4.905*replace_nan(sin(x[0])/x[0],1), -0.4]])
@@ -323,7 +462,7 @@ def test_IP():
         plt.plot(t,Kplot[gain],label='ASRE {}'.format(gain))    
     
     t_init = time.time()
-    x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=250,h=0.1)      # Time-varying R
+    x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=75,h=0.1)      # Time-varying R
     t_sdre = -t_init + time.time()
 
     print "ASRE: {} s".format(t_asre)
@@ -349,4 +488,5 @@ def test_IP():
     
     
 if __name__ == '__main__':    
-    test_IP()
+    # test_IP()
+    SRP()
