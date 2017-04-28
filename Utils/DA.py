@@ -91,6 +91,13 @@ def vhessian(da_array,da_vars):
     
 def const(da_array, array=False):
     """ Collects the constant part of each generalized dual variable and returns a list or numpy array. """
+    try:
+        da_array[0] # Check to see if its a scalar
+    except:
+        if isinstance(da_array,gd):
+            return da_array.constant_cf 
+        else:
+            return da_array
     if not array:
         return [da.constant_cf if isinstance(da,gd) else da for da in da_array]
     else:
