@@ -22,17 +22,28 @@ def controller(A, B, C, Q, R, z, method='SDRE',**kwargs):
 #                                State Dependent Riccati Equation                                #
 # ################################################################################################
 
-def SDREC(x, tf, A, B, C, Q, R, Sf, r, n_points=200, h=0):
-    """ Version of SDRE from the Lunar Lander paper with terminal constraints 
-        Assumes Q,R,Sf are constant matrices 
-        r is the vector of final constraints such that Cx=r
+def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100):
+    """ Version of SDRE from the Lunar Lander thesis with terminal constraints 
+        Assumes Q,R are functions of the state but may be constant matrices 
+        Sf is the final state weighting for non constrained states 
+        z is the vector of final constraints such that Cx=z
     """
-    from scipy.linalg import solve_continuous_are as care
+    n_points -= 1 
+    
+    if not callable(Q):
+        Qf = lambda x: Q 
+    else:
+        Qf=Q
+    if not callable(R):
+        Rf = lambda x: R 
+    else:
+        Rf=R
     
     T = np.linspace(0, tf, n_points)
     dt = tf/(n_points-1.0)
     X = [x] 
-    U = [np.zeros(R.shape[0])]
+    r = Rf(x)
+    U = []
     K = []
     
     for iter, t in zip(range(n_points), T):
@@ -42,24 +53,27 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, r, n_points=200, h=0):
         a = A(x)
         b = B(x)
         c = C(x)
+        q = Qf(x)
+        r = Rf(x)
         
-        S = DRE(t, tf, Sf, a,b,Q,R,n_points-iter)
-        Kall = [sdre_feedback(b,R,s) for s in S]
+        S = DRE(t, tf, Sf, a,b,q,r,n_points-iter)
+        Kall = [sdre_feedback(b,r,s) for s in S]
         K.append(Kall[-1])
         V = integrateV(dt, c.T, a, b, Kall)
-        P = integrateP(dt, b, R, V)
+        P = integrateP(dt, b, r, V)
 
-        u = -(Kall[-1] - np.linalg.solve(R,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],V[-1].T))).dot(x) - np.linalg.solve(R,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],r))
+        u = -(Kall[-1] - np.linalg.solve(r,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],V[-1].T))).dot(x) - np.linalg.solve(r,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],z))
+        if np.linalg.norm(u) > 70:
+            u *= 70/np.linalg.norm(u)
         U.append(u)
 
-        x = step(x,dt,u,a,b)
+        x = step(x, dt, u, a, b)
         X.append(x)
-        
-    
-    
+
     # J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
     # print "Cost: {}".format(J)
-    
+    U.append(u)
+    K.append(K[-1])
     return np.array(X), np.array(U), np.array(K)   
 
 def sdrec_dynamics(x,t,a,b,u):
@@ -93,10 +107,6 @@ def P_dynamics(P,T, B,R,V):
 def riccati_dynamics(S,T,A,B,Q,R):    
     n = int(np.sqrt(S.size))
     S.shape = (n,n) # Turn into a matrix 
-    # print A.shape 
-    # print B.shape 
-    # print Q.shape 
-    # print R.shape 
     dS = A.T.dot(S) + S.dot(A) - S.dot(B).dot(np.linalg.solve(R,B.T.dot(S))) + Q 
     
     return dS.flatten()
@@ -126,7 +136,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
     """ 
         Inputs:
             x     -   current state
-            tf    -   solution horizon (independent variable need not be time)  #TODO: This needs to be a time span instead. Or split into a single step method and a propgator.
+            tf    -   solution horizon (independent variable need not be time) 
             A(x)  -   function returning SDC system matrix 
             B(x)  -   function returning SDC control matrix 
             C(x)  -   function returning SDC output matrix 
@@ -140,7 +150,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
         Outputs:
             x     -   state vector at n_points
             u     -   control history at n_points
-            K     -   Nonlinear feedback gains
+            K     -   time-varying feedback gains
     """        
     from scipy.linalg import solve_continuous_are as care
     
@@ -152,6 +162,8 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
     for iter, t in zip(range(n_points), T):
         if not (iter)%np.ceil(n_points/10.):
             print "Step {}".format(iter)
+        
+        # Get current system approximation 
         a = A(x)
         b = B(x)
         c = C(x)
@@ -163,17 +175,17 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
 
         # Solve the CARE:
         p = care(a, b, qc, r)
-            
-            
+        
+        # Save the feedback gains 
         K.append(sdre_feedback(b,r,p))
         
         # Solve the feedforward control:
         s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t+h))))                    # Can introduce a problem-dependent offset here as anticipatory control to reduce lag
         u = sdre_control(x, b, r, p, s)
         U.append(u)
-
-        xnew = odeint(sdre_dynamics, x, np.linspace(t,t+dt,3), args=(a, b, r, p, s))
-        x = xnew[-1,:]
+        
+        # Step forward 
+        x = odeint(sdre_dynamics, x, np.linspace(t,t+dt,3), args=(a, b, r, p, s))[-1]
         X.append(x)
         
     J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
@@ -227,6 +239,103 @@ def sdre_feedback(b,r,p):
 #                           Approximating Sequence of Riccati Equations                          #
 # ################################################################################################
    
+def asre_feedback(x, u, B, R, Pv, n):
+
+    P = [Pi.reshape((n,n)) for Pi in Pv]
+    return [dot(matrix_solve(R(xi),B(xi, ui).T),Pi) for xi,ui,Pi in zip(x,u,P)]
+   
+   
+def asre_integrateV(dt, Vf, A, B, K, x, u): 
+    Vshape = Vf.shape 
+    V = [Vf.flatten()]
+    for xi,ui,k in zip(x[::-1], u[::-1], K[::-1]):
+        a = A(xi)
+        b = B(xi,ui)
+        V.append(odeint(V_dynamics, V[-1], [0,dt], args=(a,b,k,Vshape))[-1])
+
+    return np.array([v.reshape(Vshape) for v in V])     
+   
+def asre_Pdynamics(P, t, V, B, R, n):
+    P.shape = (n,n)
+    return -V.T.dot(B).dot(np.linalg.solve(R,B.T.dot(V))).flatten()
+    
+def asre_integrateP(dt, V, B, R, x, u, n):
+    P = [np.zeros((n,n)).flatten()]
+    for xi,ui,Vi in zip(x,u,V)[::-1]:
+        P.append(odeint(asre_Pdynamics, P[-1], [0,dt], args=(Vi,B(xi,ui),R(xi),n))[-1])
+    return np.array([p.reshape((n,n)) for p in P])
+   
+def asrec_dynamics(x,t,A,B,R,K,P,V,z, ubounds=None):   
+    u = asrec_control(x,A,B,R,K,P,V,z, ubounds)
+    return A.dot(x) + B.dot(u)
+   
+def asrec_control(x,A,B,R,K,P,V,z,ub=None):
+    rb = np.linalg.solve(R,B.T)
+    u = -(K - rb.dot(V).dot(np.linalg.solve(P,V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P,z))
+    if np.linalg.norm(u) > 70:
+        u *= 70/np.linalg.norm(u)
+    return u
+    
+def asrec_cost(t, x, u, Q, R, F):
+    integrand = 0.5*np.array([dot(xi.T,dot(Q(xi),xi)) + dot(ui,dot(R(xi),ui.T)) for xi,ui in zip(x,u)]).flatten()
+    J0 = 0.5*dot(x[-1].T,dot(F,x[-1]))
+    return J0 + trapz(integrand, t)    
+    
+def ASREC(x0, tf, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, n_discretize=250):
+    """ Approximating Sequence of Riccati Equations with Terminal Constraints Cx=z """
+    from scipy.interpolate import interp1d
+    
+    interp_type = 'cubic'
+    
+    # Problem size
+    n = x0.size
+    m = R(x0).shape[0]
+    
+    t = np.linspace(0, tf, n_discretize)
+    dt = t[1]
+    tb = t[::-1]                            # For integrating backward in time
+    
+    converge = tol + 1
+    Jold = -1e16
+    print "Approximating Sequence of Riccati Equations"
+    print "Max iterations: {}".format(max_iter)
+    
+    for iter in range(max_iter):
+        print "Current iteration: {}".format(iter+1)
+        
+        if not iter: # LTI iteration
+            u = [np.zeros((m))]*n_discretize
+            x = [x0]*n_discretize  # This is the standard approach, but it seems like it would be far superior to actually integrate the system using the initial control
+            
+        # Riccati equation for feedback solution
+        Pf = F.flatten()
+        Pv = odeint(dP, Pf, tb, args=(A, B, lambda x: np.eye(n), Q, R, lambda t: x0, lambda t: np.zeros((m,1))))[::-1]          
+        K = asre_feedback(x, u, B, R, Pv, n)
+        V = asre_integrateV(dt, C.T, A, B, K, x, u)[::-1]
+        P = asre_integrateP(dt, V, B, R, x, u, n)[::-1]
+        
+        # Compute new state trajectory and control   
+        x = [x0]
+        u = [u[0].T]
+        for stage in range(n_discretize-1):
+            x.append(odeint(asrec_dynamics, x[-1], [0, dt], args=(A(x[-1]), B(x[-1],u[-1]), R(x[-1]), K[stage], P[stage], V[stage], z))[-1])
+            u.append(asrec_control(x[-2], A(x[-2]), B(x[-2],u[-1]), R(x[-2]), K[stage], P[stage], V[stage], z).T)
+            
+        J = asrec_cost(t, x, u, Q, R, F)
+        converge = np.abs(J-Jold)/J
+        Jold = J 
+        u = u[1:]
+        u.append(np.zeros((m)))
+        print "Current cost: {}".format(J)
+        
+        if converge <= tol:
+            print "Convergence achieved. "
+            break
+    u[-1] = u[-2]
+    return np.array(x), np.array(u), np.array(K)     
+    
+    
+    
 def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
     """ Approximating Sequence of Riccati Equations """
     from scipy.interpolate import interp1d
@@ -312,6 +421,7 @@ def compute_cost(t, x, u, C, Q, R, F, z):
     J0 = 0.5*dot(e[-1],dot(F(x[-1]),e[-1]))
     return J0[0,0] + trapz(integrand, t)
     
+
     
 def dP(p, t, A, B, C, Q, R, X, U):  
     """ Riccati equation """
@@ -372,14 +482,6 @@ def dynamics(x, t, A, B, R, P, U, s):
 #                                         Test Functions                                         #
 # ################################################################################################
 
-# def F8_A(x):
-    # return np.array([[-0.877 + 0.47*x[0] + 3.846*x[0]^2-x[0]*x(3), -0.019*x[1], 1-0.088*x[0]]
-                     # [0, 0, 1]
-                     # [-4.208-0.47*x[0]-3.56*x[0]^2, 0, -0.396]])
-                     
-# def F8_B(x,u):
-    # return
-    
 def replace_nan(x,replace=1.):
     """ A useful method for use in SDC factorizations. """
     if np.isnan(x):
@@ -388,37 +490,77 @@ def replace_nan(x,replace=1.):
         return x
 
         
-# ############## 2D SRP ##############  
+# ############## SRP ##############  
 def SRP_A(x):
-    return np.array([[0,0,1,0],[0,0,0,1],[0,0,0,0],[0,-3.71/x[1],0,0]])
+    return np.array([[0,0,0,1,0,0],[0,0,0,0,1,0],[0,0,0,0,0,1],[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,-3.71/x[2],0,0,0]])
     
 def SRP_B(x):
-    return np.concatenate((np.zeros((2,2)),np.eye(2)),axis=0)
-    
+    return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)
+    # return np.concatenate((np.zeros((3,3)),[[1,0,0],[0,1,0],[0,0,1]]),axis=0)
+def SRP_Bu(x,u):
+    return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)    
 def SRP_C(x):
-    return np.eye(4)
+    return np.eye(6)
     
 def SRP():
+    from scipy.integrate import cumtrapz 
+
     m0 = 8500.
-    x0 = np.array([-3200., 2700, 625.,-270.]);
-    tf = 13     
-    r = np.zeros((4,))
-    R = np.eye(2)
-    Q = np.zeros((4,4))
-    S = Q
+    x0 = np.array([-3200., 400, 2600, 625., -60, -270.])
+    tf = 13
+    r = np.zeros((6,))
+    R = lambda x: np.eye(3)
+    Q = lambda x: np.zeros((6,6))
+    S = np.zeros((6,6))
     
-    x,u,K = SDREC(x0, tf, SRP_A, SRP_B, SRP_C, Q, R, S, r, n_points=100)
-    t = np.linspace(0,tf,u.shape[0])
-    
-    plt.figure(1)
-    plt.plot(x[:,0],x[:,1])
-    plt.figure(3)
-    plt.plot(x[:,2],x[:,3])
-    
-    plt.figure(2)
-    plt.plot(t,u,label='SDRE')
-    plt.title('Control history')
-    plt.legend()
+    from functools import partial 
+    solvers = [partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=50),
+              partial(ASREC, tf=tf, A=SRP_A, B=SRP_Bu, C=np.eye(6), Q=Q, R=R, F=S, z=r, n_discretize=50, tol=1e-2)]
+    labels = ['SDRE','ASRE']
+    for solver,label in zip(solvers,labels):
+        x,u,K = solver(x0)
+        
+        t = np.linspace(0,tf,x.shape[0])
+        T = np.linalg.norm(u,axis=1)
+        m = m0*np.exp(-cumtrapz(T/(9.81*280),t,initial=0))
+        print "Prop used: {} kg".format(m0-m[-1])
+        
+        plt.figure(6)
+        plt.plot(t,x[:,0:3])
+        plt.xlabel('Time (s)')
+        plt.ylabel('Positions (m)')
+        
+        plt.figure(1)
+        plt.plot(np.linalg.norm(x[:,0:2],axis=1),x[:,2])
+        plt.xlabel('Distance to Target (m)')
+        plt.ylabel('Altitude (m)')
+        plt.figure(3)
+        plt.plot(np.linalg.norm(x[:,3:5],axis=1),x[:,5])
+        plt.xlabel('Horizontal Velocity (m/s)')
+        plt.ylabel('Vertical Velocity (m/s)')
+        
+        plt.figure(2)
+        plt.plot(t,u[:,0]/T,label='x - {}'.format(label))
+        plt.plot(t,u[:,1]/T,label='y - {}'.format(label))
+        plt.plot(t,u[:,2]/T,label='z - {}'.format(label))
+        plt.xlabel('Time (s)')
+        plt.title('Control Direction')
+        plt.legend()
+        
+        plt.figure(5)
+        plt.plot(t,T)
+        plt.xlabel('Time')
+        plt.title('Thrust accel ')
+        
+        plt.figure(4)
+        plt.plot(t,m)
+        plt.xlabel('Time')
+        plt.title('Mass')
+        
+        # plt.figure(8)
+        # for k in range(3):
+            # for j in range(3):
+                # plt.plot(t, K[:,j,k],label='K[{},{}]'.format(j,k))
     plt.show() 
     
 # ############## Inverted Pendulum ##############        
