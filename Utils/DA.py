@@ -94,7 +94,8 @@ def const(da_array, array=False):
     try:
         da_array[0] # Check to see if its a scalar
     except:
-        if isinstance(da_array,gd):
+        print "Not an array"
+        if isinstance(da_array, gd):
             return da_array.constant_cf 
         else:
             return da_array
@@ -139,3 +140,69 @@ def sign(x):
         return x-xc             # So its still a DA variable but with absolutely 0 part 
     else:
         return xc/abs(xc)       # This will never be a DA variable so we can use the numerical value
+        
+        
+# ################################################################
+#                        Special Functions                       #        
+# ################################################################
+
+from Utils.memoize import memoize 
+
+@memoize
+def __getSplIdx(x,t):
+    idx = []
+    for xi in x:
+        for i,ti in enumerate(t):
+            if ti > xi:
+                idx.append(i-1) # This gives the index of the lower bound such that t[idx] < xi < t[idx+1]
+                break 
+    return idx    
+
+    
+def splev(x, spline):
+    """ Uses De Boor's algorithm to evaluate a B-spline at points in x """
+    t,c,n = spline.tck
+    
+    L = __getSplIdx(x,t)
+    Ln = [Li-n for Li in L]
+    
+    print L 
+    print Ln 
+    
+    B = []
+    for j,xj  in enumerate(x):
+        print "j = {}".format(j)
+        print "len(c) = {}".format(len(c))
+        d = np.array(c[Ln[j]:L[j]+1])
+        dnext = np.zeros_like(d)
+        
+        print " d = {}".format(d)
+        
+        for k in range(1,n+1):
+            for i in range(Ln[j]+k,L[j]+1):
+                idx = i-Ln[j]
+                print idx
+                alpha_kn = (xj - t[i])/(t[i+n+1-k] - t[i])
+                dnext[idx] = (1-alpha_kn)*d[idx-1] + alpha_kn*d[idx]
+            d = dnext 
+        B.append(d[-1])
+        
+    return np.array(B)
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
