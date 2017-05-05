@@ -146,6 +146,20 @@ def sign(x):
 #                        Special Functions                       #        
 # ################################################################
 
+# The following changes were made to allow Bspline to have DA coefficients:
+
+# In scipy.interpolate._bsplines.py 
+
+#   In function _get_dtype add the following check:
+#       elif np.issubdtype(dtype, gd):
+#           return gd 
+
+# In scipy.interpolate._fitpack_impl.py
+
+#   In function splder change the line:
+#       c = (c[1:-1-k] - c[:-2-k])* k / dt => c = (c[1:-1-k] - c[:-2-k])*(k/dt)    # For some reason, the dual variables couldn't be divided by a float, but multiplying worked fine 
+
+
 from Utils.memoize import memoize 
 
 @memoize
