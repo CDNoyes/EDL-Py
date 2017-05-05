@@ -22,7 +22,7 @@ def controller(A, B, C, Q, R, z, method='SDRE',**kwargs):
 #                                State Dependent Riccati Equation                                #
 # ################################################################################################
 
-def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100):
+def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
     """ Version of SDRE from the Lunar Lander thesis with terminal constraints 
         Assumes Q,R are functions of the state but may be constant matrices 
         Sf is the final state weighting for non constrained states 
@@ -63,8 +63,10 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100):
         P = integrateP(dt, b, r, V)
 
         u = -(Kall[-1] - np.linalg.solve(r,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],V[-1].T))).dot(x) - np.linalg.solve(r,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],z))
-        if np.linalg.norm(u) > 70:
-            u *= 70/np.linalg.norm(u)
+        if maxU is not None and np.linalg.norm(u) > maxU:
+            u *= maxU/np.linalg.norm(u)
+        if minU is not None and np.linalg.norm(u) < minU:
+            u *= minU/np.linalg.norm(u)    
         U.append(u)
 
         x = step(x, dt, u, a, b)
@@ -248,10 +250,10 @@ def asre_feedback(x, u, B, R, Pv, n):
 def asre_integrateV(dt, Vf, A, B, K, x, u): 
     Vshape = Vf.shape 
     V = [Vf.flatten()]
-    for xi,ui,k in zip(x[::-1], u[::-1], K[::-1]):
+    for xi,ui,k,dti in zip(x[::-1], u[::-1], K[::-1], dt[::-1]):
         a = A(xi)
         b = B(xi,ui)
-        V.append(odeint(V_dynamics, V[-1], [0,dt], args=(a,b,k,Vshape))[-1])
+        V.append(odeint(V_dynamics, V[-1], [0,dti], args=(a,b,k,Vshape))[-1])
 
     return np.array([v.reshape(Vshape) for v in V])     
    
@@ -261,19 +263,28 @@ def asre_Pdynamics(P, t, V, B, R, n):
     
 def asre_integrateP(dt, V, B, R, x, u, n):
     P = [np.zeros((n,n)).flatten()]
-    for xi,ui,Vi in zip(x,u,V)[::-1]:
-        P.append(odeint(asre_Pdynamics, P[-1], [0,dt], args=(Vi,B(xi,ui),R(xi),n))[-1])
+    for xi,ui,Vi,dti in zip(x,u,V,dt)[::-1]:
+        P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(xi),n))[-1])
     return np.array([p.reshape((n,n)) for p in P])
    
 def asrec_dynamics(x,t,A,B,R,K,P,V,z, ubounds=None):   
-    u = asrec_control(x,A,B,R,K,P,V,z, ubounds)
+    u = asrec_control(x,A,B,R,K,P,V,z, ubounds[0],ubounds[1])
     return A.dot(x) + B.dot(u)
    
-def asrec_control(x,A,B,R,K,P,V,z,ub=None):
+def asrec_control(x,A,B,R,K,P,V,z,ul=None,ub=None):
     rb = np.linalg.solve(R,B.T)
-    u = -(K - rb.dot(V).dot(np.linalg.solve(P,V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P,z))
-    if np.linalg.norm(u) > 70:
-        u *= 70/np.linalg.norm(u)
+    
+    try:
+        u = -(K - rb.dot(V).dot(np.linalg.solve(P,V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P,z))
+    except np.linalg.LinAlgError as e:
+        u = -(K - rb.dot(V).dot(np.linalg.lstsq(P,V.T)[0])).dot(x) - rb.dot(V).dot(np.linalg.lstsq(P,z)[0])
+        
+    
+    if ub is not None and np.linalg.norm(u) > ub:
+        u *= ub/np.linalg.norm(u)
+    if ul is not None and np.linalg.norm(u) < ul:
+        u *= ul/np.linalg.norm(u)    
+        
     return u
     
 def asrec_cost(t, x, u, Q, R, F):
@@ -281,7 +292,7 @@ def asrec_cost(t, x, u, Q, R, F):
     J0 = 0.5*dot(x[-1].T,dot(F,x[-1]))
     return J0 + trapz(integrand, t)    
     
-def ASREC(x0, tf, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, n_discretize=250):
+def ASREC(x0, t, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, maxU=None, minU=None, guess=None):
     """ Approximating Sequence of Riccati Equations with Terminal Constraints Cx=z """
     from scipy.interpolate import interp1d
     
@@ -291,16 +302,20 @@ def ASREC(x0, tf, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, n_discretize=250):
     n = x0.size
     m = R(x0).shape[0]
     
-    t = np.linspace(0, tf, n_discretize)
-    dt = t[1]
+    n_discretize = len(t)
+    dt = np.diff(t)
     tb = t[::-1]                            # For integrating backward in time
     
     converge = tol + 1
     Jold = -1e16
     print "Approximating Sequence of Riccati Equations"
-    print "Max iterations: {}".format(max_iter)
-    
-    for iter in range(max_iter):
+    start_iter = 0 
+    if guess is not None:
+        start_iter = 1 
+        x = guess['state']
+        u = guess['control'] 
+        
+    for iter in range(start_iter,max_iter):
         print "Current iteration: {}".format(iter+1)
         
         if not iter: # LTI iteration
@@ -318,8 +333,8 @@ def ASREC(x0, tf, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, n_discretize=250):
         x = [x0]
         u = [u[0].T]
         for stage in range(n_discretize-1):
-            x.append(odeint(asrec_dynamics, x[-1], [0, dt], args=(A(x[-1]), B(x[-1],u[-1]), R(x[-1]), K[stage], P[stage], V[stage], z))[-1])
-            u.append(asrec_control(x[-2], A(x[-2]), B(x[-2],u[-1]), R(x[-2]), K[stage], P[stage], V[stage], z).T)
+            x.append(odeint(asrec_dynamics, x[-1], [0, dt[stage]], args=(A(x[-1]), B(x[-1],u[-1]), R(x[-1]), K[stage], P[stage], V[stage], z, (minU,maxU)))[-1])
+            u.append(asrec_control(x[-2], A(x[-2]), B(x[-2],u[-1]), R(x[-2]), K[stage], P[stage], V[stage], z, minU,maxU).T)
             
         J = asrec_cost(t, x, u, Q, R, F)
         converge = np.abs(J-Jold)/J
@@ -336,7 +351,7 @@ def ASREC(x0, tf, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, n_discretize=250):
     
     
     
-def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
+def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250, guess=None):
     """ Approximating Sequence of Riccati Equations """
     from scipy.interpolate import interp1d
     
@@ -352,8 +367,16 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250):
     converge = tol + 1
     print "Approximating Sequence of Riccati Equations"
     print "Max iterations: {}".format(max_iter)
+    start_iter = 0 
+    if guess is not None:
+        start_iter = 1 
+        timeGuess = guess['time']
+        stateGuess = guess['state']
+        controlGuess = guess['control']
+        x = np.interp(t, timeGuess,stateGuess)
+        u = np.interp(t, timeGuess,controlGuess)
     
-    for iter in range(max_iter):
+    for iter in range(start_iter, max_iter):
         print "Current iteration: {}".format(iter+1)
         
         if not iter: # LTI iteration
@@ -490,50 +513,56 @@ def replace_nan(x,replace=1.):
         return x
 
         
-# ############## SRP ##############  
+# ############## SRP (TIME) ##############  
 def SRP_A(x):
-    return np.array([[0,0,0,1,0,0],[0,0,0,0,1,0],[0,0,0,0,0,1],[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,-3.71/x[2],0,0,0]])
+    return np.array([[0,0,0,1,0,0],[0,0,0,0,1,0],[0,0,0,0,0,1],[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,-3.71*replace_nan(1/x[2],1),0,0,0]])
     
 def SRP_B(x):
     return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)
-    # return np.concatenate((np.zeros((3,3)),[[1,0,0],[0,1,0],[0,0,1]]),axis=0)
+
 def SRP_Bu(x,u):
     return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)    
+    
 def SRP_C(x):
     return np.eye(6)
     
 def SRP():
     from scipy.integrate import cumtrapz 
-
+    import time 
+    from TrajPlot import TrajPlot as traj3d
     m0 = 8500.
     x0 = np.array([-3200., 400, 2600, 625., -60, -270.])
-    tf = 13
+    tf = 15
     r = np.zeros((6,))
-    R = lambda x: np.eye(3)
+    R = lambda x: -np.eye(3)
     Q = lambda x: np.zeros((6,6))
     S = np.zeros((6,6))
     
     from functools import partial 
-    solvers = [partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=50),
-              partial(ASREC, tf=tf, A=SRP_A, B=SRP_Bu, C=np.eye(6), Q=Q, R=R, F=S, z=r, n_discretize=50, tol=1e-2)]
+    solvers = [partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=50, maxU=70,minU=40),
+              partial(ASREC, t=np.linspace(0,tf,50), A=SRP_A, B=SRP_Bu, C=np.eye(6), Q=Q, R=R, F=S, z=r, tol=1e-2, maxU=70,minU=40)]
     labels = ['SDRE','ASRE']
+    
     for solver,label in zip(solvers,labels):
+        t0 = time.time()
         x,u,K = solver(x0)
+        print "{} solution time: {} s".format(label,time.time()-t0)
         
         t = np.linspace(0,tf,x.shape[0])
         T = np.linalg.norm(u,axis=1)
         m = m0*np.exp(-cumtrapz(T/(9.81*280),t,initial=0))
         print "Prop used: {} kg".format(m0-m[-1])
         
-        plt.figure(6)
-        plt.plot(t,x[:,0:3])
-        plt.xlabel('Time (s)')
-        plt.ylabel('Positions (m)')
+        # plt.figure(6)
+        # plt.plot(t,x[:,0:3])
+        # plt.xlabel('Time (s)')
+        # plt.ylabel('Positions (m)')
         
-        plt.figure(1)
-        plt.plot(np.linalg.norm(x[:,0:2],axis=1),x[:,2])
-        plt.xlabel('Distance to Target (m)')
-        plt.ylabel('Altitude (m)')
+        # plt.figure(1)
+        # plt.plot(np.linalg.norm(x[:,0:2],axis=1),x[:,2])
+        # plt.xlabel('Distance to Target (m)')
+        # plt.ylabel('Altitude (m)')
+        
         plt.figure(3)
         plt.plot(np.linalg.norm(x[:,3:5],axis=1),x[:,5])
         plt.xlabel('Horizontal Velocity (m/s)')
@@ -557,11 +586,83 @@ def SRP():
         plt.xlabel('Time')
         plt.title('Mass')
         
+        traj3d(*(x[:,0:3].T),figNum=7,label=label)
+        
         # plt.figure(8)
         # for k in range(3):
             # for j in range(3):
                 # plt.plot(t, K[:,j,k],label='K[{},{}]'.format(j,k))
     plt.show() 
+    return u 
+    
+ # ############## SRP (ALTITUDE) ##############  
+def SRP_A_alt(x):
+    return np.array([[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,-3.71/x[4]]])/x[4]
+    
+def SRP_B_alt(x):
+    return np.concatenate((np.zeros((2,3)),np.eye(3)/x[4]),axis=0)
+
+def SRP_Bu_alt(x,u):
+    return np.concatenate((np.zeros((2,3)),np.eye(3)/x[4]),axis=0)    
+    
+def SRP_C_alt(x):
+    return np.eye(5)
+    
+def SRP_alt():
+    from scipy.integrate import cumtrapz 
+    import time 
+    
+    m0 = 8500.
+    z0 = 2600
+    x0 = np.array([-3200., 400, 625., -60, -270.])
+    # tf = 13
+    # r = np.zeros((5,))
+    r = np.array([0,0,0,0,-20])
+    R = lambda x: np.eye(3)
+    Q = lambda x: np.zeros((5,5))
+    S = np.zeros((5,5))
+       
+    # z = np.linspace(z0,0,75)   
+    z = np.logspace(np.log(z0)/np.log(5),0,50,base=5)   
+    x,u,K = ASREC(x0=x0,t=z, A=SRP_A_alt, B=SRP_Bu_alt, C=np.eye(5), Q=Q, R=R, F=S, z=r,  tol=1e-2, maxU=70, minU=40,max_iter=2)  
+      
+    t = cumtrapz(1/x[:,4],z,initial=0)  
+    T = np.linalg.norm(u,axis=1)
+    m = m0*np.exp(-cumtrapz(T/(9.81*280),t,initial=0))
+    print "Prop used: {} kg".format(m0-m[-1])  
+    
+    # plt.figure(2)
+    # plt.plot(z,"o")
+      
+    label='ASRE'   
+    plt.figure(1)
+    plt.plot(np.linalg.norm(x[:,0:2],axis=1),z)
+    plt.xlabel('Distance to Target (m)')
+    plt.ylabel('Altitude (m)')
+    plt.figure(3)
+    plt.plot(np.linalg.norm(x[:,2:4],axis=1),x[:,4])
+    plt.xlabel('Horizontal Velocity (m/s)')
+    plt.ylabel('Vertical Velocity (m/s)')   
+    
+    plt.figure(2)
+    plt.plot(t,u[:,0]/T,label='x - {}'.format(label))
+    plt.plot(t,u[:,1]/T,label='y - {}'.format(label))
+    plt.plot(t,u[:,2]/T,label='z - {}'.format(label))
+    plt.xlabel('Time (s)')
+    plt.title('Control Direction')
+    plt.legend()
+    
+    plt.figure(5)
+    plt.plot(t,T)
+    plt.xlabel('Time')
+    plt.title('Thrust accel ')
+    
+    plt.figure(4)
+    plt.plot(t,m)
+    plt.xlabel('Time')
+    plt.title('Mass') 
+    
+    plt.show()   
     
 # ############## Inverted Pendulum ##############        
 def IP_A(x):
@@ -632,3 +733,4 @@ def test_IP():
 if __name__ == '__main__':    
     # test_IP()
     SRP()
+    # SRP_alt()
