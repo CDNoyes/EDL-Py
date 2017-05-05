@@ -36,7 +36,6 @@ class Entry(object):
     
     def ignite(self):
         """ Ignites the engines to begin powered flight. """
-        
         self.powered = True
             
     
@@ -133,9 +132,9 @@ class Entry(object):
         ''' try the pyaudi jacobian '''
         from Utils import DA as da
         vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
-        X = da.make(np.concatenate((x,u)), vars, 1, array=True)
+        X = da.make(np.concatenate((x,u)), vars, 2, array=True)
         f = self.__dynamics()(X)
-        return da.jacobian(f, vars)
+        return da.jacobian(f, vars), da.vhessian(f,vars)
     
     def __dynamics(self):
         ''' Used in jacobian. Returns an object callable with a single combined state '''
@@ -151,14 +150,15 @@ class Entry(object):
         h = r - self.planet.radius
         L = np.zeros_like(h)
         D = np.zeros_like(h)
-        for i,hi in enumerate(h):
-            rho,a = self.planet.atmosphere(hi)
+        for i,hi in enumerate(h): # TODO: Remove loop once all functions are vectorized 
+            rho,a = self.planet.atmosphere(hi)                  # TODO: Vectorize this
             M = v[i]/a
-            cD,cL = self.vehicle.aerodynamic_coefficients(M)
+            cD,cL = self.vehicle.aerodynamic_coefficients(M)    # TODO: Vectorize this
             f = 0.5*rho*self.vehicle.area*v[i]**2/m[i]
             L[i] = f*cL*self.lift_ratio
             D[i] = f*cD*self.drag_ratio
         return L,D
+        
     def gravity(self, r):
         return self.planet.mu/r**2
         
@@ -251,5 +251,25 @@ def CompareSaturation():
     plt.plot(x,[Saturate(xx,-1.5,1) for xx in x])        
     plt.show()
     
+def CompareJacobian():
+    model = Entry()
+    from InitialState import InitialState 
+    x = InitialState(radius=3450e3, velocity=3500)
+    print "state: {}".format(x)
+    u = [0.3, 0, 0]
+    import time 
+    Jnum = model.jacobian(x,u)
+    t0 = time.time()
+    Jnum = model.jacobian(x,u)
+    tnum = time.time()-t0 
+    t0 = time.time() 
+    Jda = model.jacobian_(x,u)
+    tda = time.time()-t0
+    print "Numerical differencing: {} s".format(tnum)
+    print "Differential algebra  : {} s".format(tda)
+    err = Jnum-Jda 
+    print err
+    
 if __name__ == "__main__":
-    CompareSaturation()
+    # CompareSaturation()
+    CompareJacobian()
