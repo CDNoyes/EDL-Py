@@ -22,24 +22,27 @@ def optimize():
     x0 = np.array([-3200., 400, 2600, 625., -80, -270.])
     xf = np.array([-3200., 400, 2600, 625., -80, -270.])*0
     # x = np.array([np.linspace(x0i,xfi,N) for x0i,xfi in zip(x0,xf)]).T
-    tf = 13.4
+    # tf = 13.4
+    tf = 16
     srp = SRP_Riccati()
     x,_ = srp.solve(tf,N,max_iter=1) # Warm start turns out to be essential for convergence in some cases 
     order = 3 #cubic splines 
-    t = np.linspace(0,1,N)*tf # Normalized time 
+    t = np.linspace(0,1,N) # Normalized time 
 
     spl = [splrep(t,x[:,i]) for i in range(3)]
     
     tknots = spl[0][0]
-    c = np.array([sp[1][1:-(order+2)] for sp in spl]).flatten() #  Remove x0 and xf from constraints by removing the initial and final coefficients from the optimization problem.
- 
-
+    c = [sp[1][1:-(order+2)] for sp in spl]#  Remove x0 and xf from constraints by removing the initial and final coefficients from the optimization problem.
+    c = np.concatenate(c, axis=0)
+    c = np.append(c,[tf])
     result = minimize(cost, c, args=(tknots,x0,xf), method='SLSQP', constraints=constraint_dict(args=(tknots,x0,xf)), options={'disp':True,'maxiter':500})    
 
     splines = coeff2spl(result.x,tknots,x0,xf)
-    tfine = np.linspace(0,tf,50)
-    P,V,A,T,mu,eta = getStates(splines, tfine)
-    
+    # splines = coeff2spl(c,tknots,x0,xf)
+    tfine = np.linspace(0,1,50)
+    P,V,A,T,mu,eta = getStates(splines, tfine, result.x[-1])
+    # P,V,A,T,mu,eta = getStates(splines, tfine, tf)
+    tfine *= result.x[-1]
     m = np.exp(np.log(m0) + cumtrapz(-T/ve,tfine,initial=0))
     print "Prop used: {} kg".format(m0-m[-1])
     plt.figure()
@@ -75,15 +78,15 @@ def cost_minimum_fuel(t, a):
 
 def cost(c, t, x0, xf):
     splines = coeff2spl(c,t,x0,xf)
-    P,V,A,T,mu,eta = getStates(splines, t)
-    # J = cost_minimum_energy(t,T)
-    J = cost_minimum_fuel(t,T)
+    P,V,A,T,mu,eta = getStates(splines, t,c[-1])
+    # J = cost_minimum_energy(t*c[-1],T)
+    J = cost_minimum_fuel(t*c[-1],T)
     return J
 
-def constraints(c, t,x0,xf):
+def constraints(c, t, x0, xf):
     """ Define any constraints that cannot be satisfied as bounds on the spline coefficients """
     splines = coeff2spl(c,t,x0,xf)
-    P,V,A,T,mu,eta = getStates(splines,t)
+    P,V,A,T,mu,eta = getStates(splines,t,c[-1])
     Tmax = 70
     Tmin = 40
     # Have to written as >= 0 for SLSQP
@@ -96,7 +99,7 @@ def constraints(c, t,x0,xf):
                     
 def constraints_eq(c, t, x0, xf):
     splines = coeff2spl(c,t,x0,xf)
-    P,V,A,T,mu,eta = getStates(splines,t)
+    P,V,A,T,mu,eta = getStates(splines,t,c[-1])
     return np.array([V[0,:]-x0[3:6],
                     V[-1,:]-xf[3:6]
                     ]).flatten()  
@@ -113,7 +116,7 @@ def constraint_jac(c,t,x0,xf):
     con = constraints(cda,t,x0,xf)
     return da.jacobian(con)
 
-def getStates(splines, t):
+def getStates(splines, t, tf):
     """ Input is a list of the spline tck for each of x,y,z """
     
     Z = np.array([splev(t, spl, i) for i in [0,1,2] for spl in splines]).T   # x,y,z and their first and second derivatives - will not work for DA
@@ -135,8 +138,8 @@ def getStates(splines, t):
 
     # States 
     P = Z[:,0:3] # Positions 
-    V = Z[:,3:6] # Velocities
-    A = Z[:,6:9] + g # Thrust acceleration 
+    V = Z[:,3:6]/tf # Velocities
+    A = Z[:,6:9]/(tf**2) + g # Thrust acceleration 
     
     # Controls 
     T = np.linalg.norm(A,axis=1)      # Thrust acceleration magnitude 
