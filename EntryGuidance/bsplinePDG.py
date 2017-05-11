@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np 
 from scipy.interpolate import splrep, splev, splder, BSpline
 from scipy.integrate import trapz,cumtrapz
+from scipy.io import savemat 
 from pyaudi import gdual_double as gd 
 import time 
 
@@ -12,18 +13,19 @@ sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 from Utils import DA as da 
 from SRP import SRP_Riccati 
 from TrajPlot import TrajPlot as traj3d
+import time 
 
 def optimize():
     from scipy.optimize import minimize 
-    N = 16
+    N = 20
     
     m0 = 8500.
     ve = 290.*9.81
-    x0 = np.array([-3200., 400, 2600, 625., -80, -270.])
+    x0 = np.array([-3200., 400, 3200, 625., -80, -270.])
     xf = np.array([-3200., 400, 2600, 625., -80, -270.])*0
     # x = np.array([np.linspace(x0i,xfi,N) for x0i,xfi in zip(x0,xf)]).T
-    # tf = 13.4
-    tf = 16
+    tf = 13.4
+    # tf = 20
     srp = SRP_Riccati()
     x,_ = srp.solve(tf,N,max_iter=1) # Warm start turns out to be essential for convergence in some cases 
     order = 3 #cubic splines 
@@ -35,8 +37,10 @@ def optimize():
     c = [sp[1][1:-(order+2)] for sp in spl]#  Remove x0 and xf from constraints by removing the initial and final coefficients from the optimization problem.
     c = np.concatenate(c, axis=0)
     c = np.append(c,[tf])
-    result = minimize(cost, c, args=(tknots,x0,xf), method='SLSQP', constraints=constraint_dict(args=(tknots,x0,xf)), options={'disp':True,'maxiter':500})    
-
+    t0 = time.time()
+    result = minimize(cost, c, args=(tknots,x0,xf), method='SLSQP', constraints=constraint_dict(args=(tknots,x0,xf)), options={'disp':True,'maxiter':1000})    
+    print "NLP time: {} s".format(time.time()-t0)
+    
     splines = coeff2spl(result.x,tknots,x0,xf)
     # splines = coeff2spl(c,tknots,x0,xf)
     tfine = np.linspace(0,1,50)
@@ -47,21 +51,33 @@ def optimize():
     print "Prop used: {} kg".format(m0-m[-1])
     plt.figure()
     plt.plot(tfine,m)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Mass (kg)')
     plt.figure()
     plt.plot(tfine,P)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Position (m)')
     plt.figure()
     plt.plot(tfine,V)
+    plt.legend(('In-plane','Out-of-plane','Vertical'))
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity (m/s)')
     plt.figure()
     plt.plot(tfine,T)
+    plt.xlabel('Time (s)')
     plt.plot(tfine,40*np.ones_like(tfine),'k--')
     plt.plot(tfine,70*np.ones_like(tfine),'k--')
     plt.axis([0,tf+2,0,80])
     plt.figure()
     plt.plot(tfine,np.degrees(mu),label='pitch')
     plt.plot(tfine,np.degrees(eta),label='yaw')
+    plt.xlabel('Time (s)')
+    plt.ylabel('(deg)')
     plt.legend()
-    traj3d(*(P.T))
+    traj3d(*(P.T),T=A*20)
     plt.show()
+    
+    # savemat('fuel_opt_srp.mat',{key:val for key,val in zip(['P','V','A','T','mu','eta'],[P,V,A,T,mu,eta])})
 
 def coeff2spl(c,t,x0,xf):
     """ Converts the flat coefficient matrix into 3 tck tuples """
@@ -90,9 +106,11 @@ def constraints(c, t, x0, xf):
     Tmax = 70
     Tmin = 40
     # Have to written as >= 0 for SLSQP
-    return np.array([Tmax**2-T**2,            # Max thrust constraint
-                     T**2-Tmin**2,            # Min thrust constraint 
-                     P[:,2],                  # Altitude constraint                     
+    n = 2 
+    return np.array([Tmax**n-T**n,            # Max thrust constraint
+                     T**n-Tmin**n,            # Min thrust constraint 
+                     # P[:,2],                  # Altitude constraint  
+                    -P[:,0]**2 - P[:,1]**2 + (P[:,2]*np.tan(85*np.pi/180.))**2      # Glide slope constraint               
                     ]).flatten()
                     
                     
@@ -100,9 +118,14 @@ def constraints(c, t, x0, xf):
 def constraints_eq(c, t, x0, xf):
     splines = coeff2spl(c,t,x0,xf)
     P,V,A,T,mu,eta = getStates(splines,t,c[-1])
-    return np.array([V[0,:]-x0[3:6],
-                    V[-1,:]-xf[3:6]
-                    ]).flatten()  
+    
+    con = np.array([V[0,:]-x0[3:6],
+                    V[-1,:]-xf[3:6],
+                    ]).flatten()
+    
+    # con = np.append(con,[mu[-1]-np.pi/2])
+    
+    return con
                     
 def constraint_dict(args):
     c = {'type':'ineq','fun':constraints,'args':args}
