@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from scipy.stats import chi2        # Used to compute confidence intervals 
 
-def cov(mean, cov, ci=[0.99], fignum=None, show=False, legend=True, xlabel='',ylabel=''):
+def cov(mean, cov, ci=[0.99], fignum=None, show=False, legend=True, xlabel='',ylabel='',legtext=None):
     """
     Given a 2-D covariance matrix (possibly a submatrix of a larger covariance matrix), 
     draws the ellipse under some assumptions.
@@ -13,11 +13,11 @@ def cov(mean, cov, ci=[0.99], fignum=None, show=False, legend=True, xlabel='',yl
     imax = np.argmax(eigvals)
     minor = np.min(eigvals)
     angle = np.arctan2(eigvecs[1,imax],eigvecs[0,imax])
-    ellipse(mean, np.sqrt(major), np.sqrt(minor), angle, ci=ci,fignum=fignum,show=show,legend=legend,xlabel=xlabel,ylabel=ylabel)
+    ellipse(mean, np.sqrt(major), np.sqrt(minor), angle, ci=ci,fignum=fignum,show=show,legend=legend,xlabel=xlabel,ylabel=ylabel,legtext=legtext)
     
 
     
-def ellipse(center, major, minor, rotation, ci = [0.95], fignum=None, show=False, legend=True, xlabel='',ylabel=''):
+def ellipse(center, major, minor, rotation, ci = [0.95], fignum=None, show=False, legend=True, xlabel='',ylabel='',legtext=None):
     """ 
         Draws an ellipse centered at center, with major-axis equal to major,
         minor-axis equal to minor, and rotated counter-clockwise from the x-axis 
@@ -34,10 +34,14 @@ def ellipse(center, major, minor, rotation, ci = [0.95], fignum=None, show=False
         xy = np.array([major*np.sqrt(s)*np.cos(t), np.sqrt(s)*minor*np.sin(t)])
         R = np.array([[np.cos(rotation), -np.sin(rotation)],[np.sin(rotation),np.cos(rotation)]])
         XY = np.dot(R,xy)
-        XY[:,0] += center[0]
-        XY[:,1] += center[1]
+        XY[0,:] += center[0]
+        XY[1,:] += center[1]
+        if legtext is None:
+            label = "CI={}".format(interval)
+        else:
+            label = "{}, CI={}".format(legtext,interval)
         
-        plt.plot(XY[0,:],XY[1,:],'--',label="CI={}".format(interval))
+        plt.plot(XY[0,:],XY[1,:],'--',label=label)
     
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -56,14 +60,14 @@ def test_cov():
     
     P = np.array([[4,-2],[-2,4]]) 
     
-    data = normal(mean=[0,0],cov=P,size=1000)
+    data = normal(mean=[1,-1],cov=P,size=1000)
 
-    cov([0,0],P,ci=[0.9,0.95,0.99])
+    cov([1,-1],P,ci=[0.9,0.95,0.99])
     plt.plot(data[:,0],data[:,1],'o')
     plt.show()
     
     
 if __name__ == "__main__":
-    # ellipse([0,0],1,0.5,0.0,ci=[0.9,0.99],show=True)
+    # ellipse([1,0],1,0.5,0.0,ci=[0.9,0.99],show=True)
     # cov([0,0],[[16,1],[1,4]],ci=[0.99],show=True)
     test_cov()
