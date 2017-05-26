@@ -105,20 +105,20 @@ def const(da_array, array=False):
         return np.array([da.constant_cf if isinstance(da,gd) else da for da in da_array])
       
 def const_dict(da_dict):
-       
+    con_dict = {}   
     for key,val in da_dict.items():
         try:
-            da_dict[key] = val.constant_cf
+            con_dict[key] = val.constant_cf
         except:
-            pass
-    return da_dict
+            con_dict[key] = val
+    return con_dict
     
 def make(values, names, orders, array=False):
     """ Turn an array of constant values into an array of generalized duals with specified names and orders. Orders may be an integer. """
     if isinstance(orders, int):
         orders = [orders for _ in names]    
     if array:
-        return np.array([gd(v,n,o) for v,n,o in zip(values, names, orders)])
+        return np.array([gd(v,n,o) for v,n,o in zip(values, names, orders)],dtype=gd)
 
     else:    
         return [gd(v,n,o) for v,n,o in zip(values, names, orders)]
@@ -174,28 +174,23 @@ def __getSplIdx(x,t):
 
     
 def splev(x, spline):
-    """ Uses De Boor's algorithm to evaluate a B-spline at points in x """
-    t,c,n = spline.tck
+    """ Implements De Boor's algorithm to evaluate a B-spline at points in x """
+    if isinstance(spline,tuple):
+        t,c,n = spline 
+    else:
+        t,c,n = spline.tck
     
     L = __getSplIdx(x,t)
     Ln = [Li-n for Li in L]
     
-    print L 
-    print Ln 
-    
     B = []
     for j,xj  in enumerate(x):
-        print "j = {}".format(j)
-        print "len(c) = {}".format(len(c))
         d = np.array(c[Ln[j]:L[j]+1])
         dnext = np.zeros_like(d)
-        
-        print " d = {}".format(d)
         
         for k in range(1,n+1):
             for i in range(Ln[j]+k,L[j]+1):
                 idx = i-Ln[j]
-                print idx
                 alpha_kn = (xj - t[i])/(t[i+n+1-k] - t[i])
                 dnext[idx] = (1-alpha_kn)*d[idx-1] + alpha_kn*d[idx]
             d = dnext 
