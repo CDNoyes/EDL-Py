@@ -22,17 +22,18 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
         fopt        -   the value of the quadratic objective function evaluated at x 
     
     """
-    
     if debug:
         print "Inputs:  "
-        print "Hessian = {}".format(hessian)
-        print "Gradient = {}".format(gradient)
+        # print "Hessian = {}".format(hessian)
+        # print "Gradient = {}".format(gradient)
         print "Initial guess = {}".format(x0)
+        print "Lower bound: {}".format(bounds[0])
+        print "Upper bound: {}".format(bounds[1])
     
     iter = 0
     iterMax = 100
     n = len(x0)
-    
+
     x = np.clip(x0, bounds[0],bounds[1]) # Make the initial point feasible 
     if n > 1:
         x = x[0]
@@ -43,8 +44,8 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
     
     if debug:
         print "After some transforms:  "
-        print "Hessian = {}".format(hessian)
-        print "Gradient = {}".format(gradient)
+        # print "Hessian = {}".format(hessian)
+        # print "Gradient = {}".format(gradient)
         print "Initial feasible guess = {}\n".format(x)
     
     while iter < iterMax:
@@ -65,8 +66,10 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
         hff =  hessian[f,:][:,f]
         if debug:
             print "Free dirs: {}".format(f)
-            print "Free hess: {}".format(hff)
-            print "Free g: {}".format(gradient[f])
+            # print "Free hess: {}".format(hff)
+            # print "Free g: {}".format(gradient[f])
+            print x 
+            print x.shape 
             print "Free x: {}".format(x[f])
         if len(f):
             gf = gradient[f] + np.dot(hff,x[f].T).T
