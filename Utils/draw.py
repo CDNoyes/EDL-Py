@@ -29,6 +29,8 @@ def ellipse(center, major, minor, rotation, ci = [0.95], fignum=None, show=False
         
     if fignum is None:
         plt.figure()
+    else:
+        plt.figure(fignum)
         
     for interval in ci:
         s = chi2.isf(1-interval,2)
