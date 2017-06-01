@@ -5,6 +5,8 @@ from numpy import sin,cos
 def controller(**kwargs):
     pass 
     
+    
+    
 def drag_dynamics(D, D_dot, g, L, r, V, gamma, rho, scaleHeight):  
     """ Estimates the nonlinear functions a,b such that the second derivative of
         drag with respect to time is given by (a+b*u)
@@ -25,9 +27,23 @@ def drag_dynamics(D, D_dot, g, L, r, V, gamma, rho, scaleHeight):
     a3 = -2*D*g*cos(gamma)**2 * (1/r - g/V**2)
     a4 = D*rho_dot/rho/h_dot*(-g-D*sin(gamma)+V**2/r*cos(gamma)**2)
     a = a1 + a2 + a3 + a4
+    
 
     b1 = -2*D*L*g*cos(gamma)/V**2
     b2 = D*L/h_dot*rho_dot/rho*cos(gamma)
     b = b1+b2
 
     return a,b
+    
+def drag_derivatives(u, L, D, g, r, V, gamma, rho, scaleHeight):
+    
+    V_dot = -D-g*sin(gamma)
+    h_dot = V*sin(gamma)
+    rho_dot = -h_dot*rho/scaleHeight
+
+    D_dot = D*(rho_dot/rho + 2*V_dot/V)
+
+    a,b = drag_dynamics(D,D_dot,g,L,r,V,gamma,rho,scaleHeight)
+    D_ddot = a + b*u 
+    
+    return D_dot,D_ddot
