@@ -25,13 +25,19 @@ from kivy.uix.checkbox import CheckBox
 
 import matplotlib
 matplotlib.use('module://kivy.garden.matplotlib.backend_kivy')
-from kivy.garden.matplotlib import FigureCanvasKivyAgg
+from kivy.garden.matplotlib import FigureCanvasKivyAgg, NavigationToolbar2Kivy
 
 import matplotlib.pyplot as plt 
 import numpy as np 
+import pandas as pd 
 import os 
 
-# plt.style.use('dark_background')   
+if False:
+    plt.style.use('dark_background')   
+    main_plot_color = 'y'
+else:
+    main_plot_color = 'k'
+    
 # plt.style.use('ggplot')   
    
 class TrajectoryGUIApp(App):
@@ -42,12 +48,13 @@ class TrajectoryGUIApp(App):
 
     def build(self):
     
-        layout = FloatLayout()
-        self.data = generate_dataset()
+        layout = FloatLayout(source='./space.jpg')
+        # self.data = generate_dataset()
+        self.data = pd.read_pickle('./results/entry_test_data.pkl')
         file_list = self.data.columns.tolist()
         
-        file_dropdown_x = Spinner(text=file_list[0], values=file_list, size_hint=(0.15,0.06),  pos_hint={'right':0.85,'top':1}, sync_height=True)
-        file_dropdown_y = Spinner(text=file_list[1], values=file_list, size_hint=(0.15,0.06),  pos_hint={'right':1,'top':1}, sync_height=True)
+        file_dropdown_x = Spinner(text=file_list[0], values=file_list, size_hint=(0.15,0.06),  pos_hint={'right':0.85,'top':.92}, sync_height=True)
+        file_dropdown_y = Spinner(text=file_list[1], values=file_list, size_hint=(0.15,0.06),  pos_hint={'right':1,'top':0.92}, sync_height=True)
 
         file_dropdown_x.bind(text=self.new_plot)
         file_dropdown_y.bind(text=self.new_plot)
@@ -60,20 +67,26 @@ class TrajectoryGUIApp(App):
         self.ax = ax 
         ax.grid()
         
-        canvas = FigureCanvasKivyAgg(figure=fig,size_hint=(0.7,0.94),pos_hint={'right':0.7})
+        canvas = FigureCanvasKivyAgg(figure=fig,size_hint=(0.7,0.92),pos_hint={'right':0.7})
         self.canvas = canvas
         
-        reset = Button(text='Clear figure',size_hint=(0.15,0.06),pos_hint={'right':0.2,'top':1},background_color=[1,0,0,1])
+        nav = NavigationToolbar2Kivy(canvas)
+        
+        
+        # Additional functionality 
+        reset = Button(text='Clear Figure',size_hint=(0.15,0.06),pos_hint={'right':0.5,'top':0.99},background_color=[1,0,0,1])
         reset.bind(on_press=self.reset_plot)
         
         hold = Button(text='Hold',size_hint=(0.15,0.06),pos_hint={'right':0.6,'top':1},background_color=[1,0,1,1])
         # hold.bind(on_press=rebind) 
         
+        # Add everything to the layout 
         layout.add_widget(file_dropdown_x)
         layout.add_widget(file_dropdown_y)
+        layout.add_widget(nav.actionbar)
         layout.add_widget(canvas)
         layout.add_widget(reset)
-        layout.add_widget(hold)
+        # layout.add_widget(hold)
         
         self.update_plot(None,None)
 
@@ -96,7 +109,7 @@ class TrajectoryGUIApp(App):
         
     def update_plot(self, *args,**kwargs):
         
-        self.ax.plot(self.data[self.x.text],self.data[self.y.text],'c')    
+        self.ax.plot(self.data[self.x.text],self.data[self.y.text],main_plot_color,lineWidth=3)    
         
         plt.xlabel(self.x.text)
         plt.ylabel(self.y.text)
@@ -121,23 +134,13 @@ def generate_dataset():
     from EntryGuidance.Simulation import Simulation, EntrySim
     from EntryGuidance.InitialState import InitialState
     from EntryGuidance.HPC import profile 
-    # import pandas as pd 
-    # from numpy.random import random 
-    # data = np.cos(random((260,15)))
-    # names = ['var{}'.format(i) for i in range(data.shape[1])]
-    # df = pd.DataFrame(data, columns=names)
-    # print df.info()
-    # return df 
-    # print df['var2']
-    # print df[['var1','var2']]
-    # print df.values[0:5,2:5]    
-    # tf = 260.
     
     reference_sim = Simulation(output=False,**EntrySim())
     banks = [-np.pi/2, np.pi/2,-np.pi/9]
     bankProfile = lambda **d: profile(d['time'],[89.3607, 136.276], banks)                                
     x0 = InitialState()
     output_ref = reference_sim.run(x0,[bankProfile],StepsPerCycle=10)
+    reference_sim.df.to_pickle('./results/entry_test_data.pkl')
     return reference_sim.df
     
     
