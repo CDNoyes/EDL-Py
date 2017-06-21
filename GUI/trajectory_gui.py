@@ -1,7 +1,7 @@
 """ Kivy based GUI development.
     Installation required some additional upgrades/installations 
     Additionally, garden components have to be installed separately like:
-    garden install graph
+    garden install matplotlib
     
     Simulation.GUI should save its data somewhere (possibly temporary) and call this GUI 
 """
@@ -14,15 +14,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.spinner import Spinner
 from kivy.uix.checkbox import CheckBox
 
-# from kivy.graphics import Color, Ellipse, Line 
-
-# from kivy.vector import Vector
-# from kivy.properties import NumericProperty, ObjectProperty, ReferenceListProperty
-# from kivy.clock import Clock 
-
-# garden extension imports 
-# from kivy.garden.graph import Graph, LinePlot, SmoothLinePlot
-
+# garden mpl extension imports 
 import matplotlib
 matplotlib.use('module://kivy.garden.matplotlib.backend_kivy')
 from kivy.garden.matplotlib import FigureCanvasKivyAgg, NavigationToolbar2Kivy
@@ -30,7 +22,6 @@ from kivy.garden.matplotlib import FigureCanvasKivyAgg, NavigationToolbar2Kivy
 import matplotlib.pyplot as plt 
 import numpy as np 
 import pandas as pd 
-import os 
 
 if False:
     plt.style.use('dark_background')   
@@ -42,19 +33,26 @@ else:
    
 class TrajectoryGUIApp(App):
 
-    km2m = 1000
-    m2km = 1e-3 
-    rad2deg = 180.0/np.pi
 
+
+    def __init__(self, **kwargs):
+        super(TrajectoryGUIApp, self).__init__(**kwargs)
+        self.kwargs = kwargs
+    
     def build(self):
     
         layout = FloatLayout(source='./space.jpg')
         # self.data = generate_dataset()
-        self.data = pd.read_pickle('./results/entry_test_data.pkl')
+        if not "path" in self.kwargs:
+            self.data = pd.read_pickle('./results/entry_test_data.pkl')
+        else:
+            self.data = pd.read_pickle(self.kwargs['path'])
+            
         file_list = self.data.columns.tolist()
         
-        file_dropdown_x = Spinner(text=file_list[0], values=file_list, size_hint=(0.15,0.06),  pos_hint={'right':0.85,'top':.92}, sync_height=True)
-        file_dropdown_y = Spinner(text=file_list[1], values=file_list, size_hint=(0.15,0.06),  pos_hint={'right':1,'top':0.92}, sync_height=True)
+        buttonHeight = 0.06
+        file_dropdown_x = Spinner(text=file_list[0], values=file_list, size_hint=(0.15,buttonHeight),  pos_hint={'right':0.85,'top':.92}, sync_height=True)
+        file_dropdown_y = Spinner(text=file_list[1], values=file_list, size_hint=(0.15,buttonHeight),  pos_hint={'right':1,'top':0.92}, sync_height=True)
 
         file_dropdown_x.bind(text=self.new_plot)
         file_dropdown_y.bind(text=self.new_plot)
@@ -74,11 +72,27 @@ class TrajectoryGUIApp(App):
         
         
         # Additional functionality 
-        reset = Button(text='Clear Figure',size_hint=(0.15,0.06),pos_hint={'right':0.5,'top':0.99},background_color=[1,0,0,1])
+        reset = Button(text='Clear Figure',size_hint=(0.15,buttonHeight),pos_hint={'right':0.5,'top':0.99},background_color=[1,0,0,1])
         reset.bind(on_press=self.reset_plot)
         
         hold = Button(text='Hold',size_hint=(0.15,0.06),pos_hint={'right':0.6,'top':1},background_color=[1,0,1,1])
         # hold.bind(on_press=rebind) 
+        
+        # unit converter button (per axis?)
+        options = ['none','rad to deg','m to km','normalize']
+        units = ["-",'deg','km',"-"]
+        km2m = 1000
+        m2km = 1e-3 
+        rad2deg = 180.0/np.pi
+        convs = [1,rad2deg,m2km,1]
+        self.new_unit = {key:val for key,val in zip(options,units)}
+        self.new_val = {key:val for key,val in zip(options,convs)}
+        converter_x = Spinner(text=options[0], values=options, size_hint=(0.15,0.06),  pos_hint={'right':0.85,'top':.86}, sync_height=True)
+        converter_y = Spinner(text=options[0], values=options, size_hint=(0.15,0.06),  pos_hint={'right':1,'top':.86}, sync_height=True)
+        converter_x.bind(text=self.new_plot)
+        converter_y.bind(text=self.new_plot) # TODO: Changing variables should reset these to none 
+        self.cx = converter_x
+        self.cy = converter_y
         
         # Add everything to the layout 
         layout.add_widget(file_dropdown_x)
@@ -86,6 +100,8 @@ class TrajectoryGUIApp(App):
         layout.add_widget(nav.actionbar)
         layout.add_widget(canvas)
         layout.add_widget(reset)
+        layout.add_widget(converter_x)
+        layout.add_widget(converter_y)
         # layout.add_widget(hold)
         
         self.update_plot(None,None)
@@ -109,22 +125,37 @@ class TrajectoryGUIApp(App):
         
     def update_plot(self, *args,**kwargs):
         
-        self.ax.plot(self.data[self.x.text],self.data[self.y.text],main_plot_color,lineWidth=3)    
+        if 'normalize' in self.cx.text:
+            range_x = self.data[self.x.text].max() - self.data[self.x.text].min()
+            new_x_data = (self.data[self.x.text] - self.data[self.x.text].min())/range_x
+        else:
+            new_x_data = self.data[self.x.text] * self.new_val[self.cx.text]
+            
+        if 'normalize' in self.cy.text:
+            range_y = self.data[self.y.text].max() - self.data[self.y.text].min()
+            new_y_data = (self.data[self.y.text] - self.data[self.y.text].min())/range_y
+        else:        
+            new_y_data = self.data[self.y.text] * self.new_val[self.cy.text]
         
-        plt.xlabel(self.x.text)
-        plt.ylabel(self.y.text)
+        self.ax.plot(new_x_data,new_y_data,main_plot_color,lineWidth=3)    
+        
+        plt.xlabel(self.x.text + " [{}]".format(self.new_unit[self.cx.text]))
+        plt.ylabel(self.y.text + " [{}]".format(self.new_unit[self.cy.text]))
         
         # Set sane limits 
-        sxmin = np.sign(self.data[self.x.text].min())
-        sxmax = np.sign(self.data[self.x.text].max())
-        symin = np.sign(self.data[self.y.text].min())
-        symax = np.sign(self.data[self.y.text].max())
+        sxmin = np.sign(new_x_data.min())
+        sxmax = np.sign(new_x_data.max())
+        symin = np.sign(new_y_data.min())
+        symax = np.sign(new_y_data.max())
         d = 0.1 # fraction of difference 
-        self.ax.set_xlim(self.data[self.x.text].min()*(1-d*sxmin), self.data[self.x.text].max()*(1+d*sxmax))
-        self.ax.set_ylim(self.data[self.y.text].min()*(1-d*symin), self.data[self.y.text].max()*(1+d*symax))
+        self.ax.set_xlim(new_x_data.min()*(1-d*sxmin), new_x_data.max()*(1+d*sxmax))
+        self.ax.set_ylim(new_y_data.min()*(1-d*symin), new_y_data.max()*(1+d*symax))
         self.canvas.draw()
         return
 
+def TrajectoryGUI(path):
+    TrajectoryGUIApp(path=path).run()
+    
 
 def generate_dataset():
     import sys
