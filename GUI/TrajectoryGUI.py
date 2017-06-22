@@ -22,6 +22,7 @@ from kivy.garden.matplotlib import FigureCanvasKivyAgg, NavigationToolbar2Kivy
 import matplotlib.pyplot as plt 
 import numpy as np 
 import pandas as pd 
+import os 
 
 if False:
     plt.style.use('dark_background')   
@@ -33,7 +34,7 @@ else:
    
 class TrajectoryGUIApp(App):
 
-
+    default_results_dir = "C:/Users/cdnoyes/Documents/EDL/results"
 
     def __init__(self, **kwargs):
         super(TrajectoryGUIApp, self).__init__(**kwargs)
@@ -41,18 +42,27 @@ class TrajectoryGUIApp(App):
     
     def build(self):
     
-        layout = FloatLayout(source='./space.jpg')
-        # self.data = generate_dataset()
+        layout = FloatLayout()
+
+        buttonHeight = 0.06
+
+        # File selection 
         if not "path" in self.kwargs:
+            self.path = self.default_results_dir
             self.data = pd.read_pickle('./results/entry_test_data.pkl')
         else:
+            self.path = self.kwargs['path']
             self.data = pd.read_pickle(self.kwargs['path'])
+
+        files = [f.split(".")[0] for f in os.listdir(self.path) if 'pkl' in f]
+        file_list = Spinner(text=files[0], values=files, size_hint=(0.30,buttonHeight),  pos_hint={'right':1,'top':0.06}, sync_height=True)   
+        file_list.bind(text=self.new_data)    
+        self.file_list=file_list
             
-        file_list = self.data.columns.tolist()
-        
-        buttonHeight = 0.06
-        file_dropdown_x = Spinner(text=file_list[0], values=file_list, size_hint=(0.15,buttonHeight),  pos_hint={'right':0.85,'top':.92}, sync_height=True)
-        file_dropdown_y = Spinner(text=file_list[1], values=file_list, size_hint=(0.15,buttonHeight),  pos_hint={'right':1,'top':0.92}, sync_height=True)
+        # Variable selection    
+        var_list = self.data.columns.tolist()
+        file_dropdown_x = Spinner(text=var_list[0], values=var_list, size_hint=(0.15,buttonHeight), pos_hint={'right':0.85,'top':0.92}, sync_height=True)
+        file_dropdown_y = Spinner(text=var_list[1], values=var_list, size_hint=(0.15,buttonHeight), pos_hint={'right':1.00,'top':0.92}, sync_height=True)
 
         file_dropdown_x.bind(text=self.new_plot)
         file_dropdown_y.bind(text=self.new_plot)
@@ -60,6 +70,7 @@ class TrajectoryGUIApp(App):
         self.x = file_dropdown_x
         self.y = file_dropdown_y
         
+        # Plot
         fig = plt.figure(1)
         ax = fig.add_subplot(1,1,1)
         self.ax = ax 
@@ -71,20 +82,22 @@ class TrajectoryGUIApp(App):
         nav = NavigationToolbar2Kivy(canvas)
         
         
-        # Additional functionality 
-        reset = Button(text='Clear Figure',size_hint=(0.15,buttonHeight),pos_hint={'right':0.5,'top':0.99},background_color=[1,0,0,1])
+        # # Additional functionality 
+        # Reset button
+        reset = Button(text='Clear Figure',size_hint=(0.15,buttonHeight),pos_hint={'right':0.4,'top':0.99},background_color=[1,0,0,1])
         reset.bind(on_press=self.reset_plot)
         
-        hold = Button(text='Hold',size_hint=(0.15,0.06),pos_hint={'right':0.6,'top':1},background_color=[1,0,1,1])
-        # hold.bind(on_press=rebind) 
+        # Line hold button
+        hold = Button(text='Hold',size_hint=(0.15,0.06),pos_hint={'right':0.56,'top':0.99},background_color=[1,0,1,1])
+        hold.bind(on_press=self.rebind) # If hold, use update_plot instead of new_plot 
         
-        # unit converter button (per axis?)
-        options = ['none','rad to deg','m to km','normalize']
-        units = ["-",'deg','km',"-"]
+        # unit converter button (per axis)
+        options = ['none','rad to deg','m to km','km to m', 'normalize']
+        units = ["-",'deg','km','m', "-"] # Later, put None instead of - and use the original units (however they are obtained)
         km2m = 1000
         m2km = 1e-3 
         rad2deg = 180.0/np.pi
-        convs = [1,rad2deg,m2km,1]
+        convs = [1,rad2deg,m2km,km2m,1]
         self.new_unit = {key:val for key,val in zip(options,units)}
         self.new_val = {key:val for key,val in zip(options,convs)}
         converter_x = Spinner(text=options[0], values=options, size_hint=(0.15,0.06),  pos_hint={'right':0.85,'top':.86}, sync_height=True)
@@ -102,13 +115,29 @@ class TrajectoryGUIApp(App):
         layout.add_widget(reset)
         layout.add_widget(converter_x)
         layout.add_widget(converter_y)
-        # layout.add_widget(hold)
+        layout.add_widget(hold)
+        layout.add_widget(file_list)
         
         self.update_plot(None,None)
 
         return layout
+    
+    def rebind(self,button):
+        # texts = ['Hold','Stop Hold']
+        
+        if button.text == 'Hold':
+            button.text = 'Stop Hold'
+            button.background_color = [0,1,1,1]
+            
+        else:
+            button.text = 'Hold'
+            button.background_color = [1,0,1,1]
+        
 
-
+    def new_data(self,file_list,stuff):
+        # print self.path + self.file_list.text + ".pkl"
+        self.data = pd.read_pickle(self.path + "/" + self.file_list.text + ".pkl")
+        
     def reset_plot(self,button):
         self.ax.lines=[]
         plt.xlabel('')
@@ -123,7 +152,7 @@ class TrajectoryGUIApp(App):
         self.ax.lines=[] 
         self.update_plot()
         
-    def update_plot(self, *args,**kwargs):
+    def update_plot(self, *args, **kwargs):
         
         if 'normalize' in self.cx.text:
             range_x = self.data[self.x.text].max() - self.data[self.x.text].min()
@@ -155,7 +184,7 @@ class TrajectoryGUIApp(App):
 
 def TrajectoryGUI(path):
     TrajectoryGUIApp(path=path).run()
-    
+    return 
 
 def generate_dataset():
     import sys
