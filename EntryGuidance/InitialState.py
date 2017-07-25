@@ -36,9 +36,14 @@ def InitialState(full_state=False, **kwargs):
            }
     
     
-    r0, theta0, phi0, v0, gamma0, psi0, s0, m0 = (3540.0e3, radians(-90.07), radians(-43.90),
-                                                  5505.0,   radians(-14.15), radians(4.99),
-                                                  905.65*1e3, 8500)
+    if False: # MSL-like numbers 
+        r0, theta0, phi0, v0, gamma0, psi0, s0, m0 = (3540.0e3, radians(-90.07), radians(-43.90),
+                                                      5505.0,   radians(-14.15), radians(4.99),
+                                                      905.65*1e3, 2804)
+    else:  # Heavy BC, equatorial flight 
+        r0, theta0, phi0, v0, gamma0, psi0, s0, m0 = (3540.0e3, radians(0), radians(0),
+                                                      6000,   radians(-14.5), radians(0),
+                                                      900*1e3, 8500)
 
     x0 = [r0, theta0, phi0, v0, gamma0, psi0, s0, m0]
     
