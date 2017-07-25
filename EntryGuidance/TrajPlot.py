@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np 
 
-def TrajPlot(x,y,z, V=None, T=None, ground=True, show=False, figNum=None, lineSpec=None, label=None):
+def TrajPlot(x,y,z, V=None, T=None, ground=True, show=False, figNum=None, lineSpec=None, label=None, axesEqual=True):
     if figNum is None:
         fig = plt.figure()
     else:
@@ -30,7 +30,9 @@ def TrajPlot(x,y,z, V=None, T=None, ground=True, show=False, figNum=None, lineSp
     if label is not None:
         plt.legend()
     
-    set_axes_equal(ax)
+    if axesEqual:
+        set_axes_equal(ax)
+        
     if show:
         plt.show()
         
