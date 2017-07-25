@@ -186,7 +186,7 @@ class System(object):
 
         self.model = EDL()
         self.truth = EDL(InputSample=InputSample)
-        self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error so nav = truth
+        self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error nor measurement error so nav = truth
         self.filter_gain  = -10.0
         self.powered = False
     
@@ -209,8 +209,8 @@ class System(object):
         RL = x[16]
         RD = x[17]
         
-        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array([x[15]]))
-        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array([x[15]]))
+        L,D   = self.model.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array([x[15]])) # Model based estimates 
+        Lm,Dm = self.nav.aeroforces(np.array([x[8]]),np.array([x[11]]),np.array([x[15]]))   # Measurements, possibly subject to measurement noise and attitude knowledge errors (which affect the conversion from imu data to aerodynamic accels)
         
         dRL = FadingMemory(currentValue=RL, measuredValue=Lm[0]/L[0], gain=self.filter_gain)
         dRD = FadingMemory(currentValue=RD, measuredValue=Dm[0]/D[0], gain=self.filter_gain)
@@ -223,7 +223,7 @@ class System(object):
         self.filter_gain = gain
         
         
-def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank=np.pi/2, max_rate=np.radians(20), max_accel=np.radians(10)):
+def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank=np.pi/2, max_rate=np.radians(20), max_accel=np.radians(5)):
     """ 
         Constrained second order system subjected to minimum and maximum bank angles, max bank rate, and max acceleration.
         May cause stiffness in numerical integration, consider replacing Saturate with a smoother function like Erf
