@@ -1,4 +1,3 @@
-from pyaudi import exp
 
 
 class Planet:
@@ -61,6 +60,12 @@ class Planet:
 
     def __exp_model_mars(self, h):
         ''' Defines an exponential model of the atmospheric density and local speed of sound as a function of altitude. '''
+        try:
+            h[0]
+            from numpy import exp 
+        except:
+            from pyaudi import exp
+
         #Density computation:
         rho = self.rho0*exp(-h/self.scaleHeight)
         # Local speed of sound computation:
