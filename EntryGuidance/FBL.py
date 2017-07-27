@@ -17,7 +17,7 @@ class fbl_controller(object):
         than a user-specified tolerance. Two different forms of the update are
         included.
     """
-    def __init__(self, Ef, fbl_ref, observer=False, update_type=1):
+    def __init__(self, Ef, fbl_ref, observer=False, update_type=1, update_tol=3, controller=None):
         self.observer = observer
 
         self.D0    = 0              # Used in update type 2
@@ -26,14 +26,20 @@ class fbl_controller(object):
         self.accel = fbl_ref['D2']
 
         self.Ef = Ef
-        self.type=update_type
+        self.type = update_type
+        self.tol = update_tol*1e3   # Assumes input is in km
 
         self.a = fbl_ref['a']
         self.b = fbl_ref['b']
         self.bank = fbl_ref['bank'] # only usable until first update
         self.c = 0
         self.c_history = [0]
-        self.E_history = [] # This gets initialized the first time the controller is called
+        self.E_history = []         # This gets initialized the first time the controller is called
+
+        if controller is None:
+            self.controller = self.__controller
+        else:
+            self.controller = controller
 
     def trigger(self, E, rangeToGo, drag):
         """ Defines a trigger that determines when the update method is called """
@@ -51,8 +57,8 @@ class fbl_controller(object):
 
         rangePredicted = quad(inv_drag, E, self.Ef)[0]
         err = np.abs(rangeToGo - rangePredicted)
-        tol = 1e3 # x km error allowed before replanning
-        return err > tol
+
+        return err > self.tol
 
     def update(self, E, rangeToGo, drag):
         """ Computes a suitable drag profile update of one of the two forms:
@@ -71,10 +77,10 @@ class fbl_controller(object):
             rangePredicted = quad(inv_drag, E, self.Ef, args=(c,))[0]
             return (rangeToGo-rangePredicted)**2
 
-        sol = minimize(cost)
-        # self.c = np.clip(sol.x, -0.5,0.5)
-        if (sol.x - self.c) < 0.1: # disallow large changes? might be needed in some cases
-            self.c = sol.x
+        sol = minimize(cost, method='bounded',bounds=(-0.9,self.c+0.2))
+        self.c = np.clip(sol.x, -0.9,0.5)
+        # if (sol.x - self.c) < 0.1: # disallow large changes? might be needed in some cases
+        #     self.c = sol.x
 
         # print self.c
         self.D0 = drag
@@ -84,16 +90,36 @@ class fbl_controller(object):
         # print c
 
 
-    def controller(self, energy, current_state, lift, drag, bank, planet, time, rangeToGo, **kwargs):
+    def __controller(self, energy, current_state, lift, drag, bank, planet, time, rangeToGo, **kwargs):
         r,lon,lat,v,fpa,psi,s,m = current_state
 
         if not len(self.E_history):
             self.E_history.append(energy)
-            self.D0 = drag
+            self.D0 = self.drag(energy) #drag #Use reference, not measured? Otherwise the initial profile will be wrong already
 
-        if self.type and self.trigger(energy,rangeToGo,drag) and v > 1200 and v < 4800:
+        if self.type and self.trigger(energy,rangeToGo,drag) and v > 1200 and v < 4000:
             self.update(energy,rangeToGo,drag)
 
+            if True:
+                import matplotlib.pyplot as plt
+                plt.figure()
+                E = np.linspace(energy,self.Ef)
+                D = self.drag(E)
+                print self.c
+                plt.plot(E,D,label='Original Reference')
+                plt.plot(energy,drag,'x',label='Current State')
+                if self.type == 2:
+                    plt.plot(E,(self.drag(E)-self.drag(energy))*(1+self.c) + self.D0,label='Updated Profile')
+                    plt.title('Update = (Ref-Ref(E0))(1+c) + D(E0)')
+                else:
+                    plt.plot(E,(self.drag(E))*(1+self.c),label='Updated Profile')
+                    plt.title('Update = Ref(1+c)')
+                plt.xlabel('Energy')
+                plt.ylabel('Drag (m/s^2)')
+                plt.legend()
+                plt.show()
+                import sys
+                sys.exit()
 
         h = r - planet.radius
         g = planet.mu/r**2
@@ -112,8 +138,8 @@ class fbl_controller(object):
         Dmax = 85 # this should come from the nominal drag profile
 
         # kp = 0.2*q/qmax
-        kp = 0.002 * drag/Dmax
-        kd = 0.01  * drag/Dmax
+        kp = 0.02 * drag/Dmax
+        kd = 0.1 * drag/Dmax
 
         if self.type == 1:
             ref_drag = self.drag(energy+de)*(1+self.c)
@@ -129,7 +155,7 @@ class fbl_controller(object):
 
         du = kp*(drag-ref_drag) + kd*(drag_rate-ref_rate)
         # du = 0
-        u = cos(self.bank(energy+de)) + du/b
+        u = cos(self.bank(energy+de)) + du #/np.abs(b)
 
         # u = (fbl_ref['D2'](energy+de)-a)/b #+ du/b
         # u = (fbl_ref['D2'](energy+de)-fbl_ref['a'](energy+de))/fbl_ref['b'](energy+de) #+ du/b
@@ -138,57 +164,9 @@ class fbl_controller(object):
         return bank
 
 
-def controller(energy, current_state, lift, drag, bank, planet, time, fbl_ref, observer=False, **kwargs):
-
-    r,lon,lat,v,fpa,psi,s,m = current_state
-    h = r - planet.radius
-    g = planet.mu/r**2
-    rho = planet.atmosphere(h)[0]
-    u = cos(bank)
-
-    # use references at energy value a small dt in the future
-    dt = 2                                                     #2 + mild feedback -> < 0.06 m/s^2 peak drag error
-    de = -dt*v*drag
-    # energy += de
-
-    # if observer: # Use reference + disturbance estimate
-    # u = cos(fbl_ref['bank'](energy)) #- (disturbance)/b_ref(v)
-
-    a,b = drag_dynamics(drag,None,g,lift,r,v,fpa,rho,planet.scaleHeight)
-    # print "Control authority: {}".format(np.abs(b/a))
-    drag_rate,_ = drag_derivatives(u, lift, drag, g, r, v, fpa, rho, planet.scaleHeight)
-
-    q = 0.5*rho*v**2
-    qmax = 0.5*1*4000**2
-
-    kp = 0.05*q/qmax
-    kd = 0*0.2*q/qmax
-
-    # From sliding mode paper:
-    # qmax = 1e6
-    # omega0 = 2*np.pi/80/np.sqrt(1-0.3**2)
-    # omega = q/qmax*omega0
-    # kp = omega**2
-    # kd = 2*0.3*omega
-
-    du = -kp*(drag-fbl_ref['D'](energy+de)) - kd*(drag_rate-fbl_ref['D1'](energy+de))
-    # print "du = {}".format(v/b)
-    u = cos(fbl_ref['bank'](energy+de)) + du/b
-
-    # u = (fbl_ref['D2'](energy+de)-a)/b #+ du/b
-    # u = (fbl_ref['D2'](energy+de)-fbl_ref['a'](energy+de))/fbl_ref['b'](energy+de) #+ du/b
-
-    bank = arccos(np.clip(u,0,1))*np.sign(fbl_ref['bank'](energy+de))
-
-    # import matplotlib.pyplot as plt
-    # plt.figure(666)
-    # plt.plot(time, (a/b),'ko')
-
-    return bank
 
 
-
-def drag_dynamics(D, D_dot, g, L, r, V, gamma, rho, scaleHeight):
+def drag_dynamics(D, D_dot, g, L, r, V, gamma, rho, scaleHeight,Dratio=1,Lratio=1):
     """ Estimates the nonlinear functions a,b such that the second derivative of
         drag with respect to time is given by (a+b*u)
     """
@@ -273,7 +251,7 @@ class test_FBL(unittest.TestCase):
         # Closed-loop entry
         # ######################################################
         pre = lambda **kwargs: banks[0]
-        fbl_c = fbl_controller(Ef=reference_sim.df['energy'].values[-1],fbl_ref=refs, update_type=1)
+        fbl_c = fbl_controller(Ef=reference_sim.df['energy'].values[-1],fbl_ref=refs, update_type=2, update_tol=10)
         fbl = fbl_c.controller
 
         states = ['PreEntry','RangeControl']
@@ -283,8 +261,10 @@ class test_FBL(unittest.TestCase):
         controls = [pre, fbl]
 
         # Run the nominal simulation
-        sample = None
+        # sample = None
         sample = [0.1,-0.1,-0.03,0.003]
+        # sample = [-0.1,0.1,-0.03, 0.003]
+
         # sample = [-0.1,-0.1,-0.03,0.003]
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
 
