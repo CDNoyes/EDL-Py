@@ -9,6 +9,14 @@ from scipy.interpolate import interp1d
 
 def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, use_drag_rate=False, use_lateral=True, **kwargs):
 
+    multi = not isinstance(reference,dict) # Determine if we're using a single reference
+    if multi:
+        N = len(reference)
+        refs = reference
+    else:
+        N = 1 
+        refs = [reference]
+
     if use_energy:
         IV = energy
         dIV = -drag*velocity
@@ -18,16 +26,20 @@ def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, lo
         
     alt_rate = velocity*sin(fpa)
     
-    if use_drag_rate:
-        hs = 9345.5 # Nominal scale height
-        g = 3.71    
-        drag_rate = drag*(-alt_rate/hs - 2*drag/velocity - 2*g*sin(fpa)/velocity)    
-        Rp = predict_range_dr(IV, drag, drag_rate, reference)  
-    else:
-        Rp = predict_range(IV, drag, alt_rate, reference,b=1)  
+    Rp = [np.inf]*N
+    for ID in range(N):
+    
+        if use_drag_rate:
+            hs = 9345.5 # Nominal scale height
+            g = 3.71    
+            drag_rate = drag*(-alt_rate/hs - 2*drag/velocity - 2*g*sin(fpa)/velocity)    
+            Rp[ID] = predict_range_dr(IV, drag, drag_rate, refs[ID])  
+        else:
+            Rp[ID] = predict_range(IV, drag, alt_rate, refs[ID], b=1)  
 
         
-    LoD_com = LoD_command(IV, rangeToGo/1000., Rp, reference)
+    useID = np.argmin(rangeToGo/1000. - np.abs(Rp))    
+    LoD_com = LoD_command(IV, rangeToGo/1000., Rp, refs[useID])
     sigma = bank_command(lift/drag, LoD_com)   
     
     # Lateral logic here
@@ -37,8 +49,8 @@ def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, lo
         else:
             sign = lateral(np.sign(bank), heading, latitude, longitude, heading_error, get_heading)
     else: # Reverse at same velocity/energy as the reference trajectory
-        # sign = np.sign(reference['U'](IV+dIV*5.5))
-        sign = np.sign(bank)
+        sign = np.sign(reference['U'](IV+dIV*5.5))
+        # sign = np.sign(bank)
             
     return np.clip(sigma, *bounds)*sign
     
