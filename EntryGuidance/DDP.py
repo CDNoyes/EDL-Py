@@ -1,7 +1,8 @@
 """ Python implementation of differential dynamic programming """
 
 import numpy as np
-from numpy import sin, cos 
+# from numpy import sin, cos 
+from pyaudi import sin, cos 
 from scipy.integrate import odeint 
 from scipy.interpolate import interp1d 
 import matplotlib.pyplot as plt 
@@ -9,7 +10,8 @@ import matplotlib.pyplot as plt
 from HPC import profile 
 from Simulation import Simulation 
 from InitialState import InitialState 
-
+import sys 
+sys.addPath('./Utils/')
 from Utils.RK4 import RK4
 from Utils.trapz import trapz, cumtrapz
 from Utils.ProjectedNewton import ProjectedNewton as solveQP
@@ -156,17 +158,17 @@ def DDP(simulation, dynamics, mayerCost, lagrangeCost, finalConstraints, finalTi
 class SRP(object):
     def __init__(self,dim=2):
         # Algorithm settings 
-        self.maxIter = 5
-        self.convergenceTolerance = 1e-3 
+        self.maxIter = 20
+        self.convergenceTolerance = 1e-12
                
         # System info 
-        self.nx = 2*dim  # number of states 
+        self.nx = 2*dim + 1  # number of states 
         self.nu = dim    # number of controls 
         
         # Dynamic params 
         self.param = [3.71, 2.7e3] # gravity, exit velocity  
         self.umax = 6.e5 
-        self.umin = 3.5e5 
+        self.umin = self.umax #3.5e5 
         
         
         # Boundary conditions 
@@ -190,18 +192,21 @@ class SRP(object):
             self.xl = np.array([-1.e6, -1.e6, -1.e6, 0.])
             self.xu = np.array([1.e6, 1.e6, -1., 1.e6])
             self.xf = np.array([0.,0.,-5.,8500.])
-            self.ul = np.array([self.umin, np.pi/2])
-            self.uu = np.array([self.umax, np.pi*1.2])
+            self.ul = np.array([self.umin, 2.1])
+            self.uu = np.array([self.umax, 2.97])
             
         # Cost function terms 
-        self.q = np.diag([1]*(self.nx-1) + [0])*1e-7
-        self.qf = np.diag([1]*(self.nx-1) + [0])*10
+        self.q = np.diag([1]*(self.nx-1) + [0])*1e-6*0
+        self.qf = np.diag([1]*(self.nx-1) + [0])*1e-5
         # self.r = np.eye(self.nu)*1e-7
-        self.r = np.diag([1/self.umax, 1])*1e-6
-        self.uf = np.array([self.umax, np.pi/2])
-        self.N = 200
+        self.r = np.diag([1/self.umax, 1])*1*0
+        self.uf = np.array([self.umax, 3*np.pi/4])
+        self.N = 30
         self.dh = (self.hf-self.h0)/(self.N-1) 
         self.h = np.linspace(self.h0,self.hf,self.N)
+    
+            
+    
     
     def poly(self):
         
@@ -267,116 +272,129 @@ class SRP(object):
         return zip(T,mu)
         
         
-    def debug(self,time, state, control):
+    def debug(self,time, state, control, L=None):
         
-        g = np.array([self.fx(s,c) for s,c in zip(state,control)])
+        # g = np.array([self.fx(s,c) for s,c in zip(state,control)])
         # H = [self.fxx(s,c) for s,c in zip(state,control)]
 
-        plt.plot(time,(g[:,0,0])/self.dh,label='dx/dx')
-        plt.plot(time,(g[:,0,1])/self.dh,label='dx/du')
-        plt.plot(time,(g[:,0,2])/self.dh,label='dx/dw')
-        plt.plot(time,(g[:,0,3])/self.dh,label='dx/dm')
-        plt.legend()
+        # plt.plot(time,(g[:,0,0])/self.dh,label='dx/dx')
+        # plt.plot(time,(g[:,0,1])/self.dh,label='dx/du')
+        # plt.plot(time,(g[:,0,2])/self.dh,label='dx/dw')
+        # plt.plot(time,(g[:,0,3])/self.dh,label='dx/dm')
+        # plt.legend()
+        
+        state = [da.const(s) for s in state]
+        L = da.const(L)
         
         plt.figure()
         plt.plot(time, state)
+        
+        if L is not None:
+            plt.figure()
+            plt.plot(time,L)
         
         plt.show()
         
         
     def DDP(self):
         # u = self.poly()
-        u = np.array([[self.umax, 3.0] for _ in self.h])
+        u = np.array([[self.umax*0.6, 2.9] for _ in self.h])
+        
         u = np.clip(u,self.ul,self.uu) 
         
-  
+        states = ['x','u','w','m']
+        controls = ['T','theta']
+        all = states+controls 
+        
         J = []
         
         #iterate 
         for iter in range(self.maxIter):
             print "Iteration: {}".format(iter+1)
+            u = np.array([da.const(uu,array=False) for uu in u])
             x = self.propagate(u)
+            x = np.array([da.const(xx,array=False) for xx in x])
             t = cumtrapz(1/x[:,self.iw],self.h)
-            # self.debug(t,x,u)
+            
+            x = np.array([da.make(val,states,2) for val in x],dtype=gd) # Maybe a vectorized version can work 
+            u = np.array([da.make(val,controls,2) for val in u],dtype=gd)
             
             L = self.lagrange(x,u)
-            Lx = self.lx(x,u)
-            Lxx = self.lxx(x,u)
-            Lux = self.lux(x,u)
-            Lu = self.lu(x,u)
-            Luu = self.luu(x,u)
+            LX = da.jacobian(L,all)                                 # Jacobians wrt x and u simulatenously 
+            LXX = np.array([da.hessian(l,all) for l in L],dtype=gd) # Hessians wrt to x and u simulatenously
             LN = self.mayer(x[-1])
-            J.append(np.sum(L) + LN)
-            
-            # plt.plot(self.h,L)
-            # plt.figure()
-            # plt.plot(self.h,Lx)
-            # plt.figure()
-            # plt.plot(self.h,Lu)
-            # plt.show()
-            
+            J.append(np.sum(da.const(L)) + da.const([LN])[0])
+            # if not iter:
+                # self.debug(t,x,u,L)
             if len(J) > 1:
                 if np.abs(J[-1]-J[-2]) < self.convergenceTolerance:
                     break
             if iter < 4 or not (iter+1)%10:            
                 plt.figure(1)
-                plt.plot(x[:,0], self.h, '--',label="{}".format(iter))
+                plt.plot(da.const(x[:,0]), self.h, '--',label="{}".format(iter))
                 plt.title('Altitude vs Distance to Target')
                 
                 plt.figure(2)
-                plt.plot(x[:,1],x[:,2], '--',label="{}".format(iter))
+                plt.plot(da.const(x[:,1]),da.const(x[:,2]), '--',label="{}".format(iter))
                 plt.title('Vertical Velocity vs Horizontal Velocity')
                 
                 plt.figure(3)
-                plt.plot(t,x[:,3], '--',label="{}".format(iter))
+                plt.plot(t,da.const(x[:,3]), '--',label="{}".format(iter))
                 plt.title('Mass vs time')
             
                 plt.figure(4)
-                plt.plot(t,u[:,0], '--',label="{}".format(iter))
+                plt.plot(t,da.const(u[:,0]), '--',label="{}".format(iter))
                 plt.title('Thrust vs time')
                 
                 plt.figure(5)
-                plt.plot(t,u[:,1], '--',label="{}".format(iter))
+                plt.plot(t,da.const(u[:,1]), '--',label="{}".format(iter))
                 plt.title('Thrust angle vs time')
                 # if not iter:
                     # plt.show()
-            # Final conditions on Value function and its derivs
-            # V = LN  # Unused?
-            Vx = self.mx(x[-1])
-            Vxx = self.mxx(x[-1])
-            
-            # Backward propagation
-            k = np.zeros((self.N,self.nu))
-            K = np.zeros((self.N,self.nu,self.nx))
-            for i in range(self.N)[::-1]:
-                Qx  = Lx[i]  + self.fx(x[i],u[i]).T.dot(Vx) 
-                Qu  = Lu[i]  + self.fu(x[i],u[i]).T.dot(Vx)
-                Qxx = Lxx[i] + self.fx(x[i],u[i]).T.dot(Vxx).dot(self.fx(x[i],u[i])) + 1*np.sum([Vxi*fxxi for Vxi,fxxi in zip(Vx,self.fxx(x[i],u[i]))],axis=0)
-                Qux = Lux[i] + self.fu(x[i],u[i]).T.dot(Vxx).dot(self.fx(x[i],u[i])) + 1*np.sum([Vxi*fxui.T for Vxi,fxui in zip(Vx,self.fxu(x[i],u[i]))],axis=0) # Fxu is transposed because we need Fux 
-                Quu = Luu[i] + self.fu(x[i],u[i]).T.dot(Vxx).dot(self.fu(x[i],u[i])) + 1*np.sum([Vxi*fuui for Vxi,fuui in zip(Vx,self.fuu(x[i],u[i]))],axis=0)
+                # Final conditions on value function derivs
+                Vx = da.gradient(LN,all)[:self.nx]
+                Vxx = da.hessian(LN,all)[:self.nx,:][:,:self.nx]
 
-                # No control limits 
-                if False:
-                    Quu = Regularize(Quu, 1)
-                    k[i] = -np.dot(np.linalg.inv(Quu),Qu)
-                    K[i] = -np.dot(np.linalg.inv(Quu),Qux)
-                # Bounded controls:
-                else:
-                    print Qu 
-                    print Quu 
-                    Quu = Regularize(Quu, 1e-3)
-                    k[i],Quuf = solveQP(np.zeros((self.nu)), Quu, Qu, ([self.ul-u[i]], [self.uu-u[i]]),debug=False)
-                    print np.linalg.cond(Quuf)
-                    if np.linalg.cond(Quuf) < 100:
-                        K[i] = -np.linalg.solve(Quuf,Qux)
+
+                # Backward propagation 
+                k = np.zeros((self.N,self.nu))
+                K = np.zeros((self.N,self.nu,self.nx))
+                for i in range(self.N)[::-1]:
+                    xi = self.step(x[i],u[i])
+                    fX = da.jacobian(xi,all)
+                    fXX = [da.hessian(xii,all) for xii in xi]
+                
+                    QX = LX[i] + fX.T.dot(Vx)
+                    QXX = LXX[i] + fX.T.dot(Vxx).dot(fX) + np.sum([Vxi*fxxi for Vxi,fxxi in zip(Vx,fXX)],axis=0)
+                    QXX = QXX.astype(float)
+                    # Get some useful partitions:
+                    Qx = QX[:self.nx]
+                    Qu = QX[self.nx:]
+                    Qxx = QXX[:self.nx,:][:,:self.nx]
+                    Qux = QXX[self.nx:,:][:,:self.nx]
+                    Quu = QXX[self.nx:,:][:,self.nx:]
+
                     
-                # V += -0.5*k[i].T.dot(Quu).dot(k[i]) # Unused? 
-                Vx = (Qx-K[i].T.dot(Quu).dot(k[i]))
-                Vxx = (Qxx-K[i].T.dot(Quu).dot(K[i]))
-            
-            # Forward correction
-            x,u = self.update(x,u,k,K)
-    
+                    
+                    # Bounded controls:
+                    # if np.linalg.cond(Quu) > 100:
+                    # print Quu
+                    Quu = Regularize(Quu, 1e-7)
+                    k[i], Quuf = solveQP(np.zeros((self.nu)), Quu, Qu, ([self.ul-da.const(u[i])], [self.uu-da.const(u[i])]),debug=False)
+                    # print np.linalg.cond(Quuf)
+                    if np.linalg.cond(Quuf) < 100:
+                        # print Quuf
+                        K[i] = -np.linalg.solve(Quuf,Qux)/np.linalg.cond(Quuf)
+                        
+                    Vx = (Qx-K[i].T.dot(Quu).dot(k[i]))
+                    Vxx = (Qxx-K[i].T.dot(Quu).dot(K[i]))
+                
+                # Forward correction
+                
+                x = np.array([da.const(xx,array=False) for xx in x])
+                u = np.array([da.const(uu,array=False) for uu in u])
+                x,u = self.update(x,u,k,K)
+        
         plt.figure()
         plt.plot(J,'o')
         plt.title('Cost vs Iteration')
@@ -392,6 +410,7 @@ class SRP(object):
             unew = []
             for i in range(self.N-1):
                 unew.append(np.clip(u[i] + step*k[i] + K[i].dot(xnew[i]-x[i]),self.ul,self.uu)) # This line search is actually essential to convergence 
+                # xnew.append(np.clip(self.step(xnew[i],unew[i]),self.xl,self.xu))    
                 xnew.append(self.step(xnew[i],unew[i]))    
             unew.append(unew[-1]) # Just so it has the correct number of elements   
             Jnew = self.evalCost(np.array(xnew),np.array(unew))
@@ -407,8 +426,8 @@ class SRP(object):
     def propagate(self,controls):
         x = [self.x0]
         for control in controls[:-1]:
-            # x.append(np.clip(self.step(x[-1],control),self.xl,self.xu))
-            x.append(self.step(x[-1],control))
+            x.append(np.clip(self.step(x[-1],control),self.xl,self.xu))
+            # x.append(self.step(x[-1],control))
         return np.array(x) 
         
     def step(self, state, control):
@@ -494,8 +513,10 @@ class SRP(object):
             
     def lagrange(self, states, control):
         L = np.array([np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf))) for state in states])
-        Lu = np.array([(u-self.uf).T.dot(self.r).dot(u-self.uf) for u in control])
-        return  0.5*(L + Lu)*self.dh/states[:,2]           # No angle inclusion in the control term 
+        Lu = np.array([(u-self.uf).T.dot(self.r).dot(u-self.uf) for u in control]) #quadratic cost 
+        # Lu = 2*control[:,0]*self.r[0,0] # Minimum fuel 
+        # return Lu + L
+        return  0.5*(L + Lu)*self.dh           # No angle inclusion in the control term 
         
     def lx(self, states, control):    
         return np.array([self.q.dot(state-self.xf)/state[2] -  0*np.dot((state-self.xf).T, np.dot(self.q, (state-self.xf)))/state[2]**2 for state in states])*self.dh
@@ -511,11 +532,6 @@ class SRP(object):
     
     def luu(self,state,control):
         return np.array([self.r/w for w in state[:,2]])*self.dh
-            
-     
-    def discrete(self, state, control):
-        print control 
-        return state + self.dh*self.dynamics(state, 0, control)
     
     def estimate(self):
         x = np.array([self.x0])
@@ -536,7 +552,6 @@ class SRP(object):
         print "L Hessian errors:"
         print Lxx - da.hessian(Lda[0],vars)
         
-        # F = self.discrete(X,u[0])
         F = self.step(X,u[0])
         Fx = self.fx(x[0],u[0])
         Fxx = self.fxx(x[0],u[0])
@@ -556,14 +571,14 @@ class testProblem():
     def __init__(self, x0=3, N=31):
         self.x0 = x0 
         self.N = N 
-        self.fx = 0.99 + .04/N + 0.5/N*np.cos(range(N))*(1-np.linspace(0,1,N))
+        self.fx = 0.90 + .04/N + 0.5/N*np.cos(range(N))*(1-np.linspace(0,1,N))
         self.fu = 1/np.array(range(1,N+1))**0.025 + 0.5*np.sin(range(N))/np.array(range(1,N+1))**4 # time varying control dynamics 
         self.q = 0 
         self.qf = 1
-        self.r = 1/5000.
+        self.r = 1/500.
         self.umax = 0.25
-        self.convergenceTolerance = 1e-6
-        self.maxIter = 500
+        self.convergenceTolerance = 1e-14
+        self.maxIter = 50
     
     
     def DDP(self, u=None):
@@ -595,7 +610,8 @@ class testProblem():
                 plt.plot(range(self.N),x,'--',label="{}".format(iter))
                 plt.figure(2)
                 plt.plot(range(self.N),u, '--',label="{}".format(iter))
-            
+                plt.figure(4)
+                plt.plot(L, 'o',label="{}".format(iter))
             # Final conditions on Value function and its derivs
             V = LN  
             Vx = self.mx(x[-1])
@@ -742,8 +758,8 @@ if __name__ == "__main__":
     # uOpt = system.DDP()
     
     srp = SRP()
-    srp.estimate()
-    # uSRP = srp.DDP()
+    # srp.estimate()
+    uSRP = srp.DDP()
     
     # Confirm backward integration 
     # dx = lambda x: -x 
