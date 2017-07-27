@@ -244,7 +244,9 @@ def sdre_feedback(b,r,p):
 def asre_feedback(x, u, B, R, Pv, n):
 
     P = [Pi.reshape((n,n)) for Pi in Pv]
-    return [dot(matrix_solve(R(xi),B(xi, ui).T),Pi) for xi,ui,Pi in zip(x,u,P)]
+    # return [dot(matrix_solve(R(xi),B(xi, ui).T),Pi) for xi,ui,Pi in zip(x,u,P)]
+    return [dot(matrix_solve(R(ui),B(xi, ui).T),Pi) for xi,ui,Pi in zip(x,u,P)] # R AS FUNCTION OF CONTROL
+   
    
    
 def asre_integrateV(dt, Vf, A, B, K, x, u): 
@@ -264,7 +266,8 @@ def asre_Pdynamics(P, t, V, B, R, n):
 def asre_integrateP(dt, V, B, R, x, u, n):
     P = [np.zeros((n,n)).flatten()]
     for xi,ui,Vi,dti in zip(x,u,V,dt)[::-1]:
-        P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(xi),n))[-1])
+        # P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(xi),n))[-1])
+        P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(ui),n))[-1]) # R AS FUNCTION OF CONTROL
     return np.array([p.reshape((n,n)) for p in P])
    
 def asrec_dynamics(x,t,A,B,R,K,P,V,z, ubounds=None):   
@@ -288,7 +291,7 @@ def asrec_control(x,A,B,R,K,P,V,z,ul=None,ub=None):
     return u
     
 def asrec_cost(t, x, u, Q, R, F):
-    integrand = 0.5*np.array([dot(xi.T,dot(Q(xi),xi)) + dot(ui,dot(R(xi),ui.T)) for xi,ui in zip(x,u)]).flatten()
+    integrand = 0.5*np.array([dot(xi.T,dot(Q(xi),xi)) + dot(ui,dot(R(ui),ui.T)) for xi,ui in zip(x,u)]).flatten() # # R AS FUNCTION OF CONTROL
     J0 = 0.5*dot(x[-1].T,dot(F,x[-1]))
     return J0 + trapz(integrand, t)    
     
@@ -333,8 +336,8 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, maxU=None, minU=Non
         x = [x0]
         u = [u[0].T]
         for stage in range(n_discretize-1):
-            x.append(odeint(asrec_dynamics, x[-1], [0, dt[stage]], args=(A(x[-1]), B(x[-1],u[-1]), R(x[-1]), K[stage], P[stage], V[stage], z, (minU,maxU)))[-1])
-            u.append(asrec_control(x[-2], A(x[-2]), B(x[-2],u[-1]), R(x[-2]), K[stage], P[stage], V[stage], z, minU,maxU).T)
+            x.append(odeint(asrec_dynamics, x[-1], [0, dt[stage]], args=(A(x[-1]), B(x[-1],u[-1]), R(x[-1]), K[stage], P[stage], V[stage], z, (minU,maxU)))[-1]) 
+            u.append(asrec_control(x[-2], A(x[-2]), B(x[-2],u[-1]), R(u[-1]), K[stage], P[stage], V[stage], z, minU,maxU).T) # R AS FUNCTION OF CONTROL
             
         J = asrec_cost(t, x, u, Q, R, F)
         converge = np.abs(J-Jold)/J
@@ -507,7 +510,7 @@ def dynamics(x, t, A, B, R, P, U, s):
 
 def replace_nan(x,replace=1.):
     """ A useful method for use in SDC factorizations. """
-    if np.isnan(x):
+    if np.isnan(x) or np.isinf(x):
         return replace
     else:
         return x
@@ -526,7 +529,7 @@ def SRP_Bu(x,u):
 def SRP_C(x):
     return np.eye(6)
     
-def SRP():
+def SRP(N=20):
     from scipy.integrate import cumtrapz 
     import time 
     from TrajPlot import TrajPlot as traj3d
@@ -534,14 +537,18 @@ def SRP():
     x0 = np.array([-3200., 400, 2600, 625., -60, -270.])
     tf = 15
     r = np.zeros((6,))
-    R = lambda x: -np.eye(3)
+    R = lambda x: np.eye(3)
+    # R = lambda x: np.diag([replace_nan(1/np.abs(x[i]),1) for i in range(3)])
     Q = lambda x: np.zeros((6,6))
     S = np.zeros((6,6))
     
     from functools import partial 
-    solvers = [partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=50, maxU=70,minU=40),
-              partial(ASREC, t=np.linspace(0,tf,50), A=SRP_A, B=SRP_Bu, C=np.eye(6), Q=Q, R=R, F=S, z=r, tol=1e-2, maxU=70,minU=40)]
-    labels = ['SDRE','ASRE']
+    solvers = [
+               # partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=N, maxU=70,minU=0),
+               partial(ASREC, t=np.linspace(0,tf,50), A=SRP_A, B=SRP_Bu, C=np.eye(6), Q=Q, R=R, F=S, z=r, tol=1e-2, maxU=70,minU=40)
+              ]
+    # labels = ['SDRE','ASRE']
+    labels = ['ASRE']
     
     for solver,label in zip(solvers,labels):
         t0 = time.time()
@@ -550,18 +557,33 @@ def SRP():
         
         t = np.linspace(0,tf,x.shape[0])
         T = np.linalg.norm(u,axis=1)
-        m = m0*np.exp(-cumtrapz(T/(9.81*280),t,initial=0))
+        m = m0*np.exp(-cumtrapz(T/(9.81*290),t,initial=0))
         print "Prop used: {} kg".format(m0-m[-1])
         
-        # plt.figure(6)
-        # plt.plot(t,x[:,0:3])
-        # plt.xlabel('Time (s)')
-        # plt.ylabel('Positions (m)')
         
-        # plt.figure(1)
-        # plt.plot(np.linalg.norm(x[:,0:2],axis=1),x[:,2])
-        # plt.xlabel('Distance to Target (m)')
-        # plt.ylabel('Altitude (m)')
+        # from scipy.interpolate import splrep, splev, splder, BSpline
+        # xsp = [splrep(t,x[:,i]) for i in range(3)]
+        # print len(xsp[0][0])
+        # print len(xsp[0][1])
+        # vsp = [splder(spl) for spl in xsp]
+        # print xsp[0][1]
+        # print vsp[0][1]
+        # tsp = np.linspace(0,tf,10)
+        
+        plt.figure(6)
+        plt.plot(t,x[:,0:3])
+        # for i in range(3):
+            # plt.plot(tsp, splev(tsp, xsp[i]),'o--')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Positions (m)')
+        
+        plt.figure(1)
+        plt.plot(t,x[:,3:6])
+        # for i in range(3):
+            # plt.plot(tsp, splev(tsp, xsp[i], 1),'o--')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Velocities (m/s)')
+
         
         plt.figure(3)
         plt.plot(np.linalg.norm(x[:,3:5],axis=1),x[:,5])
@@ -586,14 +608,14 @@ def SRP():
         plt.xlabel('Time')
         plt.title('Mass')
         
-        traj3d(*(x[:,0:3].T),figNum=7,label=label)
+        traj3d(*(x[:,0:3].T), T=300*u/np.tile(T,(3,1)).T, figNum=7,label=label)
         
         # plt.figure(8)
         # for k in range(3):
             # for j in range(3):
                 # plt.plot(t, K[:,j,k],label='K[{},{}]'.format(j,k))
     plt.show() 
-    return u 
+    return t,x,u 
     
  # ############## SRP (ALTITUDE) ##############  
 def SRP_A_alt(x):
