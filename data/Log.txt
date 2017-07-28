@@ -12,5 +12,10 @@ A version controlled log of data sets. Perhaps an excel document or something fo
 2/24/17 - Box_3sig_Apollo_K1_energy - The 16 vertices of the 4-uncertain parameters evaluted at their 3-sigma values
 
 3/30/17 - Apollo_CTRB_50_1km - Controllable set estimation for a fixed reference trajectory. Reference bank: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609], minBank=np.radians(30))
-                               Maximum downrange to be considered in the set is 1 km, and 50 pts were used to estimate the boundary.
-        - Apollo_CTRB_100_1km
+                               Maximum downrange to be considered in the set is 1 km, and 50 pts were used to estimate the boundary. Only variations in EFPA and V0 are considered.
+        - Apollo_CTRB_100_1km - More points
+        - Apollo_CTRB_150_500m - More points, and a small tolerance
+        - Apollo_CTRB_100_500m_aero - Estimates variations in Cl and Cd from which the target downrange is still achieved.
+
+3/31/17 - Apollo_CTRB_100_500m_NR - Removes bank reversal maneuvers entirely
+        
