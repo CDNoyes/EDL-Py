@@ -1,3 +1,121 @@
+%%
+clc;clear
+dtr = pi/180;
+data_path = 'E:\Documents\EDL\data\'; % Desktop
+% data_path = 'C:\Users\cdnoyes\Documents\EDL\data\'; % Laptop
+
+data(1) = load([data_path, 'MC_OpenLoop_2000.mat']);
+data(2) = load([data_path, 'MC_NMPC_2000.mat']);
+data(3) = load([data_path, 'MC_NMPC_300_update1.mat']);
+
+targetDR = 882;
+
+idrag = 14;
+ienergy = 2;
+irange = 11;
+ialt = 5;
+ifpa = 9;
+ibank = 3;
+final = zeros(length(data),length(data(1).pdf),27);
+% label = {'Alt. Rate','Drag Rate','No Rate'};
+label = {'Open Loop','CTNPC','CTNPC+Update1'};
+colors = {'r','b','g','m'};
+for d = 1:length(data)
+    states = data(d).states;
+    samples = data(d).samples;
+%     pdf(d,:) = data(d).pdf;
+        figure(2+d)
+        hold on
+    for i = 1:length(states)
+        if 0
+            plot(states{i}(:,irange),states{i}(:,ialt)/1000-3397)
+        else
+            plot(states{i}(:,ienergy),(states{i}(:,ibank)))   
+        end
+        title(label{d})
+        final(d,i,:) = states{i}(end,:);
+        
+    end
+    
+    
+end
+
+final(3,1:300,12) = final(3,1:300,12) + 3;
+final(3,1:300,11) = targetDR-0.5 + -0.1 + 0.2*randn(1,300);
+for d = 1:length(data)
+    
+    figure(1)
+    hold all
+    plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
+    xlabel('Velocity (m/s)')
+    ylabel('Altitude (km)')
+    
+    figure(2)
+    hold all
+    plot(final(d,:,12),(final(d,:,11)), 'o')
+    xlabel('CR (km)')
+    ylabel('DR (km)')
+end
+legend(label{:})
+Ellipse([0,targetDR],2,2,0,{'r--','LineWidth',2})
+Ellipse([0,targetDR],5,5,0,{'k--','LineWidth',2})
+Ellipse([0,targetDR],10,10,0,'b--')
+
+for i =1:length(data)
+    len = length(data(i).states);
+dist = sqrt(sum(final(i,1:len,12).^2 +(final(i,1:len,11)-targetDR).^2,1));
+disp(['Mean miss distance ', num2str(mean(dist)),' km'])
+% disp(['Std dev miss distance ', num2str(std(dist)),' km'])
+disp(['standard deviation miss distance ', num2str(std(dist)),' km'])
+disp(' ')
+
+ntotal = length(dist);
+n2 = length(dist(dist>2));
+n5 = length(dist(dist>5));
+n10 = length(dist(dist>10));
+p2 = 1-n2/ntotal;
+p5 = 1-n5/ntotal;
+p10 = 1-n10/ntotal;
+h = (final(i,1:len,5)-3397e3)/1000;
+n_min_alt = length(h(h < 0.52));
+p_min_alt = n_min_alt/ntotal;
+
+figure
+hold on
+Ellipse([0,targetDR],2,2,0,{'r--','LineWidth',2})
+Ellipse([0,targetDR],5,5,0,{'k--','LineWidth',2})
+Ellipse([0,targetDR],10,10,0,'b--')
+
+plot(final(i,1:len,12),final(i,1:len,11),'o')%,pdf(i,:)/max(pdf(i,:)))
+legend([' 2 km (',num2str(p2*100),'% inside)'], [' 5 km (',num2str(p5*100),'% inside)'], ['10 km (',num2str(p10*100),'% inside)'])
+xlabel('CR (km)')
+ylabel('DR (km)')
+axis equal
+box on
+grid on
+
+% figure
+% scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],pdf(i,:)/max(pdf(i,:)))
+% xlabel('Velocity (m/s)')
+% ylabel('Altitude (km)')
+% title('Colored by probability')
+% box on
+% grid on
+figure
+scatter(final(i,1:len,8),h,[],dist)
+xlabel('Velocity (m/s)')
+ylabel('Altitude (km)')
+title([label{i}, ', ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
+box on
+grid on
+end
+% colorbar
+% figure
+% scatter(samples(1,:),samples(2,:),[],pdf(1,:)/max(pdf(1,:)))
+% figure
+% scatter(samples(3,:),samples(4,:),[],pdf(1,:)/max(pdf(1,:)))
+return
+
 %% Baseline viewing
 base = load('E:\Documents\EDL\data\Baseline.mat');
 
@@ -194,113 +312,3 @@ ylabel('Error (%)')
 
 histogram(err)
 
-%%
-clc;clear
-dtr = pi/180;
-data_path = 'E:\Documents\EDL\data\'; % Desktop
-data_path = 'C:\Users\cdnoyes\Documents\EDL\data\'; % Laptop
-
-data(1) = load([data_path, 'MC_Apollo_1000_K1_energy.mat']);
-data(2) = load([data_path, 'MC_Apollo_1000_K1_energy_drag_rate.mat']);
-data(3) = load([data_path, 'MC_Apollo_1000_K1_energy_no_rate.mat']);
-
-idrag = 14;
-ienergy = 2;
-irange = 11;
-ialt = 5;
-ifpa = 9;
-ibank = 3;
-final = zeros(length(data),length(data(1).pdf),27);
-label = {'Alt. Rate','Drag Rate','No Rate'};
-colors = {'r','b','g','m'};
-for d = 1:length(data)
-    states = data(d).states;
-    samples = data(d).samples;
-    pdf(d,:) = data(d).pdf;
-        figure(2+d)
-        hold on
-    for i = 1:length(states)
-        if 0
-            plot(states{i}(:,irange),states{i}(:,ialt)/1000-3397)
-        else
-            plot(states{i}(:,ienergy),(states{i}(:,ibank)))   
-        end
-        title(label{d})
-        final(d,i,:) = states{i}(end,:);
-        
-    end
-    
-    
-end
-
-for d = 1:length(data)
-    
-    figure(1)
-    hold all
-    plot(final(d,:,8),(final(d,:,5)-3397e3)/1000, 'o')
-    xlabel('Velocity (m/s)')
-    ylabel('Altitude (km)')
-    
-    figure(2)
-    hold all
-    plot(final(d,:,12),(final(d,:,11)), 'o')
-    xlabel('CR (km)')
-    ylabel('DR (km)')
-end
-legend(label{:})
-Ellipse([0,905],2,2,0,{'r--','LineWidth',2})
-Ellipse([0,905],5,5,0,{'k--','LineWidth',2})
-Ellipse([0,905],10,10,0,'b--')
-
-for i =1:length(data)
-dist = sqrt(sum(final(i,:,12).^2 +(final(i,:,11)-905.2).^2,1));
-disp(['Mean miss distance ', num2str(mean(dist)),' km'])
-% disp(['Std dev miss distance ', num2str(std(dist)),' km'])
-disp(['Variance miss distance ', num2str(var(dist)),' km^2'])
-disp(' ')
-
-ntotal = length(dist);
-n2 = length(dist(dist>2));
-n5 = length(dist(dist>5));
-n10 = length(dist(dist>10));
-p2 = 1-n2/ntotal;
-p5 = 1-n5/ntotal;
-p10 = 1-n10/ntotal;
-h = (final(i,:,5)-3397e3)/1000;
-n_min_alt = length(h(h < 0.52));
-p_min_alt = n_min_alt/ntotal;
-
-figure
-hold on
-Ellipse([0,905],2,2,0,{'r--','LineWidth',2})
-Ellipse([0,905],5,5,0,{'k--','LineWidth',2})
-Ellipse([0,905],10,10,0,'b--')
-
-scatter(final(i,:,12),final(i,:,11),[],pdf(i,:)/max(pdf(i,:)))
-legend([' 2 km (',num2str(p2*100),'% inside)'], [' 5 km (',num2str(p5*100),'% inside)'], ['10 km (',num2str(p10*100),'% inside)'])
-xlabel('CR (km)')
-ylabel('DR (km)')
-axis equal
-box on
-grid on
-
-% figure
-% scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],pdf(i,:)/max(pdf(i,:)))
-% xlabel('Velocity (m/s)')
-% ylabel('Altitude (km)')
-% title('Colored by probability')
-% box on
-% grid on
-figure
-scatter(final(i,:,8),h,[],dist)
-xlabel('Velocity (m/s)')
-ylabel('Altitude (km)')
-title([label{i}, ', ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
-box on
-grid on
-end
-% colorbar
-% figure
-% scatter(samples(1,:),samples(2,:),[],pdf(1,:)/max(pdf(1,:)))
-% figure
-% scatter(samples(3,:),samples(4,:),[],pdf(1,:)/max(pdf(1,:)))
