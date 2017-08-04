@@ -19,3 +19,5 @@ A version controlled log of data sets. Perhaps an excel document or something fo
 
 3/31/17 - Apollo_CTRB_100_500m_NR - Removes bank reversal maneuvers entirely
         
+8/4/17	- MC_OpenLoop_2000 - Open loop trajectories with BC~380 and only the four parametric uncertainties 
+	- NC_NMPC_2000 - CTNPC, basically Joel's implementation without range to go term and using open loop lateral logic
