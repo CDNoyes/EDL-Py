@@ -145,7 +145,7 @@ class Simulation(Machine):
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL))
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
-            if self.__output:
+            if self.__output and not self.__use_da:
                 print "L/D: {:.2f}".format(self.edlModel.vehicle.LoD)
                 print "BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7]))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
@@ -666,7 +666,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
         plt.legend(loc='best')
 
 # #########################################################################
-    if False:
+    if True:
         from FBL import drag_derivatives, drag_dynamics
         # u, L, D, g, r, V, gamma, rho, scaleHeight
         Ddot,Dddot = drag_derivatives(np.cos(control_history), L,D,g, history[:,0],history[:,3],history[:,4], edlModel.planet.atmosphere(history[:,0]-edlModel.planet.radius)[0],edlModel.planet.scaleHeight)
