@@ -75,6 +75,7 @@ class Simulation(Machine):
         self.edlModel = None        # The dynamics and other functions associated with EDL
         self.fullEDL = None         # The type of edl model used - "ideal" with perfect knowledge and no bank angle constraints, or "full" truth/nav/constraints/filters etc
         self.triggerInput = None    # An input to triggers and controllers
+        self.simulations = 0        # The number of simulations run
 
         states.append('Complete')
         transitions = [{'trigger':'advance', 'source':states[i-1], 'dest':states[i], 'conditions':'integrate'} for i in range(1,len(states))]
@@ -91,7 +92,7 @@ class Simulation(Machine):
         except:
             pass
 
-        Machine.__init__(self, model=None, states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
+        Machine.__init__(self, model='self', states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
 
     def set_output(self,bool):
@@ -126,7 +127,6 @@ class Simulation(Machine):
 
     def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10):
         """ Runs the simulation from a given a initial state, with the specified controllers in each phase, and using a chosen sample of the uncertainty space """
-
         self.reset()
         self.spc = StepsPerCycle
 
@@ -156,7 +156,9 @@ class Simulation(Machine):
         self.history = np.vstack(self.history)                  # So that we can work with the data more easily than a list of arrays
         self.control_history.append(self.u)                     # So that the control history has the same length as the data;
         self.control_history = np.vstack(self.control_history[1:])
-
+        self.simulations += 1
+        if not self.simulations%10:
+            print "{} simulations complete.".format(self.simulations)
         # print self.x[0]
         return self.postProcess()
 
@@ -359,6 +361,10 @@ class Simulation(Machine):
         return data
 
     def reset(self):
+        """ Resets all simulation states to prepare for the 'run' method to be used again.
+            The only exception is the .simuations member whose purpose to record the number of times
+            'run' has been used for data reporting in e.g. Monte Carlo simulations.
+        """
         if self.__output:
             print "Resetting simulation states.\n"
         self.set_state(self.__states[0])
