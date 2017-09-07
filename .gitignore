@@ -1,5 +1,4 @@
 *.pyc
 *.gif
 *.asv
-
-./data/*.mat
+*.mat
