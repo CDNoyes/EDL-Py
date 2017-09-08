@@ -114,6 +114,9 @@ class Simulation(Machine):
             throttle, mu, zeta = self.control[self.index](**self.triggerInput)
             sigma = 0.
         else:
+            # if self.__use_energy:
+            #     import pdb
+            #     pdb.set_trace()
             sigma = self.control[self.index](**self.triggerInput)
             throttle = 0.   # fraction of max thrust
             mu = 0.         # pitch angle
@@ -123,7 +126,17 @@ class Simulation(Machine):
             L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]),np.array([self.x[7]]))
             V = self.x[3]
             E = self.edlModel.energy(self.x[0],self.x[3],Normalized=False)
-            X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(E,E-self.cycle.duration*V*D,self.spc))
+
+            if self.__use_da:
+                # import pdb
+                # pdb.set_trace()
+                E = E.constant_cf
+                V = V.constant_cf
+                D = D[0].constant_cf
+
+                X = RK4(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(E,E-self.cycle.duration*V*D,self.spc),())
+            else:
+                X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(E,E-self.cycle.duration*V*D,self.spc))
         else:
 
             if self.__use_da:
