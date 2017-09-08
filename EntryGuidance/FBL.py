@@ -1,7 +1,10 @@
 """ Feedback Linearization-based Entry Guidance """
 
 import numpy as np
-from numpy import sin,cos, arccos
+# from numpy import sin,cos, arccos
+from pyaudi import sin, cos
+from pyaudi import acos as arccos
+from pyaudi import gdual_double as gd
 from functools import partial
 
 import unittest
@@ -172,6 +175,14 @@ def drag_dynamics(D, D_dot, g, L, r, V, gamma, rho, scaleHeight,Dratio=1,Lratio=
     """
 
     # CD appears only in terms involving CD_dot which we assume is negligible
+    try:
+        if not isinstance(D[0],gd):
+            from numpy import sin, cos
+        else:
+            from pyaudi import sin, cos
+
+    except:
+        from pyaudi import sin, cos
 
     V_dot = -D-g*sin(gamma)
     g_dot = -2*g*V*sin(gamma)/r
@@ -195,6 +206,14 @@ def drag_dynamics(D, D_dot, g, L, r, V, gamma, rho, scaleHeight,Dratio=1,Lratio=
     return a,b
 
 def drag_derivatives(u, L, D, g, r, V, gamma, rho, scaleHeight):
+    try:
+        if not isinstance(D[0],gd):
+            from numpy import sin, cos
+        else:
+            from pyaudi import sin, cos
+
+    except:
+        from pyaudi import sin, cos
 
     V_dot = -D-g*sin(gamma)
     h_dot = V*sin(gamma)
