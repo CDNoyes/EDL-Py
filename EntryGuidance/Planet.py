@@ -87,12 +87,12 @@ class Planet:
         from numpy import pi, nan_to_num, zeros_like, real
         import numpy as np
         # from numpy import sin,cos,arcsin,arccos
-        from pyaudi import sin, cos
+        from pyaudi import sin, cos, gdual_double as gd
         from pyaudi import asin as arcsin
         from pyaudi import acos as arccos
 
         d13 = arccos(sin(latc)*sin(lat0)+cos(latc)*cos(lat0)*cos(lonc-lon0))
-        if np.abs(d13) < 1e-4:
+        if not isinstance(d13,gd) and np.abs(d13) < 1e-4:
             return 0,0
         psi12 = heading0
         PHI = np.sign(lonc-lon0)*arccos( (sin(latc) - sin(lat0)*cos(d13))/(cos(lat0)*sin(d13)) )
