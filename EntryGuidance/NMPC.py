@@ -17,7 +17,7 @@ import unittest
 
 from FBL import drag_dynamics
 
-DA_MODE = True
+DA_MODE = False
 if DA_MODE:
     from pyaudi import exp, acos, cos, sin
     from Utils.smooth_sat import smooth_sat
@@ -127,16 +127,18 @@ class NMPC(object):
         p = W.T.dot(self.Q).dot(W)
         q = W.T.dot(self.Q).dot(e+z-d)
 
-        # u = np.clip(-q/p, 0, 0.96).squeeze()
-        u_unbounded = (-q[0]/p[0])[0]
-        if np.abs(u_unbounded.constant_cf) < 10:
-            u = smooth_sat(u_unbounded)
+        if DA_MODE:
+            u_unbounded = (-q[0]/p[0])[0]
+            if np.abs(u_unbounded.constant_cf) < 10:
+                u = smooth_sat(u_unbounded)
+            else:
+                return float(self.bank(energy+de))
         else:
-            return float(self.bank(energy+de))
+            u = np.clip(-q/p, 0, 0.96).squeeze()
         # print u
         # import pdb
         # pdb.set_trace()
-        return acos(u)#*np.sign(self.bank(energy+de))
+        return acos(u)*np.sign(self.bank(energy+de))
 
 
     def trigger(self, E, rangeToGo, drag, fpa):
