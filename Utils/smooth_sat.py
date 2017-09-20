@@ -2,13 +2,16 @@ import numpy as np
 from pyaudi import gdual_double as gd
 from pyaudi import exp
 
-def smooth_sat(y, a=1, b=5.3013, c=0.5):
+def smooth_sat(y, b=5.522):
     """
         An (infinitely) differentiable approximation to the standard saturation function
         on the interval [0,1] using the logistic function.
         Default parameters were found via optimization using scipy's curve_fit.
-        For the interval [0,1] the optimal values = [ 1., 5.3013, 0.5]
+        For the interval [0,1] the optimal values = [ 1., 5.3013]
+        For the interval [0,0.96] the optimal values = [ 0.96., 5.522]
     """
+    a = 0.96 # Maximum value of the saturation function
+    c = a/2.
     try:
         if isinstance(y[0],gd):
             return np.array([a/(1+exp(-b*(yi-c))) for yi in y])
@@ -38,22 +41,22 @@ def opt():
     y_raw = np.linspace(-2.5,3.5,500)
     y = np.clip(y_raw,0,0.96)
 
-    aopt = curve_fit(smooth_sat, y_raw, y,bounds=(0,(1,10,1)))
+    aopt = curve_fit(smooth_sat, y_raw, y,bounds=(0,10))
     print "(Logistic) Optimal values = {}".format(aopt[0])
 
     # topt = curve_fit(tanh_sat, y_raw, y)
     # print "(Tanh) Optimal values = {}".format(topt[0])
-
-    copt = curve_fit(atan_sat, y_raw, y)
-    print "(Tan inv) Optimal values = {}".format(copt[0])
+    #
+    # copt = curve_fit(atan_sat, y_raw, y)
+    # print "(Tan inv) Optimal values = {}".format(copt[0])
 
 
     y_log = smooth_sat(y_raw,*aopt[0])
     # y_tanh = tanh_sat(y_raw,*topt[0])
-    y_atan = atan_sat(y_raw, *copt[0])
+    # y_atan = atan_sat(y_raw, *copt[0])
     plt.plot(y_raw,(y))
     plt.plot(y_raw,(y_log),'--')
-    plt.plot(y_raw,y_atan)
+    # plt.plot(y_raw,y_atan)
     # plt.plot(y_raw,(y_tanh),'*')
 
 

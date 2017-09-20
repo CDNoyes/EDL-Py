@@ -17,18 +17,35 @@ import unittest
 
 from FBL import drag_dynamics
 
+DA_MODE = False
+if DA_MODE:
+    from pyaudi import exp, acos, cos, sin
+    from Utils.smooth_sat import smooth_sat
+    import Utils.DA as da
+else:
+    from numpy import exp, sin, cos, arccos as acos
+
 class NMPC(object):
     """ This is an implementation of the CTNPC for Entry Guidance with an additional drag profile update method """
 
-    def __init__(self, Ef, fbl_ref, Q=np.array([[.1,0],[0,2]]), update_type=0, update_tol=5, debug=False):
+    def __init__(self, Ef, fbl_ref, Q=np.array([[.1,0],[0,2]]), update_type=0, update_tol=5, debug=False, dt=2.5, timeIV=False):
         self.Q      = np.asarray(Q)
-
-        self.drag   = fbl_ref['D']
-        self.rate   = fbl_ref['D1']
-        self.accel  = fbl_ref['D2']
-        self.a      = fbl_ref['a']
-        self.b      = fbl_ref['b']
-        self.bank   = fbl_ref['bank']
+        self.dt     = dt
+        self.timeIV = timeIV
+        if not timeIV:
+            self.drag   = fbl_ref['D']
+            self.rate   = fbl_ref['D1']
+            self.accel  = fbl_ref['D2']
+            self.a      = fbl_ref['a']
+            self.b      = fbl_ref['b']
+            self.bank   = fbl_ref['bank']
+        else:
+            self.drag   = fbl_ref['D_t']
+            self.rate   = fbl_ref['D1_t']
+            self.accel  = fbl_ref['D2_t']
+            self.a      = fbl_ref['a_t']
+            self.b      = fbl_ref['b_t']
+            self.bank   = fbl_ref['bank_t']
 
         # Update parameters
         self.c = 0
@@ -43,11 +60,16 @@ class NMPC(object):
         self.debug = debug
 
     def controller(self, energy, current_state, lift, drag, bank, planet, time, rangeToGo, aero_ratios,**kwargs):
+        try:
+            energy = energy.constant_cf
+        except:
+            pass
+
         r,lon,lat,v,fpa,psi,s,m = current_state
 
         if not len(self.E_history):
             self.E_history.append(energy)
-            self.D0 = self.drag(energy) #Use reference, not measured, otherwise the initial profile will be wrong already
+            self.D0 = self.drag(energy) # Use reference, not measured, otherwise the initial profile will be wrong already
             self.v_update = v
 
         if self.type and v > 1200 and v < 5800 and self.trigger(energy,rangeToGo,drag,fpa) and (self.v_update-v > 100) :
@@ -59,11 +81,15 @@ class NMPC(object):
         h = r - planet.radius
         g = planet.mu/r**2
         rho = planet.atmosphere(h)[0]
-        u = np.cos(bank)
+        u = cos(bank)
 
         # use references at energy value a small dt in the future
-        dt = 2
+        dt = self.dt
         de = -dt*v*drag
+        try:
+            de = de.constant_cf
+        except:
+            pass
 
         # de = -(1/500.)*(self.E_history[0]-self.Ef)
         # dt = de/(-v*drag)
@@ -71,12 +97,15 @@ class NMPC(object):
             # print("delta E = {}".format(de))
             # print("delta t = {} s".format(dt))
         a,b = drag_dynamics(drag,None,g,lift,r,v,fpa,rho,planet.scaleHeight)
-        V_dot = -drag-g*np.sin(fpa)
-        h_dot = v*np.sin(fpa)
+        V_dot = -drag-g*sin(fpa)
+        h_dot = v*sin(fpa)
         rho_dot = -h_dot*rho/planet.scaleHeight
         D_dot = drag*(rho_dot/rho + 2*V_dot/v)
 
         h = dt # need time since Ddot and Dddot are time derivatives
+        if self.timeIV:
+            energy = time
+            de = dt
 
         if self.type == 1:
             ref_drag = self.drag(energy)*(1+self.c)
@@ -98,8 +127,18 @@ class NMPC(object):
         p = W.T.dot(self.Q).dot(W)
         q = W.T.dot(self.Q).dot(e+z-d)
 
-        u = np.clip(-q/p, 0, 0.96).squeeze()
-        return np.arccos(u)*np.sign(self.bank(energy+de))
+        if DA_MODE:
+            u_unbounded = (-q[0]/p[0])[0]
+            if np.abs(u_unbounded.constant_cf) < 10:
+                u = smooth_sat(u_unbounded)
+            else:
+                return float(self.bank(energy+de))
+        else:
+            u = np.clip(-q/p, 0, 0.96).squeeze()
+        # print u
+        # import pdb
+        # pdb.set_trace()
+        return acos(u)*np.sign(self.bank(energy+de))
 
 
     def trigger(self, E, rangeToGo, drag, fpa):
@@ -215,4 +254,5 @@ class test_NMPC(unittest.TestCase):
         # sim.show()
 
 if __name__ == "__main__":
-    unittest.main()
+    # unittest.main()
+    test_sat()

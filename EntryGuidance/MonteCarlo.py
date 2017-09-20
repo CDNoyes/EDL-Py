@@ -4,7 +4,6 @@ import numpy as np
 import time
 from datetime import datetime
 import os
-# import copy
 from scipy.io import savemat
 
 
@@ -153,6 +152,10 @@ def getFileName(name, save_dir):
 
 if __name__ == "__main__":
     from Triggers import TimeTrigger
+    import sys
+    import os
+    print os.getcwd()
+    sys.path.append(os.getcwd() + '\Utils')
     from NMPC import NMPC
 
     mc = MonteCarlo()
@@ -161,6 +164,6 @@ if __name__ == "__main__":
     nmpc = NMPC(Ef=mc.ref_sim.df['energy'].values[-1],fbl_ref=mc.ref_sim.getFBL(),update_type=0,update_tol=2)
     controls = [nmpc.controller]
     mc.set_controls(controls)
-    mc.sample(2000)
+    mc.sample(20)
     # print len(mc.samples.T)
     mc.run()
