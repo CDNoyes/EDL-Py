@@ -28,24 +28,17 @@ else:
 class NMPC(object):
     """ This is an implementation of the CTNPC for Entry Guidance with an additional drag profile update method """
 
-    def __init__(self, Ef, fbl_ref, Q=np.array([[.1,0],[0,2]]), update_type=0, update_tol=5, debug=False, dt=2.5, timeIV=False):
+    def __init__(self, Ef, fbl_ref, Q=np.array([[.1,0],[0,2]]), update_type=0, update_tol=5, debug=False, dt=2.5):
         self.Q      = np.asarray(Q)
         self.dt     = dt
-        self.timeIV = timeIV
-        if not timeIV:
-            self.drag   = fbl_ref['D']
-            self.rate   = fbl_ref['D1']
-            self.accel  = fbl_ref['D2']
-            self.a      = fbl_ref['a']
-            self.b      = fbl_ref['b']
-            self.bank   = fbl_ref['bank']
-        else:
-            self.drag   = fbl_ref['D_t']
-            self.rate   = fbl_ref['D1_t']
-            self.accel  = fbl_ref['D2_t']
-            self.a      = fbl_ref['a_t']
-            self.b      = fbl_ref['b_t']
-            self.bank   = fbl_ref['bank_t']
+
+        self.drag   = fbl_ref['D']
+        self.rate   = fbl_ref['D1']
+        self.accel  = fbl_ref['D2']
+        self.a      = fbl_ref['a']
+        self.b      = fbl_ref['b']
+        self.bank   = fbl_ref['bank']
+
 
         # Update parameters
         self.c = 0
@@ -59,7 +52,7 @@ class NMPC(object):
 
         self.debug = debug
 
-    def controller(self, energy, current_state, lift, drag, bank, planet, time, rangeToGo, aero_ratios,**kwargs):
+    def controller(self, energy, current_state, lift, drag, planet, rangeToGo, **kwargs):
         try:
             energy = energy.constant_cf
         except:
@@ -67,21 +60,9 @@ class NMPC(object):
 
         r,lon,lat,v,fpa,psi,s,m = current_state
 
-        if not len(self.E_history):
-            self.E_history.append(energy)
-            self.D0 = self.drag(energy) # Use reference, not measured, otherwise the initial profile will be wrong already
-            self.v_update = v
-
-        if self.type and v > 1200 and v < 5800 and self.trigger(energy,rangeToGo,drag,fpa) and (self.v_update-v > 100) :
-            if self.debug:
-                print("Update triggered at V = {} m/s".format(v))
-            self.v_update = v
-            self.update(energy,rangeToGo,drag,fpa)
-
         h = r - planet.radius
         g = planet.mu/r**2
         rho = planet.atmosphere(h)[0]
-        u = cos(bank)
 
         # use references at energy value a small dt in the future
         dt = self.dt
@@ -91,41 +72,36 @@ class NMPC(object):
         except:
             pass
 
-        # de = -(1/500.)*(self.E_history[0]-self.Ef)
-        # dt = de/(-v*drag)
-        # if self.debug:
-            # print("delta E = {}".format(de))
-            # print("delta t = {} s".format(dt))
         a,b = drag_dynamics(drag,None,g,lift,r,v,fpa,rho,planet.scaleHeight)
         V_dot = -drag-g*sin(fpa)
         h_dot = v*sin(fpa)
         rho_dot = -h_dot*rho/planet.scaleHeight
         D_dot = drag*(rho_dot/rho + 2*V_dot/v)
 
-        h = dt # need time since Ddot and Dddot are time derivatives
-        if self.timeIV:
-            energy = time
-            de = dt
+        # h = dt # need time since Ddot and Dddot are time derivatives
 
-        if self.type == 1:
-            ref_drag = self.drag(energy)*(1+self.c)
-            ref_rate = self.rate(energy)*(1+self.c)
+        ref_drag = self.drag(energy)
+        ref_rate = self.rate(energy)
 
-        elif self.type == 2:
-            ref_drag = (self.drag(energy)-self.drag(self.E_history[-1]))*(1+self.c) + self.D0
-            ref_rate = self.rate(energy)*(1+self.c)
+        try: # vectorized
+            b[0] 
+            W = np.array([0.5*dt**2 * b, dt*b])
+            z = np.array([dt*D_dot + 0.5*dt**2 * a, dt*a])
+            e = np.array([drag-ref_drag,D_dot-ref_rate])
+            d = np.array([self.drag(energy+de)-self.drag(energy),self.rate(energy+de)-self.rate(energy)])*(1+self.c)
+            p = np.diag(W.T.dot(self.Q).dot(W))
+            q = np.diag(W.T.dot(self.Q).dot(e+z-d))
+            # import pdb
+            # pdb.set_trace()
 
-        else:
-            ref_drag = self.drag(energy)
-            ref_rate = self.rate(energy)
+        except:
+            W = np.array([[0.5*dt**2 * b], [dt*b]])
+            z = np.array([[dt*D_dot + 0.5*dt**2 * a], [dt*a]])
+            e = np.array([[drag-ref_drag],[D_dot-ref_rate]])
+            d = np.array([[self.drag(energy+de)-self.drag(energy)],[self.rate(energy+de)-self.rate(energy)]])*(1+self.c)
 
-        W = np.array([[0.5*h**2 * b], [h*b]])
-        z = np.array([[h*D_dot + 0.5*h**2 * a], [h*a]])
-        e = np.array([[drag-ref_drag],[D_dot-ref_rate]])
-        d = np.array([[self.drag(energy+de)-self.drag(energy)],[self.rate(energy+de)-self.rate(energy)]])*(1+self.c)
-
-        p = W.T.dot(self.Q).dot(W)
-        q = W.T.dot(self.Q).dot(e+z-d)
+            p = W.T.dot(self.Q).dot(W)
+            q = W.T.dot(self.Q).dot(e+z-d)
 
         if DA_MODE:
             u_unbounded = (-q[0]/p[0])[0]
@@ -135,9 +111,7 @@ class NMPC(object):
                 return float(self.bank(energy+de))
         else:
             u = np.clip(-q/p, 0, 0.96).squeeze()
-        # print u
-        # import pdb
-        # pdb.set_trace()
+
         return acos(u)*np.sign(self.bank(energy+de))
 
 

@@ -1,4 +1,5 @@
-from pyaudi import sin, cos, tan
+# from pyaudi import sin, cos, tan
+from numpy import sin, cos, tan
 import numpy as np
 from functools import partial
 
@@ -66,7 +67,7 @@ class Entry(object):
         rho,a = self.planet.atmosphere(h)
         M = v/a
         cD,cL = self.vehicle.aerodynamic_coefficients(M)
-        f = 0.5*rho*self.vehicle.area*v**2/m
+        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
 
@@ -77,7 +78,7 @@ class Entry(object):
         dgamma = L/v*cos(sigma) + cos(gamma)*(v/r - g/v)
         dpsi = -L*sin(sigma)/v/cos(gamma) - v*cos(gamma)*cos(psi)*tan(phi)/r
         ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)
-        dm = self.vehicle.mdot(throttle)
+        dm = np.zeros_like(dh)
 
         if self.__energy:
             self.dE = -v*D
@@ -155,15 +156,12 @@ class Entry(object):
 
         g = self.planet.mu/r**2
         h = r - self.planet.radius
-        L = np.zeros_like(h)
-        D = np.zeros_like(h)
-        for i,hi in enumerate(h): # TODO: Remove loop once all functions are vectorized
-            rho,a = self.planet.atmosphere(hi)                  # TODO: Vectorize this
-            M = v[i]/a
-            cD,cL = self.vehicle.aerodynamic_coefficients(M)    # TODO: Vectorize this
-            f = 0.5*rho*self.vehicle.area*v[i]**2/m[i]
-            L[i] = f*cL*self.lift_ratio
-            D[i] = f*cD*self.drag_ratio
+        rho,a = self.planet.atmosphere(h)                  # TODO: Vectorize this
+        M = v/a
+        cD,cL = self.vehicle.aerodynamic_coefficients(M)    # TODO: Vectorize this
+        f = 0.5*rho*self.vehicle.area*v**2/m
+        L = f*cL*self.lift_ratio
+        D = f*cD*self.drag_ratio
         return L,D
 
     def gravity(self, r):
