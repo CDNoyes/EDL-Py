@@ -1,58 +1,65 @@
-import numpy as np 
-import pyaudi as da 
-from pyaudi import gdual_vdouble as gd 
-import time 
+import numpy as np
+import pyaudi as da
+from pyaudi import gdual_vdouble as gd
+import time
 
-N = 1000
-applyUncertainty = 1 
+from EntryEquations import EDL
+from InitialState import InitialState
+from Uncertainty import getUncertainty
+from Utils.RK4 import RK4
+from ParametrizedPlanner import profile
+from NMPC import NMPC
+
+N = 250
+applyUncertainty = 1
 
 def test_planet():
-    from Planet import Planet 
+    from Planet import Planet
     rho0 = 0.05 * np.random.randn(N) * applyUncertainty
-    hs = 0.05 * np.random.randn(N) /3 * applyUncertainty
+    hs = 0.02 * np.random.randn(N) /3 * applyUncertainty
     mars = Planet(rho0=rho0,scaleHeight=hs)
     h = np.ones_like(hs)*70e3
-    
+
     rho,Vs = mars.atmosphere(h)
     rho = rho.squeeze()
     if rho.shape == Vs.shape and rho.shape == hs.shape:
         print "Planet is vectorized"
-    return mars 
-    
+    return mars
+
 def test_vehicle():
     from EntryVehicle import EntryVehicle
     dCL = 0.05 * np.random.randn(N) * applyUncertainty
     dCD = 0.05 * np.random.randn(N) * applyUncertainty
-    
+
     ev = EntryVehicle(CL=dCL,CD=dCD)
     M = np.ones_like(dCL)*5
     Cd,Cl = ev.aerodynamic_coefficients(M)
     print "Vehicle is vectorized"
-    return ev 
-    
+    return ev
+
 def test_dynamics():
     mars = test_planet()
     ev = test_vehicle()
-    from EntryEquations import Entry 
+    from EntryEquations import Entry
     from InitialState import InitialState
-    from Utils.RK4 import RK4 
+    from Utils.RK4 import RK4
 
     edl = Entry(PlanetModel=mars,VehicleModel=ev)
-    
-    # u = np.zeros((3,N)) # same length as the vectorized components 
+
+    # u = np.zeros((3,N)) # same length as the vectorized components
     x = InitialState()
     x = np.tile(x,(N,1)).T
-    
+
     print "IC shape = {}".format(x.shape)
     X = [x]
     vprofile = vectorProfile()
     npc = generateController()
     t0 = time.time()
     for t in np.linspace(1,400,400):
-    
-        if 0:                   # Open Loop 
-           u = vprofile(t)  
-           
+
+        if 0:                   # Open Loop
+           u = vprofile(t)
+
         else:
             Xc = X[-1]
             energy = edl.energy(Xc[0],Xc[3],False)
@@ -60,16 +67,16 @@ def test_dynamics():
             u = npc.controller(energy=energy, current_state=Xc,lift=lift,drag=drag,rangeToGo=None,planet=edl.planet)
             u.shape = (1,N)
             u = np.vstack((u,np.zeros((2,N))))
-            
+
         eom = edl.dynamics(u)
         X.append(RK4(eom, X[-1], np.linspace(t,t+1,10),())[-1])
     tMC = time.time() - t0
-    
-    
+
+
     print "MC w/ vectorization of {} samples took {} s".format(N,tMC)
     X = np.array(X)
     Xf = X[-1]
-    print Xf.shape 
+    print Xf.shape
     X = np.transpose(X,(2,1,0))
 
     print X.shape
@@ -77,38 +84,36 @@ def test_dynamics():
     # J = -(Xf[0]-3397e3)/1000 + Xf[3]/25#+ np.abs(Xf[2]*3397) # alt maximization
     # iopt = np.argmin(J)
     # print "Optimal switch = {}".format(np.linspace(40,340,N)[iopt])
-    import matplotlib.pyplot as plt 
+    import matplotlib.pyplot as plt
 
     for Xi in X:
         plt.figure(1)
         plt.plot(Xi[1]*3397,Xi[2]*3397)
-        
+
         plt.figure(2)
         plt.plot(Xi[3],(Xi[0]-3397e3)/1000)
-        
+
     # X = np.transpose(X,(2,1,0))
     # plt.figure(1)
     # plt.plot(X[iopt][1]*3397,X[iopt][2]*3397,'k')
     # plt.figure(2)
     # plt.plot(X[iopt][3],(X[iopt][0]-3397e3)/1000,'k')
-    
+
     plt.show()
-    
+
 
 def vectorProfile():
     from ParametrizedPlanner import profile
-    
+
     bank = [1.4,0]
     switches = np.linspace(40,340,N)
     return lambda t: np.array([(profile(t,switch=[switch], bank=bank,order=0),0,0) for switch in switches]).T
-    
+
 def generateController():
     from Simulation import Simulation, Cycle, EntrySim
     from Triggers import SRPTrigger, AccelerationTrigger
-    from ParametrizedPlanner import profile
     from InitialState import InitialState
-    from NMPC import NMPC 
-    
+
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
 
@@ -126,14 +131,200 @@ def generateController():
     # ######################################################
     # Closed-loop entry
     # ######################################################
-    Q = np.array([[.1,0],[0,2]])
-    nmpc = NMPC(fbl_ref=refs, Q=Q, Ef = reference_sim.df['energy'].values[-1], update_type=0,update_tol=2,debug=False)
-    return nmpc 
-    
+    nmpc = NMPC(fbl_ref=refs, debug=False)
+    return nmpc
+
+def Optimize():
+    """
+        Full EDL Optimization including
+        - Reference trajectory
+            3 bank reversal switch times
+            4 constant bank angle segments
+        - Controller parameters
+            1 Prediction horizon
+            2 Gains
+
+        for a total of 10 optimization parameters.
+
+    """
+    from scipy.optimize import differential_evolution
+    from numpy import pi, radians as rad
+    from Simulation import Simulation, Cycle, EntrySim
+
+    sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
+    perturb = getUncertainty()['parametric']
+    optSize = 500
+    samples = perturb.sample(optSize,'S')
+    edl = EDL(samples,Energy=True)
+
+    bounds = [(0,350)]*3 + [(0,rad(40)),(rad(50),rad(90))]*2 + [(0,30),(0,10),(0,10)]
+    sol = differential_evolution(Cost,args = (sim,samples,optSize,edl), bounds=bounds, tol=1e-3, disp=True, polish=False)
+    print "Optimized parameters (N={}) are:".format(optSize)
+    print sol.x
+    print sol
+    return
+
+def Cost(inputs, reference_sim, samples, optSize, edl):
+    # Reference Trajectory
+    switches = inputs[0:3]
+    banks = inputs[3:7]*np.array([1,-1,1,-1])
+
+    if np.any(np.diff(switches) < 0):
+        return 2e5 # arbitrary high cost for bad switch times
+
+    bankProfile = lambda **d: profile(d['time'], switch=switches, bank=banks,order=2)
+
+    x = InitialState()
+    output = reference_sim.run(x,[bankProfile])
+
+    Xf = output[-1,:]
+    hf = Xf[3]
+    # fpaf = Xf[8]
+    dr = Xf[10]
+    cr = Xf[11]
+    # Jref = -hf + (0*(dr_target-dr)**2 + 0*(cr_target-cr)**2)**0.5
+    high_crossrange = np.abs(cr) > 3
+    low_altitude = hf < 0
+    if high_crossrange or low_altitude:
+        return 30 + 500*np.abs(cr) - 50*hf # arbitrary high cost for bad reference trajectory
+    # Otherwise, we have a suitable reference and we can run the QMC
+
+    print "Running CL"
+    # Closed loop statistics generation
+    refs = reference_sim.getFBL()
+
+    nmpc = NMPC(fbl_ref=refs, debug=False)
+    nmpc.dt = inputs[7]
+    nmpc.Q = np.array([[inputs[8],0],[0,inputs[9]]])
+
+    x = np.tile(x,(optSize,1)).T
+    X = [x]
+    energy0 = edl.energy(x[0],x[3],False)[0]
+    energyf = Xf[1]#edl.energy(edl.planet.radius + 1.5e3, 500, False)
+
+    energy = energy0
+    E = [energy]
+    while energy > energyf:
+
+        Xc = X[-1]
+        energys = edl.energy(Xc[0],Xc[3],False)
+        lift,drag = edl.aeroforces(Xc[0],Xc[3],Xc[7])
+        u = nmpc.controller(energy=energys, current_state=Xc,lift=lift,drag=drag,rangeToGo=None,planet=edl.planet)
+        u.shape = (1,optSize)
+        u = np.vstack((u,np.zeros((2,optSize))))
+        de = -np.mean(drag)*np.mean(Xc[3])
+        if (energy + de) <  energyf:
+            # print "Final step"
+            de = energyf - energy
+        eom = edl.dynamics(u)
+        X.append(RK4(eom, X[-1], np.linspace(energy,energy+de,10),())[-1])
+        energy += de
+        E.append(energy)
+        # print "Finished integration step {}".format(len(E)-1)
+        if len(E)>600:
+            break
+    X = np.array(X)
+    # X = X.transpose((2,1,0))
+    # print X.shape
+    # import matplotlib.pyplot as plt
+    #
+    # for Xi in X:
+    #     plt.figure(1)
+    #     plt.plot(Xi[1]*3397,Xi[2]*3397,'o')
+    #
+    #     plt.figure(2)
+    #     plt.plot(Xi[3],(Xi[0]-3397e3)/1000,'o')
+    # plt.show()
+    Xf = X[-1]
+    h   = edl.altitude(Xf[0], km=True) # altitude, km
+    lon = Xf[1]*edl.planet.radius/1000 # downrange, km
+    lat = Xf[2]*edl.planet.radius/1000 # -crossrange, km
+
+    J = -np.percentile(h,1) +  0.1* (np.percentile(lon,99)-np.percentile(lon,1) + np.percentile(lat,99)-np.percentile(lat,1)) + np.abs(lat.mean())
+    # print J
+    # print np.percentile(h,1)
+    # print np.percentile(lon,99)-np.percentile(lon,1)
+    # print np.percentile(lat,99)-np.percentile(lat,1)
+    return J
+
+
+
+
+def OptimizeController():
+    from scipy.optimize import differential_evolution
+    perturb = getUncertainty()['parametric']
+    optSize = 500
+    samples = perturb.sample(optSize,'S')
+    nmpc = generateController()
+    edl = EDL(samples,Energy=True)
+
+    bounds = [(0,10),(0,10),(1,30)]
+    # Cost([0.1,2,2.8],nmpc,samples,optSize,edl)
+    sol = differential_evolution(CostController,args = (nmpc,samples,optSize,edl), bounds=bounds, tol=1e-2, disp=True, polish=False)
+    print "Optimized parameters (N={}) are:".format(optSize)
+    print sol.x
+    print sol
+    return
+
+def CostController(inputs, nmpc, samples, optSize, edl):
+    nmpc.dt = inputs[2]
+    nmpc.Q = np.array([[inputs[0],0],[0,inputs[1]]])
+
+    x = InitialState()
+    x = np.tile(x,(optSize,1)).T
+    X = [x]
+    energy0 = edl.energy(x[0],x[3],False)[0]
+    energyf = edl.energy(edl.planet.radius + 1.5e3, 500, False)
+
+    energy = energy0
+    E = [energy]
+    while energy > energyf:
+
+        Xc = X[-1]
+        energys = edl.energy(Xc[0],Xc[3],False)
+        lift,drag = edl.aeroforces(Xc[0],Xc[3],Xc[7])
+        u = nmpc.controller(energy=energys, current_state=Xc,lift=lift,drag=drag,rangeToGo=None,planet=edl.planet)
+        u.shape = (1,optSize)
+        u = np.vstack((u,np.zeros((2,optSize))))
+        de = -np.mean(drag)*np.mean(Xc[3])
+        if (energy + de) <  energyf:
+            # print "Final step"
+            de = energyf - energy
+        eom = edl.dynamics(u)
+        X.append(RK4(eom, X[-1], np.linspace(energy,energy+de,10),())[-1])
+        energy += de
+        E.append(energy)
+        # print "Finished integration step {}".format(len(E)-1)
+        if len(E)>600:
+            break
+    X = np.array(X)
+    # X = X.transpose((2,1,0))
+    # print X.shape
+    # import matplotlib.pyplot as plt
+    #
+    # for Xi in X:
+    #     plt.figure(1)
+    #     plt.plot(Xi[1]*3397,Xi[2]*3397,'o')
+    #
+    #     plt.figure(2)
+    #     plt.plot(Xi[3],(Xi[0]-3397e3)/1000,'o')
+    # plt.show()
+    Xf = X[-1]
+    h   = edl.altitude(Xf[0], km=True) # km
+    lon = Xf[1]*edl.planet.radius/1000
+    lat = Xf[2]*edl.planet.radius/1000
+
+    J = -np.percentile(h,1) +  0.1* (np.percentile(lon,99)-np.percentile(lon,1) + np.percentile(lat,99)-np.percentile(lat,1))
+    # print J
+    # print np.percentile(h,1)
+    # print np.percentile(lon,99)-np.percentile(lon,1)
+    # print np.percentile(lat,99)-np.percentile(lat,1)
+    return J
+
 def test():
     test_dynamics()
 
 if __name__ == "__main__":
-    # npc = generateController()
-    test()
-    
+    # test()
+    # OptimizeController()
+    Optimize()
