@@ -28,7 +28,7 @@ else:
 class NMPC(object):
     """ This is an implementation of the CTNPC for Entry Guidance with an additional drag profile update method """
 
-    def __init__(self, Ef, fbl_ref, Q=np.array([[.1,0],[0,2]]), update_type=0, update_tol=5, debug=False, dt=2.5):
+    def __init__(self, fbl_ref, Q=np.array([[.1,0],[0,2]]), debug=False, dt=2.5):
         self.Q      = np.asarray(Q)
         self.dt     = dt
 
@@ -38,17 +38,6 @@ class NMPC(object):
         self.a      = fbl_ref['a']
         self.b      = fbl_ref['b']
         self.bank   = fbl_ref['bank']
-
-
-        # Update parameters
-        self.c = 0
-        self.c_history = [0]
-        self.E_history = []         # This gets initialized the first time the controller is called
-        self.D0 = 0
-        self.Ef = Ef
-        self.type = update_type
-        self.tol = update_tol*1e3   # Assumes input is in km
-        self.v_update = 0
 
         self.debug = debug
 
@@ -64,13 +53,11 @@ class NMPC(object):
         g = planet.mu/r**2
         rho = planet.atmosphere(h)[0]
 
-        # use references at energy value a small dt in the future
+        # convert dt into approximate change in energy
         dt = self.dt
         de = -dt*v*drag
-        try:
+        if DA_MODE:
             de = de.constant_cf
-        except:
-            pass
 
         a,b = drag_dynamics(drag,None,g,lift,r,v,fpa,rho,planet.scaleHeight)
         V_dot = -drag-g*sin(fpa)
@@ -84,21 +71,19 @@ class NMPC(object):
         ref_rate = self.rate(energy)
 
         try: # vectorized
-            b[0] 
+            b[0]
             W = np.array([0.5*dt**2 * b, dt*b])
             z = np.array([dt*D_dot + 0.5*dt**2 * a, dt*a])
             e = np.array([drag-ref_drag,D_dot-ref_rate])
-            d = np.array([self.drag(energy+de)-self.drag(energy),self.rate(energy+de)-self.rate(energy)])*(1+self.c)
+            d = np.array([self.drag(energy+de)-self.drag(energy),self.rate(energy+de)-self.rate(energy)])
             p = np.diag(W.T.dot(self.Q).dot(W))
             q = np.diag(W.T.dot(self.Q).dot(e+z-d))
-            # import pdb
-            # pdb.set_trace()
 
         except:
             W = np.array([[0.5*dt**2 * b], [dt*b]])
             z = np.array([[dt*D_dot + 0.5*dt**2 * a], [dt*a]])
             e = np.array([[drag-ref_drag],[D_dot-ref_rate]])
-            d = np.array([[self.drag(energy+de)-self.drag(energy)],[self.rate(energy+de)-self.rate(energy)]])*(1+self.c)
+            d = np.array([[self.drag(energy+de)-self.drag(energy)],[self.rate(energy+de)-self.rate(energy)]])
 
             p = W.T.dot(self.Q).dot(W)
             q = W.T.dot(self.Q).dot(e+z-d)
@@ -113,61 +98,6 @@ class NMPC(object):
             u = np.clip(-q/p, 0, 0.96).squeeze()
 
         return acos(u)*np.sign(self.bank(energy+de))
-
-
-    def trigger(self, E, rangeToGo, drag, fpa):
-        """ Defines a trigger that determines when the update method is called """
-
-        # Every T seconds
-
-        # When the predicted error > tolerance
-        if self.type == 1:
-            def inv_drag(energy):
-                return -np.cos(fpa)/(self.drag(energy)*(1+self.c))
-        else:
-            def inv_drag(energy):
-                return -np.cos(fpa)/( (self.drag(energy)-self.drag(E))*(1+self.c) + drag)
-
-
-        rangePredicted = quad(inv_drag, E, self.Ef)[0]
-        err = np.abs(rangeToGo - rangePredicted)
-        if self.debug:
-            print("Predicted range error = {} km (tol = {} km)".format(err/1000,self.tol/1000))
-
-        return err > self.tol
-
-    def update(self, E, rangeToGo, drag, fpa):
-        """ Computes a suitable drag profile update of one of the two forms:
-            1. Dnew = (1+c)*Dref
-            2. Dnew = (1+c)*(Dref-Dref(E0)) + D(E0) # Ensures the initial condition matches the current drag measurement
-        """
-
-        if self.type == 1:
-            def inv_drag(energy, c):
-                return -np.cos(fpa)/(self.drag(energy)*(1+c))
-        else:
-            def inv_drag(energy, c):
-                return -np.cos(fpa)/( (self.drag(energy)-self.drag(E))*(1+c) + drag)
-
-        def cost(c):
-            rangePredicted = quad(inv_drag, E, self.Ef, args=(c,))[0]
-            return (rangeToGo-rangePredicted)**2
-
-        sol = minimize(cost, method='bounded',bounds=(-0.9,self.c+0.2))
-        self.c = np.clip(sol.x, -0.9,0.025+0.025*250/self.v_update)
-        # c should be bounded from above to prevent large drag increases which may decrease range error but will also drop altitude significantly
-        # larger changes in c may be okay later in the trajectory ?
-
-
-        # print self.c
-        self.D0 = drag
-        self.c_history.append(self.c)
-        self.E_history.append(E)
-        # c = minimize(cost, method='bounded',bounds=(-0.1,0.1)) # bounded version, either works tbh
-
-        if self.debug:
-            print("New value of c = {}".format(self.c))
-            self.trigger(E,rangeToGo,drag,fpa)
 
 
 
@@ -202,7 +132,7 @@ class test_NMPC(unittest.TestCase):
         # ######################################################
         pre = lambda **kwargs: banks[0]
         Q = np.array([[.1,0],[0,2]])
-        nmpc = NMPC(fbl_ref=refs, Q=Q, Ef = reference_sim.df['energy'].values[-1], update_type=1,update_tol=2,debug=True)
+        nmpc = NMPC(fbl_ref=refs, Q=Q, Ef = reference_sim.df['energy'].values[-1], debug=True)
 
         states = ['PreEntry','RangeControl']
         conditions = [AccelerationTrigger('drag',.2), SRPTrigger(0,600,1000)]
@@ -228,5 +158,4 @@ class test_NMPC(unittest.TestCase):
         # sim.show()
 
 if __name__ == "__main__":
-    # unittest.main()
-    test_sat()
+    unittest.main()

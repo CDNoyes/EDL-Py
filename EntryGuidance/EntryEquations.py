@@ -24,13 +24,15 @@ class Entry(object):
         self.nx = 8 # [r,lon,lat,v,gamma,psi,s,m]
         self.nu = 3 # bank command, throttle, thrust angle
         self.__jacobian = None # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
+        # import pdb
+        # pdb.set_trace()
         if Coriolis:
             self.dyn_model = self.__entry_vinhs
         else:
             self.dyn_model = self.__entry_3dof
 
-        self.__energy = Energy
-        if self.__energy:
+        self.use_energy = Energy
+        if self.use_energy:
             self.dE = None
         else:
             self.dE = 1
@@ -79,9 +81,11 @@ class Entry(object):
         dpsi = -L*sin(sigma)/v/cos(gamma) - v*cos(gamma)*cos(psi)*tan(phi)/r
         ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)
         dm = np.zeros_like(dh)
+        # print "DEBUG + {}".format(self.__energy)
+        if self.use_energy:
+            self.dE = -np.mean(v*D)
+            # self.dE = np.tile(-v*D,(self.nx,1))
 
-        if self.__energy:
-            self.dE = -v*D
         return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
 
@@ -156,9 +160,9 @@ class Entry(object):
 
         g = self.planet.mu/r**2
         h = r - self.planet.radius
-        rho,a = self.planet.atmosphere(h)                  # TODO: Vectorize this
+        rho,a = self.planet.atmosphere(h)
         M = v/a
-        cD,cL = self.vehicle.aerodynamic_coefficients(M)    # TODO: Vectorize this
+        cD,cL = self.vehicle.aerodynamic_coefficients(M)
         f = 0.5*rho*self.vehicle.area*v**2/m
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
@@ -167,11 +171,11 @@ class Entry(object):
     def gravity(self, r):
         return self.planet.mu/r**2
 
-def EDL(InputSample=np.zeros(4)):
+def EDL(InputSample=np.zeros(4),**kwargs):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
 
     CD,CL,rho0,sh = InputSample
-    return Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL))
+    return Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL), **kwargs)
 
 
 
