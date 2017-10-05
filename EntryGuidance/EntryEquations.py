@@ -83,8 +83,10 @@ class Entry(object):
         dm = np.zeros_like(dh)
         # print "DEBUG + {}".format(self.__energy)
         if self.use_energy:
-            self.dE = -np.mean(v*D)
-            # self.dE = np.tile(-v*D,(self.nx,1))
+            # import pdb
+            # pdb.set_trace()
+            # self.dE = -np.mean(v*D)
+            self.dE = np.tile(-v*D,(self.nx,1))
 
         return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
