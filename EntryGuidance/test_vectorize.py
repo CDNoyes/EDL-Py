@@ -147,7 +147,7 @@ def Optimize():
         for a total of 10 optimization parameters.
 
     """
-    from scipy.optimize import differential_evolution
+    from scipy.optimize import differential_evolution, minimize
     from numpy import pi, radians as rad
     from Simulation import Simulation, Cycle, EntrySim
 
@@ -157,11 +157,19 @@ def Optimize():
     samples = perturb.sample(optSize,'S')
     edl = EDL(samples,Energy=True)
 
-    bounds = [(0,350)]*3 + [(0,rad(40)),(rad(50),rad(90))]*2 + [(0,30),(0,10),(0,10)]
-    sol = differential_evolution(Cost,args = (sim,samples,optSize,edl), bounds=bounds, tol=1e-3, disp=True, polish=False)
-    print "Optimized parameters (N={}) are:".format(optSize)
-    print sol.x
-    print sol
+    bounds = [(0,120),(50,250),(150,300)] + [(0,rad(40)),(rad(50),rad(90)),(rad(50),rad(90)),(0,rad(40))] + [(0,30),(0,10),(0,10)]
+    # sol = differential_evolution(Cost,args = (sim,samples,optSize,edl), bounds=bounds, tol=1e-2, disp=True, polish=False)
+    # print "Optimized parameters (N={}) are:".format(optSize)
+    # print sol.x
+    # print sol
+
+    sol =  np.array([  9.29183808e+00,   1.16993103e+02,   1.59447150e+02,
+                       6.73319176e-01,   1.56897827e+00,   9.93751178e-01,
+                       1.04070920e-03,   5.12963117e+00,   1.63277499e-01,
+                       5.00426148e+00])
+    Cost(sol, sim, samples, optSize,edl)
+    # new_sol = minimize(Cost, sol, args = (sim,samples,optSize,edl), tol=1e-2, method='Nelder-Mead')
+
     return
 
 def Cost(inputs, reference_sim, samples, optSize, edl):
@@ -169,8 +177,8 @@ def Cost(inputs, reference_sim, samples, optSize, edl):
     switches = inputs[0:3]
     banks = inputs[3:7]*np.array([1,-1,1,-1])
 
-    if np.any(np.diff(switches) < 0):
-        return 2e5 # arbitrary high cost for bad switch times
+    if np.any(np.diff(switches) < 0) or np.any(inputs<0):
+        return 2e5 # arbitrary high cost for bad switch times or negative gains, prediction horizon
 
     bankProfile = lambda **d: profile(d['time'], switch=switches, bank=banks,order=2)
 
@@ -179,17 +187,17 @@ def Cost(inputs, reference_sim, samples, optSize, edl):
 
     Xf = output[-1,:]
     hf = Xf[3]
+    lonTarget = np.radians(Xf[5])
     # fpaf = Xf[8]
     dr = Xf[10]
     cr = Xf[11]
     # Jref = -hf + (0*(dr_target-dr)**2 + 0*(cr_target-cr)**2)**0.5
     high_crossrange = np.abs(cr) > 3
-    low_altitude = hf < 0
+    low_altitude = hf <= 0
     if high_crossrange or low_altitude:
         return 30 + 500*np.abs(cr) - 50*hf # arbitrary high cost for bad reference trajectory
     # Otherwise, we have a suitable reference and we can run the QMC
 
-    print "Running CL"
     # Closed loop statistics generation
     refs = reference_sim.getFBL()
 
@@ -200,7 +208,7 @@ def Cost(inputs, reference_sim, samples, optSize, edl):
     x = np.tile(x,(optSize,1)).T
     X = [x]
     energy0 = edl.energy(x[0],x[3],False)[0]
-    energyf = Xf[1]#edl.energy(edl.planet.radius + 1.5e3, 500, False)
+    energyf = Xf[1]*0.95
 
     energy = energy0
     E = [energy]
@@ -224,23 +232,37 @@ def Cost(inputs, reference_sim, samples, optSize, edl):
         if len(E)>600:
             break
     X = np.array(X)
+    # Xf = X[-1]
+    Xf = np.array([Trigger(traj,lonTarget) for traj in X.transpose((2,0,1))]).T
     # X = X.transpose((2,1,0))
     # print X.shape
     # import matplotlib.pyplot as plt
-    #
+    # Xi = Xf
     # for Xi in X:
-    #     plt.figure(1)
-    #     plt.plot(Xi[1]*3397,Xi[2]*3397,'o')
+    # plt.figure(1)
+    # plt.plot(Xi[1]*3397,Xi[2]*3397,'o')
     #
-    #     plt.figure(2)
-    #     plt.plot(Xi[3],(Xi[0]-3397e3)/1000,'o')
+    # plt.figure(2)
+    # plt.plot(Xi[3],(Xi[0]-3397e3)/1000,'o')
     # plt.show()
-    Xf = X[-1]
-    h   = edl.altitude(Xf[0], km=True) # altitude, km
-    lon = Xf[1]*edl.planet.radius/1000 # downrange, km
-    lat = Xf[2]*edl.planet.radius/1000 # -crossrange, km
 
-    J = -np.percentile(h,1) +  0.1* (np.percentile(lon,99)-np.percentile(lon,1) + np.percentile(lat,99)-np.percentile(lat,1)) + np.abs(lat.mean())
+
+    h   = edl.altitude(Xf[0], km=True) # altitude, km
+    DR = Xf[1]*edl.planet.radius/1000 # downrange, km
+    CR = Xf[2]*edl.planet.radius/1000 # -crossrange, km
+
+
+    # Previous cost function
+    # J = -np.percentile(h,1) +  0.1* (np.percentile(lon,99)-np.percentile(lon,1) + np.percentile(lat,99)-np.percentile(lat,1)) + np.abs(lat.mean())
+    # Perhaps more theoretically sound?
+    w = 2
+    J = -h + w*(np.abs(DR-lonTarget*3397) + np.abs(CR))
+    # plt.hist(J, bins=optSize/10, range=None, normed=False, weights=None, cumulative=False, bottom=None, histtype='bar', align='mid', orientation='vertical', rwidth=None, log=False, color=None, label=None, stacked=False, hold=None, data=None)
+    # plt.show()
+    J = J.mean()
+    # J = np.percentile(J,95) # maybe a percentile is better?
+    print "input = {}\ncost = {}".format(inputs,J)
+
     # print J
     # print np.percentile(h,1)
     # print np.percentile(lon,99)-np.percentile(lon,1)
@@ -248,7 +270,14 @@ def Cost(inputs, reference_sim, samples, optSize, edl):
     return J
 
 
-
+def Trigger(traj, targetLon, minAlt=0e3, maxVel=600):
+    for state in traj:
+        alt = state[0]-3397e3
+        vel = state[3]
+        longitude = state[1]
+        if alt < minAlt or (vel<maxVel and longitude>=targetLon):
+            return state
+    return traj[-1]# No better trigger point so final point is used
 
 def OptimizeController():
     from scipy.optimize import differential_evolution
