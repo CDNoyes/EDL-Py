@@ -1,0 +1,67 @@
+380 BC
+
+1. No reversals, optimal altitude:
+switch =  1.28335194e+02   3.91024252e+02 (second switch inactive)
+bank = 8.99228648e+01   1.32414062e-01 8.99228648e+01 (third bank inactive)
+~856 km downrange flown
++3.34 km final altiude
+No margin, single switch
+
+2. No reversals, optimal altitude with fixed bank angles chosen for margin
+switch = [ 20.09737598,  139.4887652 ]
+bank = [np.radians(30),np.radians(75),np.radians(30)]
+
+
+
+
+# Default NMPC params
+Q=np.array([[.1,0],[0,2]]),  dt=2.5,
+
+# Optimized for minimization of lat/lon percentiles
+Q=np.array([[7.1,0],[0,.03]]), dt=4.25,
+
+With tighter tolerance
+[ 0.04997314  9.36355684  3.08391245]
+
+With actual MC250 in the loop and 1% altitude max + 0.1*lat/lon percs
+array([ 0.11097343,  9.15744029,  8.09424251])
+
+MC500, 0.1 tol
+[ 3.10823241,  4.19776455,  1.10341674]
+
+MC500, 0.01 tol
+[ 1.2615365 ,  8.29414341,  1.15915167]
+[ 1.46      ,  7.6       ,  1.096] repeated on laptop, cost = 2.7
+# Combined optimization of reversal times, bank angles, and controller
+
+# Solution prior to trigger addition
+      fun: 1.2114670835942329
+  message: 'Optimization terminated successfully.'
+     nfev: 104700
+      nit: 697
+  success: True
+        x: array([  9.29183808e+00,   1.16993103e+02,   1.59447150e+02,
+          6.73319176e-01,   1.56897827e+00,   9.93751178e-01,
+          1.04070920e-03,   5.12963117e+00,   1.63277499e-01,
+          5.00426148e+00])
+
+
+# Unfinished results with trigger and mean(J)
+
+  input = [  31.43043113  114.25194209  165.17773297    0.45869567    1.48074162
+      1.02865245    0.56437121    2.30921823    5.6819375     7.27631819]
+  cost = 0.705669158908
+
+  input = [  55.26324596  115.56839323  167.04647296    0.40313847    1.49129594
+      1.05663538    0.52584173    2.27681905    4.94389276    8.00937697]
+  cost = 0.687563926518
+
+  input = [  22.96552144  115.29267939  166.82855814    0.46030306    1.49487361
+      1.05368739    0.53462291    2.33994999    3.90077325    7.94849775]
+  cost = 0.660353566982
+
+
+# Unfinished results with trigger and percentile(J,95)
+
+
+Idea: use this complete optimization process to show that e.g. altitude vs range profile cannot produce results as good as drag vs energy
