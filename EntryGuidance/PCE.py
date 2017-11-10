@@ -26,12 +26,13 @@ from NMPC import NMPC
 
 class PCE(object):
 
-    def __init__(self):
+    def __init__(self,verbose=True):
         self.dist = None
         self.resamples = None
         self.IV = None
-        self.Xtrue=None 
-        self.order = None 
+        self.Xtrue=None
+        self.order = None
+        self.verbose = verbose
 
     def sample(self, dist, method='H', N=50, order=2, antithetic=None):
         # Methods: QMC such as Sobol, Halton, Hammersley (for regression based)
@@ -42,7 +43,7 @@ class PCE(object):
                 # collocation because the number of samples is an input.
         self.dist = dist
         self.poly = cp.orth_ttr(order, self.dist)
-        self.order=order 
+        self.order=order
         self.method=method
         self.is_quad = False
         if method.lower() in ("g","c","e"): # G, C, E
@@ -52,21 +53,22 @@ class PCE(object):
 
         else: # Point collocation based on MC/QMC sampling, aka regression. R,L,S,H,M are the choices
             self.samples = dist.sample(N,method)
+        if self.verbose:
+            print "Sampling complete... {}".format(self.samples.shape)
 
-        print "Sampling complete... {}".format(self.samples.shape)
 
-        
     def change_order(self,order):
         """ Rebuilds the orthogonal polynomials for a new order """
         if self.order == order:
-            return 
-        self.order = order 
+            return
+        self.order = order
         self.poly = cp.orth_ttr(order,self.dist)
         evals = self.evals.transpose((2,0,1))
 
         self.model = cp.fit_regression(self.poly, self.samples, evals,rule='LS')
-        print "Order changed, new PCE model built from existing samples."
-        
+        if self.verbose:
+            print "Order changed, new PCE model built from existing samples."
+
     def build(self):
         """ Evaluates the EDL sim at the sample points and constructs the PCE model """
         # MSL solution
@@ -82,9 +84,8 @@ class PCE(object):
         self.evals,U = self.Sim(switch,bank,control)
         t1 = time.time()
         print "Simulation complete ({} s)".format(t1-t0)
-        
+
         evals = self.evals.transpose((2,0,1))[:,200:,:][:,:,:6] # reshape, and trim any states and/or timesteps that we dont need to generate PCE models for. this saves a lot of time.
-        print evals.shape 
         if self.is_quad:
             self.model = cp.fit_quadrature(self.poly, self.samples, self.weights, evals)
         else:
@@ -111,20 +112,20 @@ class PCE(object):
 
     def coeff_plot(self, index):
         plt.figure()
-        
+
         keys = self.model[index].keys
         coeff = self.model[index].coeffs()
         if np.abs(coeff[0]) > 1e-3:
             coeff = [c/coeff[0] for c in coeff]
         for c,key in zip(coeff,keys):
             plt.plot(np.sum(key),c,'o')
-        
+
     def error(self):
         """Generates errors between the sampled values of the model and the true vectorized integration"""
         if self.resamples is None:
             print "Evaluating the model..."
             self.eval()
-        if self.Xtrue is None:    
+        if self.Xtrue is None:
             print "Vectorized integration for truth data..."
             Xtrue,Utrue = self.Sim(*self.sim_inputs, samples=self.resamples)
             from scipy.interpolate import interp1d
@@ -134,7 +135,7 @@ class PCE(object):
             self.Xtrue = Xtrue
         else:
             Xtrue = self.Xtrue
-            
+
         err = Xtrue-self.revals[:-41]
         mean_err = err.mean(axis=2)
         std_err = err.std(axis=2)
@@ -144,9 +145,9 @@ class PCE(object):
         return mean_err, std_err
 
     def error_plots(self,err):
-        
+
         save_dir = "data/PCE/"
-    
+
         mean_err = err[0].T
         std_err = err[1].T
         r,lon,lat,v,fpa,psi,s,m = mean_err
@@ -163,7 +164,7 @@ class PCE(object):
         plt.ylabel('Altitude Error (m)')
         plt.xlabel('Energy')
         plt.savefig(save_dir + 'Altitude Error N{} {} Order{}.png'.format(self.samples.shape[1],self.method,self.order))
-        
+
         plt.figure(11)
         plt.plot(self.IV,v)
         plt.plot(self.IV,v+dv,'k--')
@@ -317,6 +318,16 @@ class PCE(object):
         U = np.array(U)
         return X,U
 
+def Cost(Xf,lonTarget):
+    if not Xf.shape[0] in (6,8):
+        Xf = Xf.T
+    # h   = edl.altitude(Xf[0], km=True) # altitude, km
+    rp = 3397
+    DR = Xf[1]*rp # downrange, km
+    CR = Xf[2]*rp # -crossrange, km
+
+    J = np.sqrt((DR-lonTarget*3397)**2+CR**2).mean() # Norm squared, to be differentiable for finite differencing
+    return J
 
 def Trigger(traj, targetLon, minAlt=0e3, maxVel=600):
     for state in traj:
@@ -329,35 +340,43 @@ def Trigger(traj, targetLon, minAlt=0e3, maxVel=600):
 
 def test():
     dist = getUncertainty()['parametric']
-    
-    for N in [20,50,100,200]:
-    # for N in [500,1000]:
-        for method in  ("S","H","L"):
-            pce = PCE()
+
+    for N in [5,10]:
+    # for N in [20,50,100,200,500,10000]:
+        for method in  ("S"):
+        # for method in  ("S","H","L"):
+            pce = PCE(verbose=False)
             # pce.sample(dist, method='E', order=4)
             pce.sample(dist, method=method, N=N, order=2)
             pce.build()
-            import pdb 
-            pdb.set_trace()
+            # import pdb
+            # pdb.set_trace()
             # pce.PlotE()
 
             # t0 = time.time()
             # X = pce.eval(2000,'S')
             # t1 = time.time()
 
-            # Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in X.transpose((2,0,1))]).T # Parachute deployment
+            Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in pce.evals.transpose((2,0,1))]).T # Parachute deployment
+            J = Cost(Xf,pce.lonTarget)
+            print "Cost with {} samples = {}".format(N,J)
+
             # t2 = time.time()
             # print "Trigger logic: {} s".format(t2-t1)
 
             # Plot
             for order in [2,3,4,5]: # build different order models from the same sampled data
                 pce.change_order(order)
-                pce.eval(2000,'S')
-                pce.error_plots(pce.error())
-                plt.close("all")
-                
-                
-    
+                X = pce.eval(50000,'S')
+                # print X.shape
+                Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in X.transpose((2,0,1))]).T # Parachute deployment
+                J = Cost(Xf,pce.lonTarget)
+                print "Cost with {} samples and {} order PCE = {} ".format(N,order,J)
+                # pce.error_plots(pce.error())
+                # plt.close("all")
+
+
+
     # Xi = Xf
     # Pf = np.cov(Xf)
     # Pf[:,0] /= 1000
