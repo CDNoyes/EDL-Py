@@ -30,6 +30,8 @@ class PCE(object):
         self.dist = None
         self.resamples = None
         self.IV = None
+        self.Xtrue=None 
+        self.order = None 
 
     def sample(self, dist, method='H', N=50, order=2, antithetic=None):
         # Methods: QMC such as Sobol, Halton, Hammersley (for regression based)
@@ -40,6 +42,7 @@ class PCE(object):
                 # collocation because the number of samples is an input.
         self.dist = dist
         self.poly = cp.orth_ttr(order, self.dist)
+        self.order=order 
         self.method=method
         self.is_quad = False
         if method.lower() in ("g","c","e"): # G, C, E
@@ -52,6 +55,18 @@ class PCE(object):
 
         print "Sampling complete... {}".format(self.samples.shape)
 
+        
+    def change_order(self,order):
+        """ Rebuilds the orthogonal polynomials for a new order """
+        if self.order == order:
+            return 
+        self.order = order 
+        self.poly = cp.orth_ttr(order,self.dist)
+        evals = self.evals.transpose((2,0,1))
+
+        self.model = cp.fit_regression(self.poly, self.samples, evals,rule='LS')
+        print "Order changed, new PCE model built from existing samples."
+        
     def build(self):
         """ Evaluates the EDL sim at the sample points and constructs the PCE model """
         # MSL solution
@@ -67,7 +82,9 @@ class PCE(object):
         self.evals,U = self.Sim(switch,bank,control)
         t1 = time.time()
         print "Simulation complete ({} s)".format(t1-t0)
-        evals = self.evals.transpose((2,0,1))
+        
+        evals = self.evals.transpose((2,0,1))[:,200:,:][:,:,:6] # reshape, and trim any states and/or timesteps that we dont need to generate PCE models for. this saves a lot of time.
+        print evals.shape 
         if self.is_quad:
             self.model = cp.fit_quadrature(self.poly, self.samples, self.weights, evals)
         else:
@@ -81,28 +98,43 @@ class PCE(object):
         print "PCE model constructed ({} s)".format(t2-t1)
 
     def eval(self, N=2000, method="H"):
-        t0 = time.time()
-        new_samples = self.dist.sample(N,method)
-        t1= time.time()
-        self.resamples = new_samples
-        self.revals = self.model(*new_samples)
+        if self.resamples is None:
+            t0 = time.time()
+            new_samples = self.dist.sample(N,method)
+            t1= time.time()
+            self.resamples = new_samples
+        self.revals = self.model(*self.resamples)
         t2 = time.time()
-        print "{} new samples generated ({} s)".format(N,t1-t0)
-        print "PCE model sampled ({} s)".format(t2-t1)
+        # print "{} new samples generated ({} s)".format(N,t1-t0)
+        # print "PCE model sampled ({} s)".format(t2-t1)
         return self.revals
 
+    def coeff_plot(self, index):
+        plt.figure()
+        
+        keys = self.model[index].keys
+        coeff = self.model[index].coeffs()
+        if np.abs(coeff[0]) > 1e-3:
+            coeff = [c/coeff[0] for c in coeff]
+        for c,key in zip(coeff,keys):
+            plt.plot(np.sum(key),c,'o')
+        
     def error(self):
-        "Generates errors between the sampled values of the model and the true vectorized integration"
+        """Generates errors between the sampled values of the model and the true vectorized integration"""
         if self.resamples is None:
             print "Evaluating the model..."
             self.eval()
-        print "Vectorized integration for truth data..."
-        Xtrue,Utrue = self.Sim(*self.sim_inputs, samples=self.resamples)
-        from scipy.interpolate import interp1d
+        if self.Xtrue is None:    
+            print "Vectorized integration for truth data..."
+            Xtrue,Utrue = self.Sim(*self.sim_inputs, samples=self.resamples)
+            from scipy.interpolate import interp1d
 
-        self.IV = self.IV[:-41] # Prune the extra energy propagation for the error computations
-        Xtrue = interp1d(self.RIV, Xtrue, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=False)(self.IV) # Interpolate the truth data onto the original energy points
-
+            self.IV = self.IV[:-41] # Prune the extra energy propagation for the error computations
+            Xtrue = interp1d(self.RIV, Xtrue, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=False)(self.IV) # Interpolate the truth data onto the original energy points
+            self.Xtrue = Xtrue
+        else:
+            Xtrue = self.Xtrue
+            
         err = Xtrue-self.revals[:-41]
         mean_err = err.mean(axis=2)
         std_err = err.std(axis=2)
@@ -112,6 +144,9 @@ class PCE(object):
         return mean_err, std_err
 
     def error_plots(self,err):
+        
+        save_dir = "data/PCE/"
+    
         mean_err = err[0].T
         std_err = err[1].T
         r,lon,lat,v,fpa,psi,s,m = mean_err
@@ -127,14 +162,15 @@ class PCE(object):
         plt.plot(self.IV,r-dr,'k--')
         plt.ylabel('Altitude Error (m)')
         plt.xlabel('Energy')
-        plt.savefig('Altitude Error {} {}.png'.format(self.samples.shape[1],self.method))
+        plt.savefig(save_dir + 'Altitude Error N{} {} Order{}.png'.format(self.samples.shape[1],self.method,self.order))
+        
         plt.figure(11)
         plt.plot(self.IV,v)
         plt.plot(self.IV,v+dv,'k--')
         plt.plot(self.IV,v-dv,'k--')
         plt.ylabel('Velocity Error (m/s)')
         plt.xlabel('Energy')
-        plt.savefig('Velocity Error {} {}.png'.format(self.samples.shape[1],self.method))
+        plt.savefig(save_dir + 'Velocity Error N{} {} Order{}.png'.format(self.samples.shape[1],self.method,self.order))
 
         plt.figure(12)
         plt.plot(self.IV,lon*rp)
@@ -142,7 +178,7 @@ class PCE(object):
         plt.plot(self.IV,(lon-dlon)*rp,'k--')
         plt.ylabel('Downrange Error (m)')
         plt.xlabel('Energy')
-        plt.savefig('Downrange Error {} {}.png'.format(self.samples.shape[1],self.method))
+        plt.savefig(save_dir + 'Downrange Error N{} {} Order{}.png'.format(self.samples.shape[1],self.method,self.order))
 
         plt.figure(13)
         plt.plot(self.IV,lat*rp)
@@ -150,7 +186,7 @@ class PCE(object):
         plt.plot(self.IV,(lat-dlat)*rp,'k--')
         plt.ylabel('Crossrange Error (m)')
         plt.xlabel('Energy')
-        plt.savefig('Crossrange Error {} {}.png'.format(self.samples.shape[1],self.method))
+        plt.savefig(save_dir + 'Crossrange Error N{} {} Order{}.png'.format(self.samples.shape[1],self.method,self.order))
 
         plt.figure(14)
         plt.plot(self.IV,fpa*r2d)
@@ -158,7 +194,7 @@ class PCE(object):
         plt.plot(self.IV,(fpa-dfpa)*r2d,'k--')
         plt.ylabel('FPA Error (deg)')
         plt.xlabel('Energy')
-        plt.savefig('FPA Error {} {}.png'.format(self.samples.shape[1],self.method))
+        plt.savefig(save_dir + 'FPA Error N{} {} Order{}.png'.format(self.samples.shape[1],self.method,self.order))
 
     def E(self):
         return cp.E(self.model,self.dist)
@@ -292,29 +328,42 @@ def Trigger(traj, targetLon, minAlt=0e3, maxVel=600):
     return traj[-1]# No better trigger point so final point is used
 
 def test():
-    pce = PCE()
     dist = getUncertainty()['parametric']
-    # pce.sample(dist, method='E', order=4)
-    pce.sample(dist, method='S', N=21, order=2)
-    pce.build()
-    # pce.PlotE()
+    
+    for N in [20,50,100,200]:
+    # for N in [500,1000]:
+        for method in  ("S","H","L"):
+            pce = PCE()
+            # pce.sample(dist, method='E', order=4)
+            pce.sample(dist, method=method, N=N, order=2)
+            pce.build()
+            import pdb 
+            pdb.set_trace()
+            # pce.PlotE()
 
-    t0 = time.time()
-    X = pce.eval(2000,'S')
-    t1 = time.time()
+            # t0 = time.time()
+            # X = pce.eval(2000,'S')
+            # t1 = time.time()
 
-    Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in X.transpose((2,0,1))]).T # Parachute deployment
-    t2 = time.time()
-    print "Trigger logic: {} s".format(t2-t1)
+            # Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in X.transpose((2,0,1))]).T # Parachute deployment
+            # t2 = time.time()
+            # print "Trigger logic: {} s".format(t2-t1)
 
-    # Plot
-    pce.error_plots(pce.error())
-    Xi = Xf
-    Pf = np.cov(Xf)
-    Pf[:,0] /= 1000
-    Pf[0,:] /= 1000
+            # Plot
+            for order in [2,3,4,5]: # build different order models from the same sampled data
+                pce.change_order(order)
+                pce.eval(2000,'S')
+                pce.error_plots(pce.error())
+                plt.close("all")
+                
+                
+    
+    # Xi = Xf
+    # Pf = np.cov(Xf)
+    # Pf[:,0] /= 1000
+    # Pf[0,:] /= 1000
 
-    h   = (Xi[0]-3397e3)/1000
+    # h   = (Xi[0]-3397e3)/1000
 
     # plt.figure(4)
     # plt.scatter(Xi[2]*3397,Xi[1]*3397,c=h)
@@ -339,7 +388,7 @@ def test():
 
     # Parachute.Draw(figure=2)
 
-    plt.show()
+    # plt.show()
 
 if __name__ == "__main__":
     # optimize()
