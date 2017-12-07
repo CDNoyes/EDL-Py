@@ -1,0 +1,142 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[latin1]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\author{Connor Noyes}
+\title{Stochastic Entry Guidance}
+\begin{document}
+	\maketitle
+%	\section{EoM}
+%		The 3DOF equations of motion are
+%		\begin{align}
+%		& \dot{h} = V\sin\gamma \\
+%		& \dot{\theta} = \dfrac{V\cos\gamma}{r}\dfrac{\cos\psi}{\cos\phi} \\
+%		& \dot{\phi} = \dfrac{V\cos\gamma}{r}\sin\psi \\
+%		& \dot{V} = -D-g\sin\gamma \\
+%		& \dot{\gamma} = \dfrac{L}{V}\cos\sigma - (g/V-V/r)\cos\gamma \\
+%		& \dot{\psi} = \dfrac{L\sin\sigma}{V\cos\gamma}
+%		\end{align}
+%		
+%		The methods employed here must use a fixed final independent value, so either energy, velocity, or trajectory length may be used in place of time. The 3DOF equations of motion with respect to energy are 
+%		\begin{align}
+%		& h' = -\frac{\sin\gamma}{D} \\
+%		& \theta' = -\dfrac{\cos\gamma}{rD}\dfrac{\cos\psi}{\cos\phi} \\
+%		& \phi' = -\dfrac{\cos\gamma}{rD}\sin\psi \\
+%		& \gamma' = -\dfrac{L}{V^2D}\cos\sigma + (g/V-V/r)\dfrac{\cos\gamma}{VD} \\
+%		& \psi' = -\dfrac{L\sin\sigma}{V^2D\cos\gamma} \\
+%		& V = f(E,h) = \sqrt{2(E+\dfrac{\mu}{h+r_p})}
+%		\end{align}
+%		and the longitudinal equations with respect to energy are the reduced set
+%		\begin{align}
+%		& h' = -\frac{\sin\gamma}{D} \\
+%		& s' = -\dfrac{\cos\gamma}{D} \\
+%		& \gamma' = -\dfrac{L}{V^2D}u + (g/V-V/r)\dfrac{\cos\gamma}{VD} \\
+%		& V = f(E,h) = \sqrt{2(E+\dfrac{\mu}{h+r_p})}
+%		\end{align}
+		
+%	\section{Problem Statement}
+
+%		Outline: Pose the stochastic problem. 
+% Show that to first order, the trajectory of mean parameters is the mean trajectory. Second order effects take into account covariance. Thus, we can assume the nominal trajectory determines the mean trajectory, and closed-loop guidance controls the variance. Then, nominal trajectory is continually redesigned via sensitivity method (possibly framed as a mean/covariance argument again), and the loop is closed using feedback linearization (likely using an observer, potentially extended to account for control saturation), showing that minimization of expected errors is a variance minimization problem.
+
+%		The equations of motion governing the vehicle during entry are given by the affine-in-control $\mathrm{It\hat{o}}$ stochastic differential state equation (with respect to energy) and stochastic observation equation
+%		\begin{align}
+%		&dx = (f(x)+g(x)u)dE + F(x,u)d\omega \label{eq_ito_dynamics}\\
+%		&y = h(x) + H(x)d\zeta
+%		\end{align}
+%		where $\omega,\;\zeta$ are Wiener processes with covariances \textbf{TODO: finish this}. The general entry guidance problem may be posed as finding the control, here taken to be the bank angle profile, that guides an entry vehicle subject to the dynamics in Eq.~(\ref{eq_ito_dynamics}) to some final condition $x(E_f)\in\Omega$. The final condition is very general and has as special cases fully- or partially-specified final states, a target set defined by, e.g., conditions for parachute deployment or supersonic retropropulsion ignition, and optimal control problems where $\Omega$ is defined by an extremal quantity such as maximum crossrange subject to a minimum terminal altitude.
+%		
+%		The presence of significant uncertainty in the form of initial conditions, system parameters, or process/measurement noise leads to a desire to control not individual trajectories but families of trajectories forming a distribution. In the stochastic setting, Kolmogorov's Forward equation (also referred to as the Fokker-Planck equation)
+%		\begin{equation}
+%		\dfrac{\partial \mu}{\partial t} = -\mathrm{trace}\left(\dfrac{\partial f}{\partial x} + g(x)\dfrac{\partial u}{\partial x}\right)\mu+ \dfrac{\partial^2 f}{\partial x^2} \label{eq_kolmogorov_forward}
+%		\end{equation}
+%		governs the evolution of the distribution $\mu(t,x)$. If the Brownian motion term $F(x,u)=0$, the problem becomes deterministic (but still uncertain) and Eq.~(\ref{eq_kolmogorov_forward}) reduces to the Liouville equation
+%		\begin{equation}
+%		\dfrac{\partial \mu}{\partial t} = -\mathrm{trace}\left(\dfrac{\partial f}{\partial x} + g(x)\dfrac{\partial u}{\partial x}\right)\mu = -\mathrm{div}(f(x)+g(x)u(t,x))\mu. \label{eq_liouville}
+%		\end{equation}
+
+	\section{Motivation and Background}
+	Mease advice: give a bird's eye view of the problem. Show the current approach (MSL, linearized range control, separate lateral control, heading alignment) and discuss our approach and how it differs (near-optimal reference trajectories, combined range/lateral control, improved heading alignment, OUU). Can also discuss different UQ options in the loop (STM, QMC, PCE). 
+		%Fisher and Bhattacharya use polynomial chaos expansions and direct optimal control to solve for an open loop control to steer systems with probabilistic parametric uncertainty.
+		
+%		The ultimate goal in controlling an uncertain system is to steer an entire distribution of states to some final distribution. Although it may be desirable to steer the entire distribution of states. 
+		
+	% Outline
+	% Full stochastic optimal control problem - GNC strategy + reference traj
+	% Conversion into stochastic NLP (via control parametrization based on optimal control techniques) then into deterministic NLP (based on QMC, PCE, STM, Unscented)
+	\section{Entry Guidance as a Stochastic Optimal Control Problem}
+	Consider the dynamics given by the deterministic ordinary differential equations. Due to uncertainty in the vehicle's initial state and parameters of the model, the evolution of the trajectories is stochastic. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus for a given realization of $x_0\in\Omega$, the individual trajectory admits a deterministic solution $ x(t;x_0) $. 
+	
+	The problem is to design a reference trajectory and feedback controller that together constitute a guidance approach capable of steering the stochastic trajectory evolution to the target in expectation and with minimal variance. Thus we define Problem 1 as finding the feedback control $u\equiv u(x,x_{Ref})$ that minimizes
+	\begin{align}
+		J = \mathbb{E}[(DR-DR_{Target})^2 + (CR-CR_{Target})^2]
+	\end{align}
+	subject to 
+	\begin{align}
+		&\dot{x} = f(x,u) \\
+		&x_0 \in \Omega
+	\end{align}
+	
+	To see that this cost function reduces both the error in expectation as well variance, define
+	\begin{align}
+	e^2(x_f) \equiv (DR-DR_{Target})^2 + (CR-CR_{Target})^2
+	\end{align}
+	and so $	J = \mathbb{E}[e^2]$. Let $\bar{e} = \mathbb{E}[e]$, and then from the definition of variance
+	\begin{align}
+	\mathbb{V}[e] = \mathbb{E}[e^2] - \bar{e}^2
+	\end{align}
+	we find that 
+		\begin{align}
+		J = \mathbb{V}[e] + \bar{e}^2.
+		\end{align}
+	It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the target point.
+	\subsection{Sketch of the Algorithm}
+	At the heart of the approach is the desire to optimize the reference data and controller parameters simultaneously. This is because an optimal reference profile combined with an optimized controller does not yield optimal performance. Given an initial PDF, use the mean initial state for reference computation and perform the following steps:
+	\begin{enumerate}
+		\item An outer optimization loop first selects the bank angle profile parameters, i.e. the switching times $t_i,\;i=1:n$ and bank angles $\sigma_i,\;i=0:n$, as well as any controller parameters
+		\item Integrate the reference trajectory forward to the final energy
+		\item Compute the reference objective function value
+		\item If $ J_{ref} < J_{threshold} $: store reference quantities (e.g., drag and its derivatives as functions of energy) and continue to next step;\\
+		Else: return to the first step and select new parameters
+		\item Integrate (preferably in parallel or vectorized manner) $ N_{PCE} $ trajectories using samples drawn from the initial PDF with closed-loop guidance using the selected parameters from step 1
+		\item Construct a polynomial chaos expansion from these $ N_{PCE} $ evaluated trajectories
+		\item Evaluate the PCE model at $ N $ points (typically $N_{PCE}\ll N $) sampled from the initial PDF
+		\item Determine the final state $x_{f_i}$ of each trajectory
+		\item Evaluate the closed-loop cost by taking the expectation
+	\end{enumerate}
+		
+		
+		
+		
+	
+	\subsection{Reference Trajectory Design}
+	In order to use a tracking controller to guide the vehicle, a suitable reference trajectory is required. The features of a desirable reference trajectory include high performance in the nominal scenario while leaving appropriate margin for the controller to compensate stochastic uncertainty. Naturally standard optimal control techniques can be used to solve for a trajectory that extremizes some feature(s) such as maximizing final altitude at parachute deployment, or minimizing propellant required to land via retropropulsion technology. It does not offer a clear method to determine how much margin is sufficient for the controller (indeed, the optimization knows nothing about the controller to be used, and different controllers will in general require different amounts of control margin). There is a common tradeoff between optimality and robustness. In a system with limited control authority, the optimal solution will use all available control and typically ad hoc methods are used to choose the margins. If more margin than is needed is allocated, performance of the reference trajectory (and of the corresponding mean trajectory of the stochastic system) will deteriorate. \textbf{Note that the reference trajectory uses $ \mathbb{E}[x_0] $ and can therefore be shown to be a first order approximation to the expected trajectory}
+	
+	The deterministic cost used in generating an optimal reference trajectory is given by 
+	\begin{align}
+	J_{ref} = -h(V_f) + |CR(V_f)| \label{eq_cost_deterministic}
+	\end{align}
+	which seeks to maximize final altitude while reaching approximately zero crossrange at a specified final velocity. A downrange component may also be included. 
+			
+	\subsection{Closed Loop Performance Evaluation}		
+	In addition to the reference trajectory, the controller parameters must also be chosen judiciously to maximize performance. The cost function used depends on the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$.		
+			
+	In contrast to the open loop formulation employed by Ref.~\cite{RSOptimalControl} where a single control trajectory aims to steer an entire tube of trajectories, we consider the closed loop formulation where both the reference (which in some sense constitutes the open loop portion of the control) and the controller parameters (for an a priori chosen controller design) are optimized. (Part of the optimization could even be selecting which controller is best!)		
+			
+	\subsection{Trigger Logic}
+	The logic which decides when the entry phase ends is instrumental to good horizontal performance while ensuring the vehicle is in an appropriate state to deploy a parachute or initiate a powered descent phase. Compare the results of a fixed energy trigger, in which trajectories end at the same energy as the reference trajectory, and the combined parachute-range control logic as summarized in Figure \textbf{Put a figure}. \textbf{Show the two sets of final states (h-v, lat-lon)}
+	
+	Unfortunately, this logic is not differentiable, and thus precludes the use of polynomial chaos to expand the cost function directly. Instead, the state trajectories themselves are expanded. The PCE models are sampled extensively (because the cost to do so is low relative to the cost of constructing the models) and the trigger logic is applied to each trajectory to find the final state. Then, the expectation of the cost is simply estimated as $\mathbb{E}[J]\approxeq\frac{1}{N}\sum_{i=1}^{N}J(x_f^i)$.
+			
+			
+	\begin{thebibliography}{1}
+	\bibitem{brockett2012}
+	R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
+	Coron, editors, Control of Partial Differential Equations, pages 101-129. Springer,
+		Berlin-Heidelberg, 2012.
+		\bibitem{RSOptimalControl}
+		I.M. Ross, Riemann-Stieltjes Optimal Control 
+	\end{thebibliography}
+\end{document}
