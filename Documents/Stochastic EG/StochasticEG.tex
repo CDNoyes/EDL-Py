@@ -58,7 +58,38 @@
 %		\end{equation}
 
 	\section{Motivation and Background}
-	Mease advice: give a bird's eye view of the problem. Show the current approach (MSL, linearized range control, separate lateral control, heading alignment) and discuss our approach and how it differs (near-optimal reference trajectories, combined range/lateral control, improved heading alignment, OUU). Can also discuss different UQ options in the loop (STM, QMC, PCE). 
+%	Mease advice: give a bird's eye view of the problem. Show the current approach (MSL, linearized range control, separate lateral control, heading alignment) and discuss our approach and how it differs (near-optimal reference trajectories, combined range/lateral control, improved heading alignment, OUU). Can also discuss different UQ options in the loop (STM, QMC, PCE). 
+% Pose the full problem, then state how MSL tackled it (and any assumptions), then give our approach (whatever that is...). Then give details, and results.
+
+	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with MSL in 2013, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). The onboard GNC system will have imperfect models of the planetary atmosphere and the aerodynamics of the vehicle.
+
+
+	
+	The Mars Science Laboratory spacecraft demonstrated the first guided entry on Mars when it landed in Gale Crater on August $5^{th}$, 2012. The vehicle flew with an offset center of mass to create an angle of attack that allowed the spacecraft to generate lift. The guidance approach used bank angle commands to orient the resulting lift vector and thereby compensate for dispersions.\cite{MSL_EDL_Overview_JPL}
+	
+	\subsection{Reference Trajectory}
+	MSL used a simple parametrization of the bank angle profile consisting of an early bank angle, a late bank angle, and a linear change between them beginning at a fixed velocity, see Fig.~\ref{MSLParametrization} for an example. The profile was used to determine the longitudinal motion and a separate lateral logic was used to control crossrange. This decoupling of longitudinal and lateral channels is common throughout entry guidance literature.
+	
+	An alternate parametrization based on optimal control results was developed in Ref.~\cite{High Elevation Landing}. It includes bank reversals in the planning and thus steers both the longitudinal and lateral channels simultaneously. Use of time as the independent variable allows simple imposition of rate and acceleration constraints on the bank angle profile although this was not explored in Ref.~\cite{High Elevation Landing}. The equations of motion are integrated forward using the time-varying bank profile to obtain a drag acceleration reference profile as a function of energy to be used onboard. The version applied here is modified to remove the first switch and bank angle segment, and also introduces rate and acceleration limits to make the commands easier to track. Fig.~\ref{RefTrajParametrization} shows an example profile. Combined planning, although more difficult than in the decoupled scenario, allows for improved performance because bank reversals not accounted for will degrade the longitudinal performance. 
+	\begin{figure*}
+		\centering
+		\includegraphics[width=4in]{MSLProfile.png}
+		\caption{\bf{MSL's bank angle parametrization.}}
+		\label{MSLParametrization}
+	\end{figure*}
+	\begin{figure*}
+		\centering
+		\includegraphics[width=4in]{BankAngleProfile.png}
+		\caption{\bf{The proposed bank angle parametrization.}}
+		\label{RefTrajParametrization}
+	\end{figure*}
+	
+	\subsection{Entry Guidance}
+	MSL's entry guidance consisted of three phases. The first was a pre-bank phase in which the vehicle flew a constant bank angle prior to entering the atmosphere. The phase ended when the drag acceleration exceeded 0.2 Earth g, and the range control phase began. Range control used a modified version of the Apollo shuttle guidance to predict the downrange flown and steer the bank angle to rectify range errors. The separate lateral logic referred to earlier consists of a velocity-dependent crossrange corridor in which the guidance commands a bank reversal whenever the onboard estimate of crossrange to target exceeds the corridor threshold. The final phase is heading alignment in which the vehicle is commanded to aim the vehicle toward the target point. This phase began at a fixed velocity which for MSL was 1100 m/s. The magnitude of the bank angle is saturated to 30$^\circ$ to ensure most of the lift generated is countering gravity to maintain adequate chute deployment altitude.
+	
+	The Apollo guidance is essentially an LQR approach in which so-called "influence coefficients" are computed and used as time-varying gains for the feedback controller. These gains are computed on the ground and stored onboard the GNC flight computer. Rather than use state feedback directly, the states such as altitude and flight path angle are instead replaced by quantities that are better measured onboard, including aerodynamic drag and altitude rate. 
+	
+	The free parameters in this guidance approach consist of the pre-bank angle, the range control gain (sometimes referred to as the Overcontrol gain, or $ K_3 $), and the bank reversal deadbands. Additionally, the reference profile generated by the bank angle parametrization and the velocity at which heading alignment begins will also impact the results.
 		%Fisher and Bhattacharya use polynomial chaos expansions and direct optimal control to solve for an open loop control to steer systems with probabilistic parametric uncertainty.
 		
 %		The ultimate goal in controlling an uncertain system is to steer an entire distribution of states to some final distribution. Although it may be desirable to steer the entire distribution of states. 
@@ -66,10 +97,10 @@
 	% Outline
 	% Full stochastic optimal control problem - GNC strategy + reference traj
 	% Conversion into stochastic NLP (via control parametrization based on optimal control techniques) then into deterministic NLP (based on QMC, PCE, STM, Unscented)
-	\section{Entry Guidance as a Stochastic Optimal Control Problem}
-	Consider the dynamics given by the deterministic ordinary differential equations. Due to uncertainty in the vehicle's initial state and parameters of the model, the evolution of the trajectories is stochastic. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus for a given realization of $x_0\in\Omega$, the individual trajectory admits a deterministic solution $ x(t;x_0) $. 
+	\section{Entry Guidance as an Optimization Under Uncertainty Problem}
+	Consider the dynamics given by the deterministic ordinary differential equations. Due to uncertainty in the vehicle's initial state and parameters of the model, evolution of the trajectories is stochastic. Define the joint PDF of the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega$ admits a deterministic solution $ x(t;x_0) $. 
 	
-	The problem is to design a reference trajectory and feedback controller that together constitute a guidance approach capable of steering the stochastic trajectory evolution to the target in expectation and with minimal variance. Thus we define Problem 1 as finding the feedback control $u\equiv u(x,x_{Ref})$ that minimizes
+	The goal is to design a reference trajectory and feedback controller that together constitute a guidance approach capable of steering the stochastic trajectory evolution to the target in expectation and with minimal variance. Thus we define the problem as finding the feedback control $u\equiv u(x,x_{Ref})$ that minimizes
 	\begin{align}
 		J = \mathbb{E}[(DR-DR_{Target})^2 + (CR-CR_{Target})^2]
 	\end{align}
@@ -80,63 +111,80 @@
 	\end{align}
 	
 	To see that this cost function reduces both the error in expectation as well variance, define
-	\begin{align}
-	e^2(x_f) \equiv (DR-DR_{Target})^2 + (CR-CR_{Target})^2
-	\end{align}
-	and so $	J = \mathbb{E}[e^2]$. Let $\bar{e} = \mathbb{E}[e]$, and then from the definition of variance
-	\begin{align}
-	\mathbb{V}[e] = \mathbb{E}[e^2] - \bar{e}^2
-	\end{align}
+		\begin{align}
+		e^2(x_f) \equiv (DR-DR_{Target})^2 + (CR-CR_{Target})^2
+		\end{align}
+	and so $	J = \mathbb{E}[e^2]$. Let $\bar{e} = \mathbb{E}[e]$, and then by rearrangement of the definition of variance of a scalar random variable
+		\begin{align}
+		\mathbb{V}[e] = \mathbb{E}[e^2] - \bar{e}^2
+		\end{align}
 	we find that 
 		\begin{align}
-		J = \mathbb{V}[e] + \bar{e}^2.
+		J = \bar{e}^2 + \mathbb{V}[e].
 		\end{align}
-	It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the target point.
+	Thus the cost function is an equal weighting of the square of the mean error and its variance. It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the target point.
+	
 	\subsection{Sketch of the Algorithm}
 	At the heart of the approach is the desire to optimize the reference data and controller parameters simultaneously. This is because an optimal reference profile combined with an optimized controller does not yield optimal performance. Given an initial PDF, use the mean initial state for reference computation and perform the following steps:
 	\begin{enumerate}
-		\item An outer optimization loop first selects the bank angle profile parameters, i.e. the switching times $t_i,\;i=1:n$ and bank angles $\sigma_i,\;i=0:n$, as well as any controller parameters
+		\item An outer optimization loop first selects the bank angle profile parameters, i.e. the switching times $t_i,\;i=1:n$ and bank angles $\sigma_i,\;i=0:n$, as well as any free controller parameters
 		\item Integrate the reference trajectory forward to the final energy
 		\item Compute the reference objective function value
 		\item If $ J_{ref} < J_{threshold} $: store reference quantities (e.g., drag and its derivatives as functions of energy) and continue to next step;\\
 		Else: return to the first step and select new parameters
-		\item Integrate (preferably in parallel or vectorized manner) $ N_{PCE} $ trajectories using samples drawn from the initial PDF with closed-loop guidance using the selected parameters from step 1
-		\item Construct a polynomial chaos expansion from these $ N_{PCE} $ evaluated trajectories
-		\item Evaluate the PCE model at $ N $ points (typically $N_{PCE}\ll N $) sampled from the initial PDF
-		\item Determine the final state $x_{f_i}$ of each trajectory
-		\item Evaluate the closed-loop cost by taking the expectation
+		\item Integrate (preferably in parallel or vectorized manner) $ N $ trajectories using samples drawn from the initial PDF with closed-loop guidance using the selected parameters from step 1
+		\item Optionally, if a metamodeling technique is used, construct a metamodel and evaluate it at $N_{meta}>> N$ points sampled from the initial PDF
+%		\item Integrate (preferably in parallel or vectorized manner) $ N_{PCE} $ trajectories using samples drawn from the initial PDF with closed-loop guidance using the selected parameters from step 1
+%		\item Construct a polynomial chaos expansion from these $ N_{PCE} $ evaluated trajectories
+%		\item Evaluate the PCE model at $ N $ points (typically $N_{PCE}\ll N $) sampled from the initial PDF
+		\item Determine the final state $x^i_{f}$ of each trajectory ($i\in \mathbb{N}$, $i<N$ for sampling or $i < N_{meta}$ for metamodel version)
+		\item Evaluate the closed-loop cost by taking the expectation over all trajectories
 	\end{enumerate}
 		
 		
-		
-		
-	
+
 	\subsection{Reference Trajectory Design}
-	In order to use a tracking controller to guide the vehicle, a suitable reference trajectory is required. The features of a desirable reference trajectory include high performance in the nominal scenario while leaving appropriate margin for the controller to compensate stochastic uncertainty. Naturally standard optimal control techniques can be used to solve for a trajectory that extremizes some feature(s) such as maximizing final altitude at parachute deployment, or minimizing propellant required to land via retropropulsion technology. It does not offer a clear method to determine how much margin is sufficient for the controller (indeed, the optimization knows nothing about the controller to be used, and different controllers will in general require different amounts of control margin). There is a common tradeoff between optimality and robustness. In a system with limited control authority, the optimal solution will use all available control and typically ad hoc methods are used to choose the margins. If more margin than is needed is allocated, performance of the reference trajectory (and of the corresponding mean trajectory of the stochastic system) will deteriorate. \textbf{Note that the reference trajectory uses $ \mathbb{E}[x_0] $ and can therefore be shown to be a first order approximation to the expected trajectory}
+	In order to use a tracking controller to guide the vehicle, a suitable reference trajectory is required. The features of a desirable reference trajectory include high performance in the nominal scenario while leaving appropriate margin for the controller to compensate stochastic uncertainty. Naturally standard optimal control techniques can be used to solve for a trajectory that extremizes some feature(s) such as maximizing final altitude at parachute deployment, or minimizing propellant required to land via retropropulsion technology. It does not offer a clear method to determine how much margin is sufficient for the controller (indeed, the optimization knows nothing about the controller to be used, and different controllers will in general require different amounts of control margin). There is a well-known tradeoff between optimality and robustness. In a system with limited control authority, the optimal solution will use all available control and typically ad hoc methods are used to choose the margins. If more margin than is needed is allocated, performance of the reference trajectory (and of the corresponding mean trajectory of the stochastic system) will deteriorate. Note that the reference trajectory uses $ \mathbb{E}[x_0] $ and can therefore be shown to be a first order approximation to the expected trajectory by Taylor expansion.
 	
 	The deterministic cost used in generating an optimal reference trajectory is given by 
 	\begin{align}
-	J_{ref} = -h(V_f) + |CR(V_f)| \label{eq_cost_deterministic}
+	J_{ref} = -h(V_f) + |CR(V_f)| + \kappa|DR(V_f)-DR^*| \label{eq_cost_deterministic}
 	\end{align}
-	which seeks to maximize final altitude while reaching approximately zero crossrange at a specified final velocity. A downrange component may also be included. 
+	which seeks to maximize final altitude while reaching approximately zero crossrange at a specified final velocity. Setting $\kappa=1$ seeks a solution that also satisfies a downrange requirement $DR(V_f)=DR^*$ while $\kappa=0$ leads to an optimal solution over all reachable downrange distances. 
 			
 	\subsection{Closed Loop Performance Evaluation}		
 	In addition to the reference trajectory, the controller parameters must also be chosen judiciously to maximize performance. The cost function used depends on the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$.		
 			
 	In contrast to the open loop formulation employed by Ref.~\cite{RSOptimalControl} where a single control trajectory aims to steer an entire tube of trajectories, we consider the closed loop formulation where both the reference (which in some sense constitutes the open loop portion of the control) and the controller parameters (for an a priori chosen controller design) are optimized. (Part of the optimization could even be selecting which controller is best!)		
-			
-	\subsection{Trigger Logic}
-	The logic which decides when the entry phase ends is instrumental to good horizontal performance while ensuring the vehicle is in an appropriate state to deploy a parachute or initiate a powered descent phase. Compare the results of a fixed energy trigger, in which trajectories end at the same energy as the reference trajectory, and the combined parachute-range control logic as summarized in Figure \textbf{Put a figure}. \textbf{Show the two sets of final states (h-v, lat-lon)}
 	
-	Unfortunately, this logic is not differentiable, and thus precludes the use of polynomial chaos to expand the cost function directly. Instead, the state trajectories themselves are expanded. The PCE models are sampled extensively (because the cost to do so is low relative to the cost of constructing the models) and the trigger logic is applied to each trajectory to find the final state. Then, the expectation of the cost is simply estimated as $\mathbb{E}[J]\approxeq\frac{1}{N}\sum_{i=1}^{N}J(x_f^i)$.
+	Three approaches to the forward uncertainty quantification have been investigated: linear sensitivity (aka state-transition method), quasi-Monte Carlo methods, and polynomial chaos expansions.  
 			
+	\subsection{Entry Termination Logic}
+	The logic which decides when the entry phase ends is instrumental to good horizontal performance while ensuring the vehicle is in an appropriate state to deploy a parachute or otherwise initiate a final descent phase. Compare the results of a fixed energy trigger, in which all trajectories end at the same energy as the reference trajectory, and the combined parachute-range control logic as summarized in Figure \textbf{Put a figure}. \textbf{Show the two sets of final states (h-v, lat-lon)}
+	
+	Unfortunately, this logic is not differentiable, and thus precludes the use of polynomial chaos to expand the cost function directly. Instead, the state trajectories themselves are expanded. This allows the non-smooth trigger to be incorporated while still leveraging the PCE models. The downside is that considerably more models must be constructed (one for each state variable used in the cost function, times a fraction of the total number of timesteps taken during integration). The PCE models are then sampled extensively (because the cost to do so is low relative to the cost of constructing the models) and the trigger logic is applied to each trajectory to find its final state. Then, the expectation of the cost is simply estimated as $\mathbb{E}[J]\approxeq\frac{1}{N}\sum_{i=1}^{N}J(x_f^i)$. 
+			
+			
+	\subsection{Global Optimization}
+	The resulting optimization problem may be solved by a number of methods and is not the intended focus here. Both differential evolution and particle swarm optimization have been used to successfully solve this problem. Convergence in both cases can be improved by seeding the initial population with appropriate guesses. 			
 			
 	\begin{thebibliography}{1}
-	\bibitem{brockett2012}
-	R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
-	Coron, editors, Control of Partial Differential Equations, pages 101-129. Springer,
-		Berlin-Heidelberg, 2012.
+%		\bibitem{brockett2012}
+%		R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
+%		Coron, editors, Control of Partial Differential Equations, pages 101-129. Springer,
+%			Berlin-Heidelberg, 2012.
+		
+
+		\bibitem{MSL_EDL_Overview_JPL}
+		A.D. Steltzner, P.D. Burkhart, et. al, ``Mars Science Laboratory Entry, Descent, and Landing System Overview," 2010.
+				
+		\bibitem{MSL_EG_Mendeck_Craig}
+		G.F. Mendeck, and L.E. Craig, ``Entry Guidance for the 2011 Mars Science Laboratory Mission," AIAA, 2010.
+		
+		\bibitem{High Elevation Landing}
+		G. Duan, A. Bombelli, J. Benito, K.D. Mease, ``High Elevation Planner for Mars Entry"
+		
 		\bibitem{RSOptimalControl}
-		I.M. Ross, Riemann-Stieltjes Optimal Control 
+		I.M. Ross, ``Riemann-Stieltjes Optimal Control"
 	\end{thebibliography}
 \end{document}
