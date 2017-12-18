@@ -61,7 +61,7 @@
 %	Mease advice: give a bird's eye view of the problem. Show the current approach (MSL, linearized range control, separate lateral control, heading alignment) and discuss our approach and how it differs (near-optimal reference trajectories, combined range/lateral control, improved heading alignment, OUU). Can also discuss different UQ options in the loop (STM, QMC, PCE). 
 % Pose the full problem, then state how MSL tackled it (and any assumptions), then give our approach (whatever that is...). Then give details, and results.
 
-	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with MSL in 2013, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). The onboard GNC system will have imperfect models of the planetary atmosphere and the aerodynamics of the vehicle.
+	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with MSL in 2012, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). The onboard GNC system will have imperfect models of the planetary atmosphere and the aerodynamics of the vehicle.
 
 
 	
@@ -98,7 +98,7 @@
 	% Full stochastic optimal control problem - GNC strategy + reference traj
 	% Conversion into stochastic NLP (via control parametrization based on optimal control techniques) then into deterministic NLP (based on QMC, PCE, STM, Unscented)
 	\section{Entry Guidance as an Optimization Under Uncertainty Problem}
-	Consider the dynamics given by the deterministic ordinary differential equations. Due to uncertainty in the vehicle's initial state and parameters of the model, evolution of the trajectories is stochastic. Define the joint PDF of the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega$ admits a deterministic solution $ x(t;x_0) $. 
+%	Consider the dynamics given by the deterministic ordinary differential equations. Due to uncertainty in the vehicle's initial state and parameters of the model, evolution of the trajectories is stochastic. Define the joint PDF of the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega$ admits a deterministic solution $ x(t;x_0) $. 
 	
 	The goal is to design a reference trajectory and feedback controller that together constitute a guidance approach capable of steering the stochastic trajectory evolution to the target in expectation and with minimal variance. Thus we define the problem as finding the feedback control $u\equiv u(x,x_{Ref})$ that minimizes
 	\begin{align}
@@ -166,8 +166,43 @@
 			
 			
 	\subsection{Global Optimization}
-	The resulting optimization problem may be solved by a number of methods and is not the intended focus here. Both differential evolution and particle swarm optimization have been used to successfully solve this problem. Convergence in both cases can be improved by seeding the initial population with appropriate guesses. 			
-			
+	The resulting optimization problem may be solved by a number of methods and is not the intended focus here. Both differential evolution and particle swarm optimization have been used to successfully solve this problem. Convergence in both cases can be improved by seeding the initial population with appropriate guesses. 	
+	
+	\section{Uncertain Optimal Control via Continuation}
+	
+	Many deterministic optimal control problems can be solved via existing methods, both direct and indirect. When the dynamics are uncertain, due to variations in system parameters or initial state, the problem becomes more difficult. Ref.~\cite{RSOptimalControl} presents an extension of the pseudospectral methodology for numerical optimal control to the uncertain case. Ref.~\cite{UncertainOptimalControl} also used a direct method to solve sample average approximations to the stochastic problem. In contrast to these direct methods, we propose an indirect method based on Pontryagin's maximum principle, continuation, and sample average approximations. 
+	
+	Consider systems with dynamics given by deterministic ordinary differential equations. Due to uncertainty in the system's initial state and parameters of the model, evolution of the trajectories is stochastic. Let the joint PDF of the uncertainty space be $ \Delta $ and its support $\mathrm{supp}(\Delta)\equiv\Omega$, and denote by $\mathbb{E}[\cdot]$ the expectation taken with respect to $\Delta$. Both $\Delta$ and $\Omega$ vary with time. Let $\tau=t/t_f$, and define $(\cdot)'=\dfrac{\partial}{\partial\tau}$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega(0)$ admits a deterministic solution $ x(\tau;x_0)$ (in general the dependence on $ x_0 $ is suppressed). Thus the state $x: [0,1]\times\Omega\mapsto\mathbb{R}^n$ and control $u: [0,1]\mapsto U\subseteq\mathbb{R}^m$. The uncertain optimal control problem we seek to solve minimizes the expectation of a functional in Mayer form subject to deterministic dynamics $f: \mathbb{R}^n \times U \mapsto \mathbb{R}^n$ with stochastic initial conditions, control constraints, and a free final time $t_f$:
+	\begin{align}
+	\min_{u\in U} \;&J = \mathbb{E}[\varphi(x(1))] \label{eq_generic_uncertain_mayer}  \\
+		&x' = f(x,u)\cdot t_f \\
+		&x(0)= x_0 \in \Omega(0) %\\
+		%&u(t,x) \in U
+	\end{align}	
+	Consider an N-sample average approximation to Eq.~\ref{eq_generic_uncertain_mayer} given by		
+	\begin{align}
+	J_N = \frac{1}{N}\sum_{i=1}^{N}\varphi(x_i(1)). \label{eq_saa_mayer}
+	\end{align}	
+	Ref.~\cite{UncertainOptimalControl} showed that under appropriate conditions Eq.~\ref{eq_saa_mayer} produces a meaningful approximation to Eq.~\ref{eq_generic_uncertain_mayer}. 
+	
+	For each $x_0 \in \Omega(0)$, there is an associated costate $\lambda(\tau, x_0)$ such that the Hamiltonian is given by $H(\tau, x_0) = f\cdot\lambda$, the costates satisfy
+	\begin{align}
+	\dot{\lambda} = -\nabla_xH
+	\end{align} 
+	and the optimal control is given by (Ref.~\cite{RSOptimalControl})
+	\begin{align}
+	u^*(t) = \arg\min_{u\in U}\mathbb{E}[H] \label{eq_uncertain_optimal_control}
+	\end{align}
+	
+	An N-sample average approximation to the expected Hamiltonian may also be made
+	\begin{align}
+		H_N(\tau) = \frac{1}{N}\sum_{i=1}^{N}H(\tau,x_i(0)). \label{eq_saa_hamil}
+	\end{align}	
+		
+	\textit{The uncertain scenario is significantly more difficult to solve via indirect method because we seek a single control function to steer the entire tube of trajectories, i.e. the optimal control minimizes the expected Hamiltonian at each point in time. In the deterministic case, the control can be computed from the costates given a guess at the initial costate values. In the uncertain case, the initial guess of costate values in now N times as large. Fortunately, via a homotopy method we can exploit nearness of solutions.}	
+		
+		
+	In the case that $\Delta$ is a Dirac distribution supported at some nominal value $x_0$ then the uncertain problem reduces to a standard optimal control problem. This inspires the idea to define a homotopy between the standard OCP and the uncertain OCP. This requires parametrization of $\Delta$ by a factor $\epsilon\in[0,1]$ such that $\epsilon=0\implies\mathrm{diam}(\Omega)=0$ and $\epsilon=1\implies \Delta=\Delta_{des}$. For common distributions such as Normal, Uniform, Beta the parametrization is simple including multivariate cases. For example, a normal distribution with mean $ m $ and covariance $ P $ is parametrized simply as $ \mathcal{N}(m,\,\epsilon P) $. For a variable uniformly distributed between lower bound $ L $ and upper bound $ U $, let $ m = \frac{(L+U)}{2}$ and $b = \frac{(U-L)}{2}$, then the distribution may be parametrized $ \mathcal{U}(m-\epsilon b,\, m+\epsilon b ) $ %$\lim\limits_{\epsilon\to0}\mathrm{diam}(\Omega)\to0$
 	\begin{thebibliography}{1}
 %		\bibitem{brockett2012}
 %		R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
@@ -182,9 +217,12 @@
 		G.F. Mendeck, and L.E. Craig, ``Entry Guidance for the 2011 Mars Science Laboratory Mission," AIAA, 2010.
 		
 		\bibitem{High Elevation Landing}
-		G. Duan, A. Bombelli, J. Benito, K.D. Mease, ``High Elevation Planner for Mars Entry"
+		G. Duan, A. Bombelli, J. Benito, and K.D. Mease, ``High Elevation Planner for Mars Entry"
 		
 		\bibitem{RSOptimalControl}
-		I.M. Ross, ``Riemann-Stieltjes Optimal Control"
+		I.M. Ross, R.J. Proulx, M. Karpenko, and Q. Gong, ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
+		
+		\bibitem{UncertainOptimalControl}
+		C. Phelps, J.O. Royset, and Q. Gong, ``Optimal Control of Uncertain Systems Using Sample Average Approximations," SIAM Journal on Control and Optimization, 2016.
 	\end{thebibliography}
 \end{document}
