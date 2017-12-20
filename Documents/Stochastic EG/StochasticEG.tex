@@ -61,14 +61,12 @@
 %	Mease advice: give a bird's eye view of the problem. Show the current approach (MSL, linearized range control, separate lateral control, heading alignment) and discuss our approach and how it differs (near-optimal reference trajectories, combined range/lateral control, improved heading alignment, OUU). Can also discuss different UQ options in the loop (STM, QMC, PCE). 
 % Pose the full problem, then state how MSL tackled it (and any assumptions), then give our approach (whatever that is...). Then give details, and results.
 
-	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with MSL in 2012, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). The onboard GNC system will have imperfect models of the planetary atmosphere and the aerodynamics of the vehicle.
-
-
+	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with MSL in 2012, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry state (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). Additionally, the models used in development of the onboard GNC system (such as the planetary atmosphere and the aerodynamics of the vehicle) are imperfect due to both inaccuracy in the model's parameters as well as the existence of unmodeled (or incorrectly modeled) dynamics.
 	
 	The Mars Science Laboratory spacecraft demonstrated the first guided entry on Mars when it landed in Gale Crater on August $5^{th}$, 2012. The vehicle flew with an offset center of mass to create an angle of attack that allowed the spacecraft to generate lift. The guidance approach used bank angle commands to orient the resulting lift vector and thereby compensate for dispersions.\cite{MSL_EDL_Overview_JPL}
 	
 	\subsection{Reference Trajectory}
-	MSL used a simple parametrization of the bank angle profile consisting of an early bank angle, a late bank angle, and a linear change between them beginning at a fixed velocity, see Fig.~\ref{MSLParametrization} for an example. The profile was used to determine the longitudinal motion and a separate lateral logic was used to control crossrange. This decoupling of longitudinal and lateral channels is common throughout entry guidance literature.
+	MSL used a simple parametrization of the bank angle profile consisting of an initial bank angle, a late bank angle, and a linear change between them ending at a fixed velocity, after which the late bank angle is held until heading alignment begins, see Fig.~\ref{MSLParametrization} for an example. The profile was used to determine the longitudinal motion and a separate lateral logic was used to control crossrange. This decoupling of longitudinal and lateral channels is common throughout entry guidance literature.
 	
 	An alternate parametrization based on optimal control results was developed in Ref.~\cite{High Elevation Landing}. It includes bank reversals in the planning and thus steers both the longitudinal and lateral channels simultaneously. Use of time as the independent variable allows simple imposition of rate and acceleration constraints on the bank angle profile although this was not explored in Ref.~\cite{High Elevation Landing}. The equations of motion are integrated forward using the time-varying bank profile to obtain a drag acceleration reference profile as a function of energy to be used onboard. The version applied here is modified to remove the first switch and bank angle segment, and also introduces rate and acceleration limits to make the commands easier to track. Fig.~\ref{RefTrajParametrization} shows an example profile. Combined planning, although more difficult than in the decoupled scenario, allows for improved performance because bank reversals not accounted for will degrade the longitudinal performance. 
 	\begin{figure*}
@@ -110,7 +108,7 @@
 		&x_0 \in \Omega
 	\end{align}
 	
-	To see that this cost function reduces both the error in expectation as well variance, define
+	To see that this cost function reduces both the error in expectation as well variance, define the horizontal error $e$ such that
 		\begin{align}
 		e^2(x_f) \equiv (DR-DR_{Target})^2 + (CR-CR_{Target})^2
 		\end{align}
@@ -122,7 +120,7 @@
 		\begin{align}
 		J = \bar{e}^2 + \mathbb{V}[e].
 		\end{align}
-	Thus the cost function is an equal weighting of the square of the mean error and its variance. It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the target point.
+	Thus the cost function is an equal weighting of the square of the mean error and its variance. It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the targeted downrange and crossrange.
 	
 	\subsection{Sketch of the Algorithm}
 	At the heart of the approach is the desire to optimize the reference data and controller parameters simultaneously. This is because an optimal reference profile combined with an optimized controller does not yield optimal performance. Given an initial PDF, use the mean initial state for reference computation and perform the following steps:
@@ -198,11 +196,13 @@
 	\begin{align}
 		H_N(\tau) = \frac{1}{N}\sum_{i=1}^{N}H(\tau,x_i(0)). \label{eq_saa_hamil}
 	\end{align}	
+	\textbf{Remark.} \textit{The uncertain scenario is significantly more difficult to solve via indirect method because we seek a single control function to steer the entire tube of trajectories, i.e. the optimal control minimizes the expected Hamiltonian at each point in time. In the deterministic case, the control can be computed from the costates given a guess at the initial costate values. In the uncertain case, the initial guess of costate values in now N times as large. Fortunately, via a homotopy method we can exploit nearness of solutions.}	
 		
-	\textit{The uncertain scenario is significantly more difficult to solve via indirect method because we seek a single control function to steer the entire tube of trajectories, i.e. the optimal control minimizes the expected Hamiltonian at each point in time. In the deterministic case, the control can be computed from the costates given a guess at the initial costate values. In the uncertain case, the initial guess of costate values in now N times as large. Fortunately, via a homotopy method we can exploit nearness of solutions.}	
 		
-		
-	In the case that $\Delta$ is a Dirac distribution supported at some nominal value $x_0$ then the uncertain problem reduces to a standard optimal control problem. This inspires the idea to define a homotopy between the standard OCP and the uncertain OCP. This requires parametrization of $\Delta$ by a factor $\epsilon\in[0,1]$ such that $\epsilon=0\implies\mathrm{diam}(\Omega)=0$ and $\epsilon=1\implies \Delta=\Delta_{des}$. For common distributions such as Normal, Uniform, Beta the parametrization is simple including multivariate cases. For example, a normal distribution with mean $ m $ and covariance $ P $ is parametrized simply as $ \mathcal{N}(m,\,\epsilon P) $. For a variable uniformly distributed between lower bound $ L $ and upper bound $ U $, let $ m = \frac{(L+U)}{2}$ and $b = \frac{(U-L)}{2}$, then the distribution may be parametrized $ \mathcal{U}(m-\epsilon b,\, m+\epsilon b ) $ %$\lim\limits_{\epsilon\to0}\mathrm{diam}(\Omega)\to0$
+	In the case that $\Delta$ is a Dirac distribution supported at some nominal value $x_0$ then the uncertain problem reduces to a standard optimal control problem. This inspires the idea to define a homotopy between the standard OCP and the uncertain OCP. The only requirement is that the PDF may be sampled from. 
+	
+%	This requires parametrization of $\Delta$ by a factor $\epsilon\in[0,1]$ such that $\epsilon=0\implies\mathrm{diam}(\Omega)=0$ and $\epsilon=1\implies \Delta=\Delta_{des}$. For common distributions such as Normal, Uniform, Beta the parametrization is simple including multivariate cases. For example, a normal distribution with mean $ m $ and covariance $ P $ is parametrized simply as $ \mathcal{N}(m,\,\epsilon P) $. For a variable uniformly distributed between lower bound $ L $ and upper bound $ U $, let $ m = \frac{(L+U)}{2}$ and $b = \frac{(U-L)}{2}$, then the distribution may be parametrized $ \mathcal{U}(m-\epsilon b,\, m+\epsilon b ) $ 
+	
 	\begin{thebibliography}{1}
 %		\bibitem{brockett2012}
 %		R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
