@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import cvxpy as cvx
 import time
 from scipy.integrate import odeint
-
+from scipy.interpolate import interp1d 
 
 def LTV(x0, A, B, tf, f_ref, x_ref, trust_region=0.5, P=0, xf=0, umax=3):
     """ Solves a convex LTV subproblem
@@ -18,9 +18,6 @@ def LTV(x0, A, B, tf, f_ref, x_ref, trust_region=0.5, P=0, xf=0, umax=3):
 
 
     """
-
-    # import pdb
-    # pdb.set_trace()
 
     n = A[0].shape[0]
     m = 1
@@ -114,7 +111,7 @@ def test():
     def dyn(x,t,u):
         f,g = dynamics(x)
 
-        return f + g*u
+        return f + g*u(t)
 
     def jac(x):
         x1,x2=x
@@ -132,12 +129,17 @@ def test():
         return np.moveaxis(A, -1, 0),np.moveaxis(B, -1, 0)
 
     def integrate(x0, u, tf, N):
-        X = [x0]
-        dt = np.linspace(0,tf,N-1)[1]
-        for ut in u:
-            X.append(odeint(dyn, X[-1], [0,dt] , args=(ut,))[-1])
+        # X = [x0]
+        t = np.linspace(0,tf,u.shape[0]+1)
+        dt = t[1]
+        U = np.append(u,u[-1])
+        ut = interp1d(t,U,kind='cubic',assume_sorted=True,fill_value=u[-1],bounds_error=False)
+        
+        X = odeint(dyn,x0,np.linspace(0,tf,N),args=(ut,))
+        # for ut in u:
+            # X.append(odeint(dyn, X[-1], [0,dt] , args=(ut,))[-1])
 
-        return np.array(X)
+        return np.asarray(X)
 
 
 
@@ -149,26 +151,27 @@ def test():
     U = []
     tf = 5
     x0 = [-3,0]
-    N = 200
+    N = 50
     u = np.zeros((N-1,1))
+    t = np.linspace(0,tf,N)
     # x = integrate(x0, u, tf=tf, N=N).T
     A,B = jac(x)
 
     iters = 5
+    P = np.logspace(-1, 4,iters)
     for _ in range(iters):
         U.append(u)
 
         x = integrate(x0, u, tf=tf, N=N).T
         f,g = dynamics(x)
         A,B = jac(x)
-        # print x.shape
-        # print f.shape
-        # print g.shape
+        # F = f + g*u
+        
 
         X.append(x)
-        umax = 3 + 3*(iters-1-_)
+        umax = 3 #+ 3*(iters-1-_)
         print umax
-        x_approx,u = LTV(x0, A, B, tf, f.T, x.T, trust_region=5, P=0, umax=umax )
+        x_approx,u = LTV(x0, A, B, tf, f.T, x.T, trust_region=5, P=P[_], umax=umax )
         X_cvx.append(x_approx)
         # x_approx,u = LTV(x0, A, B, tf, f.T, x.T, trust_region=3, P=2**_, umax=umax )
         # print x_approx.shape
@@ -179,16 +182,22 @@ def test():
         # pdb.set_trace()
 
     U.append(u)
+    x = integrate(x0, u, tf=tf, N=3*N).T
+    X.append(x)
+    
+    print "Performing final iteration - hard enforcement of constraints, and additional discretization points"
+    f,g = dynamics(x)
+    A,B = jac(x)
     x_approx,u = LTV(x0, A, B, tf, f.T, x.T,trust_region=1,P=0,umax=3)
 
     u = u.T
-    x = integrate(x0, u, tf=tf, N=N).T
+    x = integrate(x0, u, tf=tf, N=3*N).T
     X.append(x)
     X_cvx.append(x_approx)
     U.append(u)
 
-    for i,xu in enumerate(zip(X,U)):
-        x,u=xu
+    for i,xux in enumerate(zip(X,U,X_cvx)):
+        x,u,xc = xux
         plt.figure(1)
         plt.plot(x[0],x[1],label=str(i))
 
