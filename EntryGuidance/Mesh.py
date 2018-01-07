@@ -27,8 +27,7 @@ class Mesh(object):
         self.diffs = [self.D(N)*2./interval for N,interval in zip(self.orders,np.diff(self._times))] # Differentiation matrices scaled the their appropriate interval
         self.n_points = sum(self.orders)+1 # number of actual collocation points, accounting for meshes overlap in the interior (and e.g. N=2 yields 3 points)
         self.times = self.tau2time(self._times)
-
-
+        self.weights = [self.w(N)*interval/2. for N,interval in zip(self.orders,np.diff(self._times))]
 
     def D(self,N):
         return self._D[N-self.min]
@@ -39,14 +38,21 @@ class Mesh(object):
     def w(self,N):
         return self._w[N-self.min]
 
-    def tau2time(self, times):
+    def tau2time(self, times, mesh=False):
         """
         For a list of times such that (len(times) = len(mesh)+1), returns the
         true times corresponding to the normalized times in self.points
 
         """
         assert(len(times) == len(self.orders)+1)
-        return [0.5*((tb-ta)*tau + ta+tb) for ta,tb,tau in zip(times,times[1:],self.points)] # map the collocation points to the true time interval
+        mesh_times = [0.5*((tb-ta)*tau + ta+tb) for ta,tb,tau in zip(times,times[1:],self.points)] # map the collocation points to the true time interval
+        if mesh: # return a mesh of times, i.e. a list of lists
+            return mesh_times
+        else:
+            # remove the first element of every array after the first
+            mesh_times = [mesh_times[0]] + [t[1:] for t in mesh_times[1:]]
+            all_times = np.concatenate(mesh_times)
+            return all_times
 
     def chunk(self, x):
         """
@@ -70,7 +76,8 @@ class Mesh(object):
         intervals = np.diff(_times)
         self.orders[i] = new_order
         self.points[i] = self.tau(new_order)
-        self.diffs[i]  = self.D(new_order)*2/intervals[i]
+        self.diffs[i]  = self.D(new_order)*2./intervals[i]
+        self.weights[i]  = self.w(new_order)*intervals[i]/2.
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
@@ -98,8 +105,12 @@ class Mesh(object):
         self.diffs.insert(i, self.D(self.default)*2/intervals[i])
         self.diffs[i+1]  = self.D(self.default)*2/intervals[i+1]
 
+        self.weights.insert(i, self.w(self.default)*intervals[i]/2.)
+        self.weights[i+1]  = self.w(self.default)*intervals[i+1]/2.
+
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
+
 
 
 if __name__ == "__main__":
@@ -121,10 +132,11 @@ if __name__ == "__main__":
     # x = np.linspace(0,mesh.n_points-1,mesh.n_points)
     # X = mesh.chunk(x)
     # print X
-    print mesh._times
-    mesh.split(0)
-    print mesh._times
-    print mesh.diffs[0]
-    print mesh.diffs[2]
+    print mesh.times
+    # print mesh._times
+    # mesh.split(0)
+    # print mesh._times
+    # print mesh.diffs[0]
+    # print mesh.diffs[2]
     # print mesh.orders
     # print mesh.points
