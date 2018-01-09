@@ -287,8 +287,8 @@
 	     &= \Phi(t,0)P(0)\Phi^T(t,0) &\mathrm{ (definition)}
 	\end{align}
 	where the third equality is due to the linearity of $\mathbb{E}$ and because $\Phi$ is a deterministic quantity. Hence we define the following optimal control problem:
-	
-	\textbf{Problem 1}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
+	\\\\
+	\textbf{Problem 1 - Linear Covariance}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
 	\begin{align}
 	J(x,u) = M(P_x(t_f)) + \int_{0}^{t_f}L(P_x(t))\mathrm{d}t
 	\end{align}
@@ -298,11 +298,26 @@
 	&x(0) = \bar{x}_0 \\
 	&\dot{\Phi}(t) = D\Phi(t) \\
 	&\Phi(0) = I \\
-	&u(t) \in U \\
+	&u(t) \in U
 	\end{align}
 	\textit{where} $ M:\mathbb{R}^{n\mathrm{x}n}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,}  $L:\mathbb{R}^{n\mathrm{x}n}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
 	
-	\textit{Remark}: The covariance may be propagated in other ways. The STM differential equations in Problem 1 represent $n(n+p)$ equality constraints. For $n>2$, the unscented transform offers a more efficient (and often more accurate) estimate of the covariance and also captures some effects of $\lambda$ on the mean using $2(n+p)$ additional constraints.
+	\textit{Remark}: The covariance may be propagated in other ways. The STM differential equations in Problem 1 represent $n(n+p)$ equality constraints. For $n>2$, the unscented transform offers a more efficient (and often more accurate) estimate of the covariance and also captures variance effects of $\lambda$ on the mean using $2(n+p)$ additional constraints.
+	\\\\
+	\textbf{Problem 2 - Unscented Covariance}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
+		\begin{align}
+		J(x,u) = M(P_x(t_f)) + \int_{0}^{t_f}L(P_x(t))\mathrm{d}t
+		\end{align}
+		\textit{	subject to the constraints }
+		\begin{align}
+		&\dot{x}^i(t) = f(x^i(t),u(t),\lambda^i) \\
+		&x^i(0) = x^i_0 \\
+		&u(t) \in U
+		\end{align}
+		
+	Unlike Problem 1, which assumes that $\mathbb{E}[x(t)] = \mathbb{E}[x(0)] + \int_{0}^{t} f(x,u,\mathbb{E}[\lambda]) d\tau = \bar{x}_0 + \int_{0}^{t} f(x,u,0) d\tau$, Problem 2 constructs a higher order estimate of the mean trajectory.
+	
+	% Essentially, in the linear approach, final constraints are on the nominal (lambda=0) trajectory (which is a first order approximation to the mean), while in the UKF the constraints are enforced on the second order approximation to the mean.
 	
 	% discussion of possible cost functions here 
 	Trace alone is bad here.
@@ -315,7 +330,16 @@
 
 	
 	\subsubsection{Chebyshev Pseudospectral Transcription}
+	The idea behind spectral methods is to approximate solutions (here, state-control trajectories $ (x(t),u(t) $) by a finite sum $x(t) \approx x_N(t) = \sum_{i=0}^{N}b_i\phi_i(t)$ where $b_i$ are the coefficients and $ {\phi_k} $ is a chosen set of basis functions. A wide range of polynomial bases have been researched. 
 	
+	In general, the use of a pseudospectral (PS) method converts the infinite-dimensional optimal control problem into a finite nonlinear programming problem. Due to the underlying convexity of the subproblems posed here, however, the pseudospectral method will result in a convex program and thus can be solved efficiently and to global optimality by a primal-dual interior point method. The idea to utilize a PS method with convex optimization appears to originate in Ref.~\cite{PS_Convex} where Flipped Radau and Lobatto methods are introduced and used to solve a planetary landing problem. Ref.~\cite{PS_Convex_ascent} used a Gauss PS method to solve an optimal ascent trajectory problem. 
+	
+	Neither of these applications to convex optimization referred to another strength of pseudospectral methods: hp-adaptive mesh based solutions. This well developed theory can be leveraged here as in original NLP context. \textbf{Cite Anil papers here}
+	
+	% RefPS Convex showed both superior solutions (as measured by the objective function) for an equal number of nodes, as well as greater consistency with the integrated solution ( as measured by the mean and maximal errors between the two solutions)
+	
+	% Spectral convergence for smooth problems
+	% Mesh adaptation for non-smooth problems 
 	
 	\subsection{Numerical Results}
 
@@ -357,8 +381,14 @@
 		S. Boyd, C. Crusius, A. Hansson, ``Control Applications of Nonlinear Convex Programming"
 		
 		\bibitem{UT}
-		``A General Method for Approximating Nonlinear Transformations of Probability Distributions"
+		S. Julier, J. Uhlmann, ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
 		
+		\bibitem{PS_Convex}
+		M. Sagliano, ``Pseudospectral Convex Optimization for Powered Descent and Landing," Journal of Guidance, Control, and Dynamics, 2017.
+		
+		\bibitem{PS_Convex_ascent}
+		Cheng, X., Li, H., and Zhang, R. ``Efficient ascent trajectory optimization using convex models based on the newton-kantorovich/pseudospectral approach". Aerospace Science and Technology, 2017.
+
 		
 	\end{thebibliography}
 \end{document}
