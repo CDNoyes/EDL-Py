@@ -61,14 +61,14 @@
 %	Mease advice: give a bird's eye view of the problem. Show the current approach (MSL, linearized range control, separate lateral control, heading alignment) and discuss our approach and how it differs (near-optimal reference trajectories, combined range/lateral control, improved heading alignment, OUU). Can also discuss different UQ options in the loop (STM, QMC, PCE). 
 % Pose the full problem, then state how MSL tackled it (and any assumptions), then give our approach (whatever that is...). Then give details, and results.
 
-	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with MSL in 2012, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry state (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). Additionally, the models used in development of the onboard GNC system (such as the planetary atmosphere and the aerodynamics of the vehicle) are imperfect due to both inaccuracy in the model's parameters as well as the existence of unmodeled (or incorrectly modeled) dynamics.
+	Broadly speaking, the goal of entry, descent, and landing is to deliver a spacecraft safely to the planet surface. The modern era of Mars EDL, beginning with the Mars Science Laboratory (MSL) in 2012, utilizes hypersonic entry guidance to reduce the landing footprint and deliver ever-increasing payload mass. The initial state of the vehicle at entry interface will differ from the planned entry state (delivery error), and this state will not be known exactly onboard the vehicle (knowledge error). Additionally, the models used in development of the onboard GNC system (such as the planetary atmosphere and the aerodynamics of the vehicle) are imperfect due to both inaccuracy in the model's parameters as well as the existence of unmodeled (or incorrectly modeled) dynamics.
 	
 	The Mars Science Laboratory spacecraft demonstrated the first guided entry on Mars when it landed in Gale Crater on August $5^{th}$, 2012. The vehicle flew with an offset center of mass to create an angle of attack that allowed the spacecraft to generate lift. The guidance approach used bank angle commands to orient the resulting lift vector and thereby compensate for dispersions.\cite{MSL_EDL_Overview_JPL}
 	
 	\subsection{Reference Trajectory}
 	MSL used a simple parametrization of the bank angle profile consisting of an initial bank angle, a late bank angle, and a linear change between them ending at a fixed velocity, after which the late bank angle is held until heading alignment begins, see Fig.~\ref{MSLParametrization} for an example. The profile was used to determine the longitudinal motion and a separate lateral logic was used to control crossrange. This decoupling of longitudinal and lateral channels is common throughout entry guidance literature.
 	
-	An alternate parametrization based on optimal control results was developed in Ref.~\cite{High Elevation Landing}. It includes bank reversals in the planning and thus steers both the longitudinal and lateral channels simultaneously. Use of time as the independent variable allows simple imposition of rate and acceleration constraints on the bank angle profile although this was not explored in Ref.~\cite{High Elevation Landing}. The equations of motion are integrated forward using the time-varying bank profile to obtain a drag acceleration reference profile as a function of energy to be used onboard. The version applied here is modified to remove the first switch and bank angle segment, and also introduces rate and acceleration limits to make the commands easier to track. Fig.~\ref{RefTrajParametrization} shows an example profile. Combined planning, although more difficult than in the decoupled scenario, allows for improved performance because bank reversals not accounted for will degrade the longitudinal performance. 
+	
 	\begin{figure*}
 		\centering
 		\includegraphics[width=4in]{MSLProfile.png}
@@ -83,11 +83,11 @@
 	\end{figure*}
 	
 	\subsection{Entry Guidance}
-	MSL's entry guidance consisted of three phases. The first was a pre-bank phase in which the vehicle flew a constant bank angle prior to entering the atmosphere. The phase ended when the drag acceleration exceeded 0.2 Earth g, and the range control phase began. Range control used a modified version of the Apollo shuttle guidance to predict the downrange flown and steer the bank angle to rectify range errors. The separate lateral logic referred to earlier consists of a velocity-dependent crossrange corridor in which the guidance commands a bank reversal whenever the onboard estimate of crossrange to target exceeds the corridor threshold. The final phase is heading alignment in which the vehicle is commanded to aim the vehicle toward the target point. This phase began at a fixed velocity which for MSL was 1100 m/s. The magnitude of the bank angle is saturated to 30$^\circ$ to ensure most of the lift generated is countering gravity to maintain adequate chute deployment altitude. Parachute deployment beginning terminal descent was initiated at a fixed Mach number of 2.
+	MSL's entry guidance consisted of three phases. The first was a pre-bank phase in which the vehicle flew a constant bank angle prior to entering the atmosphere. The phase ended when the drag acceleration exceeded 0.2 Earth g, and the range control phase began. Range control was managed by the Entry Terminal Point Controller (ETPC), a modified version of the Apollo command module entry guidance, to predict the downrange flown and steer the bank angle to rectify range errors. The separate lateral logic referred to earlier consists of a velocity-dependent corridor in which the guidance commands a bank reversal whenever the onboard estimate of crossrange exceeds the corridor threshold. The final phase is heading alignment in which the vehicle is commanded to aim the vehicle toward the target point. This phase began at a fixed velocity which for MSL was 1100 m/s. The magnitude of the bank angle is saturated to 30$^\circ$ to ensure most of the lift generated is countering gravity to maintain adequate chute deployment altitude. Parachute deployment beginning terminal descent was targeted to initiate at a navigated velocity corresponding approximately to Mach 2.
 	
-	The Apollo guidance adapted for MSL is essentially an LQR approach in which so-called "influence coefficients" are computed and used as velocity-varying gains for the feedback controller. These gains are computed on the ground and stored onboard the GNC flight computer. Rather than perform state feedback directly, the spacecraft states such as altitude and flight path angle are instead replaced by quantities that are better measured or estimated onboard, including aerodynamic drag and altitude rate. 
+	The Apollo guidance adapted for MSL is essentially an LQR approach in which so-called "influence coefficients" are computed and used as gains (scheduled by navigated velocity) for the feedback controller. These gains are computed on the ground via backward integration of the adjoint equations and stored onboard the GNC flight computer.  Rather than perform state feedback directly, the spacecraft states such as altitude and flight path angle are instead replaced by quantities that are better measured or estimated onboard, including aerodynamic drag and altitude rate.
 	
-	The free parameters in this guidance approach consist of the pre-bank angle, the range control gain (sometimes referred to as the Overcontrol gain, or $ K_3 $), and the bank reversal deadbands. Additionally, the reference profile generated by the bank angle parametrization and the velocity at which heading alignment begins will also impact the results. The onboard estimates of drag and lift-to-drag ratio are each filtered with their own time constants.\cite{MSL_EDL_Overview_JPL}
+	In total, the free parameters in MSL's entry guidance approach consist of the range control gain (sometimes referred to as the overcontrol gain, or $ K_3 $), the bank reversal corridor parametrization, the reference profile generated by the bank angle parametrization, and the velocity at which heading alignment begins. Although not included here, the onboard estimates of drag and lift-to-drag ratio are each filtered with their own time constants \cite{MSL_EDL_Overview_JPL} and these could also be a part of the optimization process.
 		%Fisher and Bhattacharya use polynomial chaos expansions and direct optimal control to solve for an open loop control to steer systems with probabilistic parametric uncertainty.
 		
 %		The ultimate goal in controlling an uncertain system is to steer an entire distribution of states to some final distribution. Although it may be desirable to steer the entire distribution of states. 
@@ -95,9 +95,13 @@
 	% Outline
 	% Full stochastic optimal control problem - GNC strategy + reference traj
 	% Conversion into stochastic NLP (via control parametrization based on optimal control techniques) then into deterministic NLP (based on QMC, PCE, STM, Unscented)
-	\section{Entry Guidance as an Optimization Under Uncertainty Problem}
-%	Consider the dynamics given by the deterministic ordinary differential equations. Due to uncertainty in the vehicle's initial state and parameters of the model, evolution of the trajectories is stochastic. Define the joint PDF of the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega$ admits a deterministic solution $ x(t;x_0) $. 
+	\section{Proposed Solution}
+	An alternate bank angle parametrization based on optimal control results was developed in Ref.~\cite{High Elevation Landing}. It includes bank reversals in the planning and thus steers both the longitudinal and lateral channels simultaneously. Use of time as the independent variable allows simple imposition of rate and acceleration constraints on the bank angle profile although this was not explored in Ref.~\cite{High Elevation Landing}. The equations of motion are integrated forward using the time-varying bank profile to obtain a drag acceleration reference profile as a function of energy to be used onboard. The version applied here is modified to remove the first switch and bank angle segment, and also introduces rate and acceleration limits to make the commands easier to track. Fig.~\ref{RefTrajParametrization} shows an example profile. Combined planning, although more difficult than in the decoupled scenario, allows for improved performance because bank reversals that are not accounted for will degrade the longitudinal performance. 
 	
+	The nonlinear predictive controller developed in Ref.~\cite{JoelController} provides a closed-form solution that makes use of the full nonlinear model rather than linearize. We will demonstrate that optimizing the reference profile and controller parameters simultaneously is beneficial compared to separate optimizations or parametric studies.
+	
+	
+	\section{Entry Guidance as an Optimization Under Uncertainty Problem}
 	The goal is to design a reference trajectory and feedback controller that together constitute a guidance approach capable of steering the stochastic trajectory evolution to the target in expectation and with minimal variance. Thus we define the problem as finding the feedback control $u\equiv u(x,x_{Ref})$ that minimizes
 	\begin{align}
 		J = \mathbb{E}[(DR-DR_{Target})^2 + (CR-CR_{Target})^2]
@@ -105,10 +109,10 @@
 	subject to 
 	\begin{align}
 		&\dot{x} = f(x,u) \\
-		&x_0 \in \Omega
+		&x_0 \in \Omega_0 \\
+		&x_f \in \mathbb{ X}_f
 	\end{align}
-	
-	To see that this cost function reduces both the error in expectation as well variance, define the horizontal error $e$ such that
+	where $\Omega_0$ is the domain of the initial PDF and $\mathbb{ X}_f$ is a terminal set defined according to some criteria. For example, MSL considered a range trigger \cite{RangeTriggerWay} but ultimately settled on a fixed velocity trigger instead such that $\mathbb{ X}_f = \{x: V=V_f \}$ is the set of states $x$ such that the navigated velocity equals the trigger velocity. To see that this cost function reduces both the error in expectation as well as variance, define the horizontal error $e$ such that
 		\begin{align}
 		e^2(x_f) \equiv (DR-DR_{Target})^2 + (CR-CR_{Target})^2
 		\end{align}
@@ -120,10 +124,10 @@
 		\begin{align}
 		J = \bar{e}^2 + \mathbb{V}[e].
 		\end{align}
-	Thus the cost function is an equal weighting of the square of the mean error and its variance. It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the targeted downrange and crossrange.
+	Thus the cost function is an equal weighting of the square of the mean error and its variance. It is clear that $ J $ is a non-negative function and that a solution achieving the global optimum $ J=0 $ implies every trajectory is successfully driven to the targeted downrange and crossrange. With a parametrization of the bank angle and a chosen controller, the problem reduces to a finite dimensional set of parameters that must be optimized rather than an infinite dimensional optimal control problem.
 	
 	\subsection{Sketch of the Algorithm}
-	At the heart of the approach is the desire to optimize the reference data and controller parameters simultaneously. This is because an optimal reference profile combined with an optimized controller does not yield optimal performance. Given an initial PDF, use the mean initial state for reference computation and perform the following steps:
+	At the heart of the approach is the desire to optimize the reference data, controller parameters, and other free parameters simultaneously. This is because an optimal reference profile combined with an optimized controller does not yield optimal performance. In fact, even for simple linear systems, simultaneous optimization of the set-point and feedback can outperform standard design procedures\cite{Boyd}. Given an initial PDF, use the mean initial state for reference computation and perform the following steps:
 	\begin{enumerate}
 		\item An outer optimization loop first selects the free parameters (e.g., bank angle profile parameters such the switching times $t_i,\;i=1:n$ and bank angles $\sigma_i,\;i=0:n$, as well as any free controller parameters)
 		\item Integrate the reference trajectory forward to the final energy
@@ -150,19 +154,32 @@
 	\end{align}
 	which seeks to maximize final altitude while reaching approximately zero crossrange at a specified final velocity. Setting $\kappa=1$ seeks a solution that also satisfies a downrange requirement $DR(V_f)=DR^*$ while $\kappa=0$ leads to an optimal solution over all reachable downrange distances. 
 	
-	\textbf{Talk about the threshold step.}
+	 The threshold step prevents evaluation of the closed loop system performance (the most expensive step of the approach) when the reference trajectory is unlikely to produce good results. For example, we may choose a minimum acceptable altitude of 8 km and a maximum crossrange magnitude of 3 km, resulting in $ J_{threshold} = -8 + 3 = -5$ km.
 			
 	\subsection{Closed Loop Performance Evaluation}		
 	In addition to the reference trajectory, the controller parameters must also be chosen judiciously to maximize performance. The cost function used depends on the uncertainty space $ \Delta $ and its support $supp(\Delta)\equiv\Omega$.		
 			
 	In contrast to the open loop formulation employed by Ref.~\cite{RSOptimalControl} where a single control trajectory aims to steer an entire tube of trajectories, we consider the closed loop formulation where both the reference (which in some sense constitutes the open loop portion of the control) and the controller parameters (for an a priori chosen controller design) are optimized. (Part of the optimization could even be selecting which controller is best!)		
 	
-	Three approaches to the forward uncertainty quantification have been investigated: linear sensitivity (aka state-transition method), quasi-Monte Carlo methods, and polynomial chaos expansions.  
+	Three approaches to the forward uncertainty quantification have been investigated: linear sensitivity (aka state-transition method), (quasi-)Monte Carlo sampling methods, and polynomial chaos expansions.  
 			
 	\subsection{Entry Termination Logic}
-	The logic which decides when the entry phase ends is instrumental to good horizontal performance while ensuring the vehicle is in an appropriate state to deploy a parachute or otherwise initiate a final descent phase. Compare the results of a fixed energy trigger, in which all trajectories end at the same energy as the reference trajectory, and the combined parachute-range control logic as summarized in Figure \textbf{Put a figure}. \textbf{Show the two sets of final states (h-v, lat-lon)}
+	The logic which decides when the entry phase ends is instrumental to good horizontal performance while ensuring the vehicle is in an appropriate state to deploy a parachute or otherwise initiate a final descent phase. Compare the horizontal accuracy results of a fixed energy trigger (Fig.~\ref{EnergyTrigger}), in which all trajectories end at the same energy as the reference trajectory, and a range trigger with minimum altitude and minimum/maximum velocity limits applied (Fig.~\ref{RangeTrigger}). 
 	
-	Unfortunately, this logic is not differentiable, and thus precludes the use of polynomial chaos to expand the cost function directly. Instead, the state trajectories themselves are expanded. This allows the non-smooth trigger to be incorporated while still leveraging the PCE models. The downside is that considerably more models must be constructed (one for each state variable used in the cost function, times a fraction of the total number of timesteps taken during integration). The PCE models are then sampled extensively (because the cost to do so is low relative to the cost of constructing the models) and the trigger logic is applied to each trajectory to find its final state. Then, the expectation of the cost is simply estimated as $\mathbb{E}[J]\approxeq\frac{1}{N}\sum_{i=1}^{N}J(x_f^i)$. 
+		\begin{figure*}
+			\centering
+			\includegraphics[width=4in]{EnergyTrigger.png}
+			\caption{\bf{Downrange vs crossrange results from a Monte carlo with a fixed energy trigger.}}
+			\label{EnergyTrigger}
+		\end{figure*}
+		\begin{figure*}
+			\centering
+			\includegraphics[width=4in]{SmartTrigger.png}
+			\caption{\bf{The same results as Fig.~\ref{EnergyTrigger} with a range trigger used instead. }}
+			\label{RangeTrigger}
+		\end{figure*}
+	
+	Unfortunately, the if-then logic used to check altitude and velocity limits in the range trigger is not differentiable, and thus precludes the use of linearization or polynomial chaos to expand the cost function directly. Instead, the state trajectories themselves are expanded. This allows the non-smooth trigger to be incorporated while still leveraging the surrogate models. For polynomial chaos, the downside is that considerably more models must be constructed (one for each state variable used in the cost function, times a fraction of the total number of timesteps taken during integration). The models are then sampled extensively (because the cost to do so is low relative to the cost of constructing the models) and the trigger logic is applied to each trajectory to determine its final state. Then, the expectation of the cost is simply estimated as $\mathbb{E}[J]\approxeq\frac{1}{N}\sum_{i=1}^{N}J(x_f^i)$. 
 			
 			
 	\subsection{Global Optimization}
@@ -170,13 +187,13 @@
 	
 	\section{Uncertain Optimal Control via Continuation}
 	
-	Many deterministic optimal control problems can be solved via existing methods, both direct and indirect. When the dynamics are uncertain, due to variations in system parameters or initial state, the problem becomes more difficult. Ref.~\cite{RSOptimalControl} presents an extension of the pseudospectral methodology for numerical optimal control to the uncertain case. Ref.~\cite{UncertainOptimalControl} also used a direct method to solve sample average approximations to the stochastic problem. In contrast to these direct methods, we propose an indirect method based on Pontryagin's maximum principle, continuation, and sample average approximations. 
+	Many deterministic optimal control problems can be solved via existing methods, both direct and indirect. When the dynamics are uncertain, due to variations in system parameters or initial state, the problem becomes more challenging. Ref.~\cite{RSOptimalControl} presents an extension of the pseudospectral methodology for numerical optimal control to the uncertain case. Ref.~\cite{UncertainOptimalControl} also used a direct method to solve sample average approximations to the stochastic problem. Ref~\cite{PCE_OCP_Bhattacharya} used Galerkin projection to expand the uncertain system via polynomial chaos expansions, and the resulting deterministic problem of increased dimensionality is solved by a direct method based on B-spline approximations. In contrast to these direct methods, we propose an indirect method based on an extension of Pontryagin's maximum principle (note that Ref.~\cite{UncertainOptimalControl} did develop necessary conditions for optimality despite solving the problem directly), continuation, and sample average approximations. 
 	
-	Consider systems with dynamics given by deterministic ordinary differential equations. Due to uncertainty in the system's initial state and parameters of the model, evolution of the trajectories is stochastic. Let the joint PDF of the uncertainty space be $ \Delta $ and its support $\mathrm{supp}(\Delta)\equiv\Omega$, and denote by $\mathbb{E}[\cdot]$ the expectation taken with respect to $\Delta$. Both $\Delta$ and $\Omega$ vary with time. Let $\tau=t/t_f$, and define $(\cdot)'=\dfrac{\partial}{\partial\tau}$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega(0)$ admits a deterministic solution $ x(\tau;x_0)$ (in general the dependence on $ x_0 $ is suppressed). Thus the state $x: [0,1]\times\Omega\mapsto\mathbb{R}^n$ and control $u: [0,1]\mapsto U\subseteq\mathbb{R}^m$. The uncertain optimal control problem we seek to solve minimizes the expectation of a functional in Mayer form subject to deterministic dynamics $f: \mathbb{R}^n \times U \mapsto \mathbb{R}^n$ with stochastic initial conditions, control constraints, and a free final time $t_f$:
+	Consider systems with dynamics given by deterministic ordinary differential equations. Due to uncertainty in the system's initial state and parameters of the model, evolution of the trajectories is stochastic. Let the joint PDF of the uncertainty space be $ \Delta $ and its support $\mathrm{supp}(\Delta)\equiv\Omega$, and denote by $\mathbb{E}[\cdot]$ the expectation taken with respect to $\Delta$. Both $\Delta$ and $\Omega$ vary with time. Let $\tau=t/t_f$, and define $(\cdot)'=\dfrac{\partial}{\partial\tau}$. By appending the uncertain model parameters to the state vector, all uncertainty can be lumped into the initial conditions without loss of generality and thus each realization of $x_0\in\Omega(\tau=0)=\Omega_0$ admits a deterministic solution $ x(\tau;x_0)$ (in general the dependence on $ x_0 $ is suppressed). Thus the state $x: [0,1]\times\Omega\mapsto\mathbb{R}^n$ and control $u: [0,1]\mapsto U\subseteq\mathbb{R}^m$. The uncertain optimal control problem we seek to solve minimizes the expectation of a functional in Mayer form subject to deterministic dynamics $f: \mathbb{R}^n \times U \mapsto \mathbb{R}^n$ with stochastic initial conditions, control constraints, and a free final time $t_f$:
 	\begin{align}
 	\min_{u\in U} \;&J = \mathbb{E}[\varphi(x(1))] \label{eq_generic_uncertain_mayer}  \\
 		&x' = f(x,u)\cdot t_f \\
-		&x(0)= x_0 \in \Omega(0) %\\
+		&x(0)= x_0 \in \Omega_0 %\\
 		%&u(t,x) \in U
 	\end{align}	
 	Consider an N-sample average approximation to Eq.~\ref{eq_generic_uncertain_mayer} given by		
@@ -185,7 +202,7 @@
 	\end{align}	
 	Ref.~\cite{UncertainOptimalControl} showed that under appropriate conditions Eq.~\ref{eq_saa_mayer} produces a meaningful approximation to Eq.~\ref{eq_generic_uncertain_mayer}. 
 	
-	For each $x_0 \in \Omega(0)$, there is an associated costate $\lambda(\tau, x_0)$ such that the Hamiltonian is given by $H(\tau, x_0) = f\cdot\lambda$, the costates satisfy
+	For each $x_0 \in \Omega_0$, there is an associated costate $\lambda(\tau, x_0)$ such that the Hamiltonian is given by $H(\tau, x_0) = f\cdot\lambda$, the costates satisfy
 	\begin{align}
 	\dot{\lambda} = -\nabla_xH
 	\end{align} 
@@ -198,12 +215,112 @@
 	\begin{align}
 		H_N(\tau) = \frac{1}{N}\sum_{i=1}^{N}H(\tau,x_i(0)). \label{eq_saa_hamil}
 	\end{align}	
-	\textbf{Remark.} \textit{The uncertain scenario is significantly more difficult to solve via indirect method because we seek a single control function to steer the entire tube of trajectories, i.e. the optimal control minimizes the expected Hamiltonian at each point in time. In the deterministic case, the control can be computed from the costates given a guess at the initial costate values. In the uncertain case, the initial guess of costate values in now N times as large. Fortunately, via a homotopy method we can exploit nearness of solutions.}	
+	\textbf{Remark.} \textit{The uncertain scenario is significantly more difficult to solve via indirect method because we seek a single control function to steer the entire tube of trajectories, i.e. the optimal control minimizes the expected Hamiltonian at each point in time. In the deterministic case, the control can be computed from the costates given a guess at the initial costate values. In the uncertain case, using N-sample averages necessitates an initial guess of N sets of initial costate values . Fortunately, via a homotopy method we can exploit nearness of solutions.}	
 		
 		
-	In the case that $\Delta$ is a Dirac distribution supported at some nominal value $x_0$ then the uncertain problem reduces to a standard optimal control problem. This inspires the idea to define a homotopy between the standard OCP and the uncertain OCP. The only requirement is that the PDF may be sampled from. 
+	In the case that $\Delta$ is a Dirac distribution supported at some nominal value $x_0$ then the uncertain problem reduces to a standard optimal control problem. This inspires the idea to define a homotopy between the standard OCP and the uncertain OCP. The only requirement is that the domain of the initial PDF is star convex. (A subset $ \mathbb{X} $ of $\mathbb{R}^n$ is star convex if there exists an $ x_0 \in\mathbb{ X}$ such that the line segment from $x_0$ to any point in $ \mathbb{X} $ is contained in $ \mathbb{X} $.) This is a rather weak condition, satisfied by any joint distribution comprising common distributions such as normal, uniform, beta, etc.
 	
-%	This requires parametrization of $\Delta$ by a factor $\epsilon\in[0,1]$ such that $\epsilon=0\implies\mathrm{diam}(\Omega)=0$ and $\epsilon=1\implies \Delta=\Delta_{des}$. For common distributions such as Normal, Uniform, Beta the parametrization is simple including multivariate cases. For example, a normal distribution with mean $ m $ and covariance $ P $ is parametrized simply as $ \mathcal{N}(m,\,\epsilon P) $. For a variable uniformly distributed between lower bound $ L $ and upper bound $ U $, let $ m = \frac{(L+U)}{2}$ and $b = \frac{(U-L)}{2}$, then the distribution may be parametrized $ \mathcal{U}(m-\epsilon b,\, m+\epsilon b ) $ 
+	\textbf{To be continued - the remaining necessary conditions must be extended, and an approach to solution of this problem must be developed.}
+
+	\section{Covariance Control of Nonlinear Systems via Successive Convexification}
+	\textbf{This paper presents a numerical approach for solving a class of nonlinear optimal control problems in which the cost functional is a convex function of the system's covariance. Using recent advances in successive convexification, the original nonlinear optimal control is solved via a convergent sequence of convex subproblems. The state transition matrix used to propagate the system's covariance is the solution to a linear, time-varying differential equation and thus fits naturally into a convex approach. A Chebyshev pseudospectral method is used to transcribe each optimal control subproblem into a convex optimization problem and displays benefit relative to typical discretization methods (i.e. the integration methods of Euler and Heun). Numerical results are presented to demonstrate the approach.}
+	
+	\subsection{Introduction}
+	% One point to consider: we can swap the independent variable to normalized time, or energy etc and consider a fixed final IV problem. The change of variable increases the nonlinearity but we are iterating over linearizations anyway so it is possible.
+
+
+	% Review of covariance minimization or control 
+		% Bhattacharya paper with PCE 
+		
+	% Review of successive convex optimization (Mao's papers, lossless paper(s)?)
+	
+	% Review of pseudospectral methods (and the one paper that combines it with convex optimization)
+		% Include mention of hp-mesh adaptive NLP and indicate that the results apply here as well 
+		
+	\subsection{Problem Statement}
+	% We can also consider covariance based constraints with a different convex objective function
+	
+	The systems under consideration are subject to uncertain continuous nonlinear dynamics 
+	\begin{align}
+	\dot{x}(t) = f(x(t),u(t),\lambda)
+	\end{align}
+	where $x:[0,t_f]\mapsto \mathbb{R}^n$ is the state trajectory, $u:[0,t_f]\mapsto \mathbb{R}^m$ is the control input, and $\lambda\in\mathbb{R}^p$ is a constant vector representing the parametric uncertainty. It is assumed the control is subject to a convex constraint $u(t) \in U \subset \mathbb{R}^m$, and that the parameters are jointly distributed according to a multivariate normal with zero mean and covariance $P_{\lambda}$, i.e. $\lambda \sim \mathcal{N}(0,P_{\lambda})$. The initial condition uncertainty is similarly described by $x_0 \sim \mathcal{N}(\bar{x}_0,P_{x_0})$ and the total initial covariance is then $P(0) = \left[\begin{array}{cc}
+		P_{x_0}& 0_{n\mathrm{x}p} \\
+		 0_{p\mathrm{x}n} & P_{\lambda}
+		\end{array}\right]$.
+	
+	An extended state transition matrix (STM) is used to propagate the covariance along a trajectory. Denote by $\Phi^X(t,0) \in \mathbb{R}^{n\mathrm{x}n}$ the standard STM, i.e. the matrix of sensitivities of the state $ x(t) $ to changes in the state $x(0)$. Similarly, $\Phi^P(t,0) \in \mathbb{R}^{n\mathrm{x}p}$ is the matrix of sensitivities of the state $ x(t) $ to the uncertain parameters. Then the extended STM $\Phi(t,0)\in\mathbb{R}^{(n+p)\mathrm{x}(n+p)}$ which includes parametric uncertainty and its governing dynamics may be written succinctly as 
+	\begin{align}
+	&\Phi \triangleq \left[\begin{array}{cc}
+	\Phi^X & \Phi^P \\
+	 0_{p\mathrm{x}n} & I_{p\mathrm{x}p}
+	\end{array}\right] \\
+	&D \triangleq \left[\begin{array}{cc}
+		f_x & f_p \\
+		 0_{p\mathrm{x}n} & 0_{p\mathrm{x}p}
+		\end{array}\right] \\
+		&\dot{\Phi}(t,0) = D\Phi(t) \label{eq_stm_dyn} \\
+		&\Phi(0,0) = I
+	\end{align}
+	where the partial derivative matrix $ D $ is evaluated along a trajectory $(x(t),u(t),\lambda)$. Notice that Eq.~(\ref{eq_stm_dyn}) is an LTV system. Let $(x^*(t),u^*(t),\lambda^*)$ be the trajectory along which Eq.~(\ref{eq_stm_dyn}) is integrated with $x^*(0)$ and $\lambda^*$ assuming their expected values ($x^*(0)=\bar{x}_0$ and $\lambda^*=0$) and define the deviations from this trajectory as
+	\begin{align}
+	\delta x(t) &= x(t)-x^*(t) \\
+	%\delta u(t) = u(t)-u^*(t) \\
+	\delta \lambda &= \lambda-\lambda^*
+	\end{align}
+	and finally let $z = [x(t),\,\lambda]$. Consider the first few terms of a Taylor series expansion of $\delta x(t) $ about $ (x^*(t),u^*(t),\lambda^*) $:
+	
+	\begin{align}
+	\delta x(t) &= \dfrac{\partial x(t)}{\partial x(0)} \delta x(0) + \dfrac{\partial x(t)}{\partial \lambda} \delta \lambda \nonumber\\
+	&+\frac{1}{2}\left(\delta x^T(0) \dfrac{\partial^2 x(t)}{\partial x^2(0)} \delta x(0) + 2\delta x^T(0)\dfrac{\partial^2 x(t)}{\partial x(0)\partial\lambda} \delta \lambda +\delta \lambda^T \dfrac{\partial^2 x(t)}{\partial \lambda^2} \delta \lambda\right) \label{eq_taylor_exp}\\
+	\nonumber &+ h.o.t.
+	\end{align}
+	Truncating the series at first order provides a linear approximation to Eq.~(\ref{eq_taylor_exp}) that can be written simply as:
+	\begin{align}
+	\delta z(t) \approx \Phi(t,0)\delta z(0).
+	\end{align}
+	Let $\mathbb{E}[\cdot]$ be the expectation operator and noting that $\mathbb{E}[z]=0$ we arrive at the linearized estimate of the covariance
+	\begin{align}
+	P(t) &= \mathbb{E}[\delta z(t)\delta z^T(t)] &\mathrm{ (definition)} \\
+	     &= \mathbb{E}[\Phi(t,0)\delta z(0)\delta z(0)^T\Phi^T(t,0)] &\mathrm{(substitution)} \\
+	     &= \Phi(t,0)\mathbb{E}[\delta z(0)\delta z(0)^T] \Phi^T(t,0) \\
+	     &= \Phi(t,0)P(0)\Phi^T(t,0) &\mathrm{ (definition)}
+	\end{align}
+	where the third equality is due to the linearity of $\mathbb{E}$ and because $\Phi$ is a deterministic quantity. Hence we define the following optimal control problem:
+	
+	\textbf{Problem 1}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
+	\begin{align}
+	J(x,u) = M(P_x(t_f)) + \int_{0}^{t_f}L(P_x(t))\mathrm{d}t
+	\end{align}
+	\textit{	subject to the constraints }
+	\begin{align}
+	&\dot{x}(t) = f(x(t),u(t),\lambda) \\
+	&x(0) = \bar{x}_0 \\
+	&\dot{\Phi}(t) = D\Phi(t) \\
+	&\Phi(0) = I \\
+	&u(t) \in U \\
+	\end{align}
+	\textit{where} $ M:\mathbb{R}^{n\mathrm{x}n}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,}  $L:\mathbb{R}^{n\mathrm{x}n}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
+	
+	\textit{Remark}: The covariance may be propagated in other ways. The STM differential equations in Problem 1 represent $n(n+p)$ equality constraints. For $n>2$, the unscented transform offers a more efficient (and often more accurate) estimate of the covariance and also captures some effects of $\lambda$ on the mean using $2(n+p)$ additional constraints.
+	
+	% discussion of possible cost functions here 
+	Trace alone is bad here.
+	
+	\subsection{Solution Methodology}
+	Under the state assumptions, only the nonlinear dynamics render Problem 1 nonconvex.
+	
+	
+	
+
+	
+	\subsubsection{Chebyshev Pseudospectral Transcription}
+	
+	
+	\subsection{Numerical Results}
+
+	
+
 	
 	\begin{thebibliography}{1}
 %		\bibitem{brockett2012}
@@ -219,15 +336,29 @@
 		G.F. Mendeck, and L.E. Craig, ``Entry Guidance for the 2011 Mars Science Laboratory Mission," AIAA, 2010.
 		
 		\bibitem{High Elevation Landing}
-		G. Duan, A. Bombelli, J. Benito, and K.D. Mease, ``High Elevation Planner for Mars Entry"
+		G. Duan, A. Bombelli, J. Benito, and K.D. Mease, ``High Elevation Planner for Mars Entry," AIAA, 2016.
 		
 		\bibitem{RangeTriggerWay}
-		D. Way, "On the use of a Range Trigger for the Mars Science Laboratory Entry Descent and Landing"
+		D. Way, ``On the use of a Range Trigger for the Mars Science Laboratory Entry Descent and Landing"
+		
+		\bibitem{JoelController}
+		J. Benito, K.D. Mease, ``Nonlinear Predictive Controller for Drag Tracking in Entry Guidance," AIAA/AAS Astrodynamics Specialist Conference and Exhibit, 2008.
 		
 		\bibitem{RSOptimalControl}
 		I.M. Ross, R.J. Proulx, M. Karpenko, and Q. Gong, ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
 		
 		\bibitem{UncertainOptimalControl}
 		C. Phelps, J.O. Royset, and Q. Gong, ``Optimal Control of Uncertain Systems Using Sample Average Approximations," SIAM Journal on Control and Optimization, 2016.
+		
+		\bibitem{PCE_OCP_Bhattacharya}
+		J. Fisher, R. Bhattacharya, ``Optimal Trajectory Generation with Probabilistic System Uncertainty Using Polynomial Chaos," ASME Journal of Dynamic Systems Measurement and Control, 2011.
+		
+		\bibitem{Boyd}
+		S. Boyd, C. Crusius, A. Hansson, ``Control Applications of Nonlinear Convex Programming"
+		
+		\bibitem{UT}
+		``A General Method for Approximating Nonlinear Transformations of Probability Distributions"
+		
+		
 	\end{thebibliography}
 \end{document}
