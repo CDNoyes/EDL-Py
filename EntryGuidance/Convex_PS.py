@@ -6,7 +6,7 @@ from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 from Mesh import Mesh
 
-def LTV(x0, A, B, f_ref, x_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
+def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
 
     """ Solves a convex LTV subproblem
 
@@ -19,6 +19,7 @@ def LTV(x0, A, B, f_ref, x_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
     mesh - Mesh.Mesh instance
 
     """
+    t0 = time.time()
 
     n = A[0].shape[0]
     m = 1
@@ -28,7 +29,7 @@ def LTV(x0, A, B, f_ref, x_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
     # x = cvx.Variable(N,n)
     x = np.array([cvx.Variable(n) for _ in range(N)]).T
     u = cvx.Variable(N,m)
-
+    v = cvx.Variable(N,m) # Virtual control 
 
 
     X = mesh.chunk(x)
@@ -37,6 +38,7 @@ def LTV(x0, A, B, f_ref, x_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
     F = mesh.chunk(f_ref)
     Xr = mesh.chunk(x_ref)
     U = mesh.chunk(u)
+    Ur = mesh.chunk(u_ref)
 
     if P > 0:
         bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1]
@@ -53,11 +55,11 @@ def LTV(x0, A, B, f_ref, x_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
 
     # Lagrange cost and ode constraints
     states = []
-    for d,xi,f,a,b,xr,ui,w in zip(mesh.diffs,X,F,A,B,Xr,U,mesh.weights):
-        L = cvx.abs(ui)                                         # Lagrange integrands for a single mesh
-        cost = w*L                                              # Clenshaw-Curtis quadrature
+    for d,xi,f,a,b,xr,ur,ui,w in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights):
+        L = cvx.abs(ui)**1                                         # Lagrange integrands for a single mesh
+        cost = w*L                                                  # Clenshaw-Curtis quadrature
         dx = d.dot(xi)
-        ode =  [dxi == fi + ai*(xii-xri) + bi*uii  for xii,fi,ai,bi,xri,uii,dxi in zip(xi,f,a,b,xr,ui,dx) ] # Differential equation constraints
+        ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri)  for xii,fi,ai,bi,xri,uri,uii,dxi in zip(xi,f,a,b,xr,ur,ui,dx) ] # Differential equation constraints
         states.append(cvx.Problem(cvx.Minimize(cost), ode))
 
     # sums problem objectives and concatenates constraints.
@@ -66,19 +68,20 @@ def LTV(x0, A, B, f_ref, x_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
     prob.constraints += bc
     prob.constraints += constr
 
-    t0 = time.time()
-    prob.solve()
     t1 = time.time()
+    prob.solve()
+    t2 = time.time()
     print "status:        ", prob.status
     print "optimal value: ", np.around(prob.value,3)
-    print "solution time: {}s\n".format(t1-t0)
+    print "solution time: {}s".format(t2-t1)
+    print "setup time: {}s\n".format(t1-t0)
 
     try:
         x_sol = np.array([xi.value.A for xi in x]).squeeze()
         u_sol = u.value.A.squeeze()
         return x_sol.T, u_sol
     except:
-        return x_ref.T,np.zeros_like(T)
+        return x_ref.T,u_ref
 
 
 def test():
@@ -127,35 +130,36 @@ def test():
     X_cvx = []
     U = []
 
-    tf = 10
-    mesh = Mesh(tf=tf)
+    tf = 5
+    mesh = Mesh(tf=tf,orders=[5]*40)
     t = mesh.times
     x0 = [3,1]
     u = np.zeros_like(t)
+    x = np.vstack((np.linspace(x0[0],0,u.shape[0]),np.linspace(x0[1],0,u.shape[0])))
     # x = integrate(x0, u, t).T
     # A,B = jac(x)
 
     # plt.plot(x[0],x[1])
     # plt.show()
-    iters = 10
+    iters = 2
 
     # P = np.logspace(-1, iters-1,iters)
     P = np.linspace(1,0.01,iters)
     for it in range(iters):
         U.append(u)
 
-        x = integrate(x0, u, t).T
+        if it:
+            x = integrate(x0, u, t).T
+        if not it:
+            x_approx = x
         f,g = dynamics(x)
+        F = f.T + g.T*u[:,None]
         A,B = jac(x)
 
         X.append(x)
         umax = 3 #+ 3*(iters-1-it)
-        x_approx,u = LTV(x0, A, B, f.T, x.T, mesh, trust_region=4, P=P[it], umax=umax )
+        x_approx,u = LTV(x0, A, B, F, x.T, u, mesh, trust_region=5, P=0*P[it], umax=umax )
         X_cvx.append(x_approx)
-        # u = u.T
-        # import pdb
-        # pdb.set_trace()
-
 
     U.append(u)
     x = integrate(x0, u, t).T # Can increase fidelity here or after optimal solution found
@@ -164,16 +168,15 @@ def test():
     try:
         print "Performing final iteration - hard enforcement of constraints, and additional discretization points"
         f,g = dynamics(x)
+        F = f.T + g.T*u[:,None]
         A,B = jac(x)
-        x_approx,u = LTV(x0, A, B, f.T, x.T, mesh, trust_region=2,P=0,umax=3)
+        x_approx,u = LTV(x0, A, B, F, x.T, u, mesh, trust_region=5,P=0,umax=3)
 
         u = u.T
-        print u.shape
         x,u = integrate(x0, u, t,return_u=True)
         X.append(x.T)
         X_cvx.append(x_approx)
         X_cvx.append(x_approx) # just so theyre the same length
-        print u.shape
         U.append(u)
     except:
         print "Failed to solve final iteration."

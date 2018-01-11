@@ -166,18 +166,18 @@
 	\subsection{Entry Termination Logic}
 	The logic which decides when the entry phase ends is instrumental to good horizontal performance while ensuring the vehicle is in an appropriate state to deploy a parachute or otherwise initiate a final descent phase. Compare the horizontal accuracy results of a fixed energy trigger (Fig.~\ref{EnergyTrigger}), in which all trajectories end at the same energy as the reference trajectory, and a range trigger with minimum altitude and minimum/maximum velocity limits applied (Fig.~\ref{RangeTrigger}). 
 	
-		\begin{figure*}
-			\centering
-			\includegraphics[width=4in]{EnergyTrigger.png}
-			\caption{\bf{Downrange vs crossrange results from a Monte carlo with a fixed energy trigger.}}
-			\label{EnergyTrigger}
-		\end{figure*}
-		\begin{figure*}
-			\centering
-			\includegraphics[width=4in]{SmartTrigger.png}
-			\caption{\bf{The same results as Fig.~\ref{EnergyTrigger} with a range trigger used instead. }}
-			\label{RangeTrigger}
-		\end{figure*}
+%		\begin{figure*}
+%			\centering
+%			\includegraphics[width=4in]{EnergyTrigger.png}
+%			\caption{\bf{Downrange vs crossrange results from a Monte carlo with a fixed energy trigger.}}
+%			\label{EnergyTrigger}
+%		\end{figure*}
+%		\begin{figure*}
+%			\centering
+%			\includegraphics[width=4in]{SmartTrigger.png}
+%			\caption{\bf{The same results as Fig.~\ref{EnergyTrigger} with a range trigger used instead. }}
+%			\label{RangeTrigger}
+%		\end{figure*}
 	
 	Unfortunately, the if-then logic used to check altitude and velocity limits in the range trigger is not differentiable, and thus precludes the use of linearization or polynomial chaos to expand the cost function directly. Instead, the state trajectories themselves are expanded. This allows the non-smooth trigger to be incorporated while still leveraging the surrogate models. For polynomial chaos, the downside is that considerably more models must be constructed (one for each state variable used in the cost function, times a fraction of the total number of timesteps taken during integration). The models are then sampled extensively (because the cost to do so is low relative to the cost of constructing the models) and the trigger logic is applied to each trajectory to determine its final state. Then, the expectation of the cost is simply estimated as $\mathbb{E}[J]\approxeq\frac{1}{N}\sum_{i=1}^{N}J(x_f^i)$. 
 			
@@ -302,7 +302,7 @@
 	\end{align}
 	\textit{where} $ M:\mathbb{R}^{n\mathrm{x}n}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,}  $L:\mathbb{R}^{n\mathrm{x}n}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
 	
-	\textit{Remark}: The covariance may be propagated in other ways. The STM differential equations in Problem 1 represent $n(n+p)$ equality constraints. For $n>2$, the unscented transform offers a more efficient (and often more accurate) estimate of the covariance and also captures variance effects of $\lambda$ on the mean using $2(n+p)$ additional constraints.
+	\textit{Remark}: The covariance may be propagated in other ways. The STM differential equations in Problem 1 represent $n(n+p)$ equality constraints. For $n>2$, the unscented transform \cite{UT,UKF1} offers a more efficient (and often more accurate) estimate of the covariance and also captures variance effects of $\lambda$ on the mean using $2(n+p)$ additional constraints.
 	\\\\
 	\textbf{Problem 2 - Unscented Covariance}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
 		\begin{align}
@@ -320,7 +320,7 @@
 	% Essentially, in the linear approach, final constraints are on the nominal (lambda=0) trajectory (which is a first order approximation to the mean), while in the UKF the constraints are enforced on the second order approximation to the mean.
 	
 	% discussion of possible cost functions here 
-	Trace alone is bad here.
+%	Trace alone is bad here because it doesn't account for the parameter effects.
 	
 	\subsection{Solution Methodology}
 	Under the state assumptions, only the nonlinear dynamics render Problem 1 nonconvex.
@@ -330,11 +330,13 @@
 
 	
 	\subsubsection{Chebyshev Pseudospectral Transcription}
-	The idea behind spectral methods is to approximate solutions (here, state-control trajectories $ (x(t),u(t) $) by a finite sum $x(t) \approx x_N(t) = \sum_{i=0}^{N}b_i\phi_i(t)$ where $b_i$ are the coefficients and $ {\phi_k} $ is a chosen set of basis functions. A wide range of polynomial bases have been researched. 
+	The idea behind spectral methods is to approximate solutions (here, state-control trajectories $ (x(t),u(t) $) by a finite sum $x(t) \approx x_N(t) = \sum_{i=0}^{N}b_i\phi_i(t)$ where $b_i$ are the coefficients and $ {\phi_k} $ is a chosen set of basis functions. A wide range of orthogonal polynomial bases have been researched \cite{ChebyPS,LegendrePS,RadauPS,GPOPS} and in practice it seems that many of them are capable of producing acceptable solutions. For instance, the Legendre and Chebyshev polynomials are often touted as having desirable properties (they correspond to the optimal polynomial approximation in the $L^2([-1,1])$ and $L^\infty([-1,1])$ senses, respectively)\textbf{Citation here for Lp space} but other methods remain common in the literature as well.
 	
-	In general, the use of a pseudospectral (PS) method converts the infinite-dimensional optimal control problem into a finite nonlinear programming problem. Due to the underlying convexity of the subproblems posed here, however, the pseudospectral method will result in a convex program and thus can be solved efficiently and to global optimality by a primal-dual interior point method. The idea to utilize a PS method with convex optimization appears to originate in Ref.~\cite{PS_Convex} where Flipped Radau and Lobatto methods are introduced and used to solve a planetary landing problem. Ref.~\cite{PS_Convex_ascent} used a Gauss PS method to solve an optimal ascent trajectory problem. 
+	In general, the use of a pseudospectral (PS) method converts the infinite-dimensional optimal control problem into a finite nonlinear programming problem. Due to the underlying convexity of the subproblems posed here, however, the pseudospectral method will result in a convex program that can be solved efficiently and to global optimality by a primal-dual interior point method. The idea to utilize a PS method with convex optimization appears to originate in Ref.~\cite{PS_Convex} where Flipped Radau and Lobatto methods are introduced and used to solve a planetary landing problem. Ref.~\cite{PS_Convex_ascent} used a Gauss PS method to solve convex iterations of an optimal ascent trajectory problem. 
 	
-	Neither of these applications to convex optimization referred to another strength of pseudospectral methods: hp-adaptive mesh based solutions. This well developed theory can be leveraged here as in original NLP context. \textbf{Cite Anil papers here}
+	Here a Chebyshev PS method is utilized to transcribe the dynamic constraints, and a corresponding Clenshaw-Curtis quadrature scheme is used to estimate the integral in the running cost of each optimal control problem.
+	
+	Neither of these applications to convex optimization referred to another strength of pseudospectral methods: $ hp $-adaptive (mesh based) solutions \cite{GPOPS,hp_adapt}. This well developed theory can be leveraged here as in the original NLP context. A full review is beyond the scope of this paper but the underlying ideas are presented. It is easy to imagine that trajectories $x(t)$ exist for which even the best global polynomial approximation cannot provide an adequate solution. In order to improve the quality of the solution, we can instead divide the time horizon into segments and approximate the state on each segment by a comparatively low order polynomial. Refining solutions by allowing the divisions of the time horizon to increase leads to \textit{h}-adaptive methods, while refining the solution by increasing the order of the polynomials on a fixed grid is referred to as a \textit{p}-adaptive method. Combining these two ideas leads to the \textit{hp}-adaptive methods. For areas where the solution is very smooth, spectral convergence is expected as the order of the approximation is increased.
 	
 	% RefPS Convex showed both superior solutions (as measured by the objective function) for an equal number of nodes, as well as greater consistency with the integrated solution ( as measured by the mean and maximal errors between the two solutions)
 	
@@ -381,14 +383,37 @@
 		S. Boyd, C. Crusius, A. Hansson, ``Control Applications of Nonlinear Convex Programming"
 		
 		\bibitem{UT}
-		S. Julier, J. Uhlmann, ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
+		S.J. Julier, J.K. Uhlmann, ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
+
+		\bibitem{UKF1}
+		S.J. Julier, J.K. Uhlmann, ``A New Extension of the Kalman Filter for Nonlinear Systems" In Int. symp. aerospace/defense sensing, simul. and controls (Vol. 3, No. 26, pp. 182-193), 1997.
 		
+		\bibitem{UKF2}
+		Julier, S. J., and Uhlmann, J. K. ``Unscented filtering and nonlinear estimation." Proceedings of the IEEE, 92(3), 401-422. 2004.
+				
+		\bibitem{ChebyPS}
+		Fahroo, Fariba, and I. Michael Ross. ``Direct trajectory optimization by a Chebyshev pseudospectral method." Journal of Guidance, Control, and Dynamics 25.1 (2002): 160-166.
+		
+		\bibitem{LegendrePS}
+		Elnagar, Gamal, Mohammad A. Kazemi, and Mohsen Razzaghi. ``The pseudospectral Legendre method for discretizing optimal control problems." IEEE transactions on Automatic Control 40.10 (1995): 1793-1796.
+		
+		\bibitem{RadauPS}
+		Garg, Divya, et al. ``Direct trajectory optimization and costate estimation of finite-horizon and infinite-horizon optimal control problems using a Radau pseudospectral method." Computational Optimization and Applications 49.2 (2011): 335-358.
+		
+		\bibitem{GPOPS}		
+		Rao, Anil V., et al. ``Algorithm 902: Gpops, a matlab software for solving multiple-phase optimal control problems using the gauss pseudospectral method." ACM Transactions on Mathematical Software (TOMS) 37.2 (2010): 22.				
+				
+				
+				
 		\bibitem{PS_Convex}
 		M. Sagliano, ``Pseudospectral Convex Optimization for Powered Descent and Landing," Journal of Guidance, Control, and Dynamics, 2017.
 		
 		\bibitem{PS_Convex_ascent}
 		Cheng, X., Li, H., and Zhang, R. ``Efficient ascent trajectory optimization using convex models based on the newton-kantorovich/pseudospectral approach". Aerospace Science and Technology, 2017.
-
+		
+		\bibitem{hp_adapt}
+		Darby, Christopher L., William W. Hager, and Anil V. Rao. ``An hp?adaptive pseudospectral method for solving optimal control problems." Optimal Control Applications and Methods 32.4 (2011): 476-502.
+		
 		
 	\end{thebibliography}
 \end{document}
