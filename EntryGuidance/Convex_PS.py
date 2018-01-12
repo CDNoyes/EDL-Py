@@ -27,9 +27,10 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     T = range(N)
 
     # x = cvx.Variable(N,n)
-    x = np.array([cvx.Variable(n) for _ in range(N)]).T
+    x = np.array([cvx.Variable(n) for _ in range(N)]).T # This has to be done to "chunk" it later
+    STM = np.array([cvx.Variable(n,n) for _ in range(N)]).T
     u = cvx.Variable(N,m)
-    v = cvx.Variable(N,m) # Virtual control 
+    v = cvx.Variable(N,m) # Virtual control
 
 
     X = mesh.chunk(x)
@@ -63,7 +64,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
         states.append(cvx.Problem(cvx.Minimize(cost), ode))
 
     # sums problem objectives and concatenates constraints.
-    prob = sum(states) #+ P*cvx.Problem(cvx.Minimize(cvx.sum_squares(x[:,-1])))
+    prob = sum(states)
     prob.constraints.append(Cu)
     prob.constraints += bc
     prob.constraints += constr
@@ -87,7 +88,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 def test():
     """ Solves a control constrained VDP problem to compare with GPOPS """
 
-    mu = 1
+    mu = 0.1
     def dynamics(x):
         # returns f,g evaluated at x (vectorized)
         return np.array([x[1],-x[0] + mu*(1-x[0]**2)*x[1]]),np.vstack((np.zeros_like(x[0]),np.ones_like(x[0]))).squeeze()
@@ -112,7 +113,7 @@ def test():
         return np.moveaxis(A, -1, 0),np.moveaxis(B, -1, 0)
 
     def integrate(x0, u, t, return_u=False):
-
+        u[-1]=u[-2]
         ut = interp1d(t,u,kind='cubic',assume_sorted=True,fill_value=u[-1],bounds_error=False)
         X = odeint(dyn,x0,t,args=(ut,))
 
@@ -131,16 +132,13 @@ def test():
     U = []
 
     tf = 5
-    mesh = Mesh(tf=tf,orders=[5]*40)
+    mesh = Mesh(tf=tf,orders=[3]*12)
     t = mesh.times
     x0 = [3,1]
     u = np.zeros_like(t)
-    x = np.vstack((np.linspace(x0[0],0,u.shape[0]),np.linspace(x0[1],0,u.shape[0])))
-    # x = integrate(x0, u, t).T
-    # A,B = jac(x)
+    # x = np.vstack((np.linspace(x0[0],0,u.shape[0]),np.linspace(x0[1],0,u.shape[0])))
 
-    # plt.plot(x[0],x[1])
-    # plt.show()
+
     iters = 2
 
     # P = np.logspace(-1, iters-1,iters)
@@ -148,8 +146,9 @@ def test():
     for it in range(iters):
         U.append(u)
 
-        if it:
-            x = integrate(x0, u, t).T
+        # if it:
+        x = integrate(x0, u, t).T
+    # else:
         if not it:
             x_approx = x
         f,g = dynamics(x)
@@ -157,29 +156,36 @@ def test():
         A,B = jac(x)
 
         X.append(x)
-        umax = 3 #+ 3*(iters-1-it)
-        x_approx,u = LTV(x0, A, B, F, x.T, u, mesh, trust_region=5, P=0*P[it], umax=umax )
+        umax = 3
+        x_approx,u = LTV(x0, A, B, F, x_approx.T, u, mesh, trust_region=8, P=0*P[it], umax=umax )
         X_cvx.append(x_approx)
 
-    U.append(u)
-    x = integrate(x0, u, t).T # Can increase fidelity here or after optimal solution found
-    X.append(x)
 
-    try:
-        print "Performing final iteration - hard enforcement of constraints, and additional discretization points"
-        f,g = dynamics(x)
-        F = f.T + g.T*u[:,None]
-        A,B = jac(x)
-        x_approx,u = LTV(x0, A, B, F, x.T, u, mesh, trust_region=5,P=0,umax=3)
-
-        u = u.T
-        x,u = integrate(x0, u, t,return_u=True)
-        X.append(x.T)
-        X_cvx.append(x_approx)
-        X_cvx.append(x_approx) # just so theyre the same length
+    # mesh.bisect()
+    for i in range(2):
+        mesh.bisect()
+        t_u = t
+        t = mesh.times
+        u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
         U.append(u)
-    except:
-        print "Failed to solve final iteration."
+        x = integrate(x0, u, t).T # Can increase fidelity here or after optimal solution found
+        X.append(x)
+
+        try:
+            print "Performing final iteration - hard enforcement of constraints, and additional discretization points"
+            f,g = dynamics(x)
+            F = f.T + g.T*u[:,None]
+            A,B = jac(x)
+            x_approx,u = LTV(x0, A, B, F, x.T, u, mesh, trust_region=1,P=0,umax=umax)
+
+            u = u.T
+            x,u = integrate(x0, u, t,return_u=True)
+            X.append(x.T)
+            X_cvx.append(x_approx)
+            X_cvx.append(x_approx) # just so theyre the same length
+            U.append(u)
+        except:
+            print "Failed to solve final iteration."
 
     for i,xux in enumerate(zip(X,U,X_cvx)):
         x,u,xc = xux
