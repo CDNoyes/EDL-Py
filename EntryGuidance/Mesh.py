@@ -5,10 +5,10 @@ from Chebyshev import ChebyshevDiff, ChebyshevQuad
 
 class Mesh(object):
 
-    def __init__(self, tf, orders=None, min_order=2, max_order=10):
+    def __init__(self, tf, orders=None, min_order=2, max_order=100):
         self.min = min_order
         self.max = max_order
-        self.default = 4                    # Default order when splitting a mesh into two
+        self.default = 6                    # Default order when splitting a mesh into two
 
         Ni = range(self.min,self.max+1)
         tw = [ChebyshevQuad(N) for N in Ni]
@@ -18,7 +18,7 @@ class Mesh(object):
         self._w   = [twi[1] for twi in tw]              # All Clenshaw-Curtis weights
 
         if orders is None:
-            self.orders = [4]*10                 # default initial mesh orders
+            self.orders = [self.default]*10                 # default initial mesh orders
         else:
             self.orders = orders
 
@@ -73,7 +73,7 @@ class Mesh(object):
 
     def update(self, i, new_order):
         """ Change the order of the ith mesh """
-        intervals = np.diff(_times)
+        intervals = np.diff(self._times)
         self.orders[i] = new_order
         self.points[i] = self.tau(new_order)
         self.diffs[i]  = self.D(new_order)*2./intervals[i]
@@ -81,17 +81,20 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
-    def split(self, i, t=None):
+    def split(self, i, t=None, order=None):
         """ Splits the ith mesh at time t into 2 meshes
             If t is not given, the mesh is bisected.
         """
         # Validate the inputs
         assert(i<len(self.orders))
         if t is None: #Split the mesh in half by default
-            t = (self._times[i]+self._times[1])/2.
+            t = (self._times[i]+self._times[i+1])/2.
         else:
             assert(t>self._times[i])
             assert(t<self._times[i+1])
+
+        if order is None:
+            order=self.default
 
         self._times.insert(i+1, t)
         intervals = np.diff(self._times)
@@ -102,8 +105,8 @@ class Mesh(object):
         self.points.insert(i, self.tau(self.default))
         self.points[i+1] = self.tau(self.default)
 
-        self.diffs.insert(i, self.D(self.default)*2/intervals[i])
-        self.diffs[i+1]  = self.D(self.default)*2/intervals[i+1]
+        self.diffs.insert(i, self.D(self.default)*2./intervals[i])
+        self.diffs[i+1]  = self.D(self.default)*2./intervals[i+1]
 
         self.weights.insert(i, self.w(self.default)*intervals[i]/2.)
         self.weights[i+1]  = self.w(self.default)*intervals[i+1]/2.
@@ -111,28 +114,45 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
+    def bisect(self,order=None):
+        if order is None:
+            order=self.default
+
+        for i in range(0, 2*len(self.orders),2):
+            self.split(i, t=None)
+
+
 
 
 if __name__ == "__main__":
-    mesh = Mesh(tf=5, min_order=2, max_order=10)
+    mesh = Mesh(tf=5, orders=[4,4], min_order=2, max_order=10)
     # print mesh.tau2time([0,3,10])
     # print mesh.tau2time([1,9,10])
 
+    print mesh.orders
+    print mesh.times
+    # mesh.update(0, 6)
+    # mesh.split(0, t=None, order=None)
+    # mesh.split(2, t=None, order=None)
+    mesh.bisect()
+    print mesh.orders
+    print mesh.times
 
-    x = np.linspace(0,mesh.n_points-1,mesh.n_points)
-    u = np.linspace(0,mesh.n_points-2,mesh.n_points-1)
+
+    # x = np.linspace(0,mesh.n_points-1,mesh.n_points)
+    # u = np.linspace(0,mesh.n_points-2,mesh.n_points-1)
     # x = np.random.random((mesh.n_points,3,3))
-    print x
-    X = mesh.chunk(x)
-    U = mesh.chunk(u)
-    print X
-    print U
+    # print x
+    # X = mesh.chunk(x)
+    # U = mesh.chunk(u)
+    # print X
+    # print U
 
     # mesh.update(0, 6)
     # x = np.linspace(0,mesh.n_points-1,mesh.n_points)
     # X = mesh.chunk(x)
     # print X
-    print mesh.times
+    # print mesh.times
     # print mesh._times
     # mesh.split(0)
     # print mesh._times
