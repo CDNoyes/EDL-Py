@@ -27,8 +27,9 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     T = range(N)
 
     # x = cvx.Variable(N,n)
-    x = np.array([cvx.Variable(n) for _ in range(N)]).T # This has to be done to "chunk" it later
-    STM = np.array([cvx.Variable(n,n) for _ in range(N)]).T
+    x = np.array([cvx.Variable(n) for _ in range(N)]) # This has to be done to "chunk" it later
+    stm = np.array([[cvx.Variable(n) for _ in range(n)] for i in range(N)])
+    # stm = np.array([cvx.Variable(n,n) for _ in range(N)])
     u = cvx.Variable(N,m)
     v = cvx.Variable(N,m) # Virtual control
 
@@ -40,12 +41,15 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     Xr = mesh.chunk(x_ref)
     U = mesh.chunk(u)
     Ur = mesh.chunk(u_ref)
-
+    STM = mesh.chunk(stm)
+    
     if P > 0:
         bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1]
     else:
         bc = [x[-1] == xf, x[0] == x0]
 
+    stm_ic = [stm0 == I for stm0,I in zip(stm[0],np.eye(n))] 
+    bc += stm_ic  
 
     constr = []
     for t,xr in zip(T,x_ref):
@@ -56,12 +60,20 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 
     # Lagrange cost and ode constraints
     states = []
-    for d,xi,f,a,b,xr,ur,ui,w in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights):
+    for d,xi,f,a,b,xr,ur,ui,w,stmi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,STM):
         L = cvx.abs(ui)**1                                         # Lagrange integrands for a single mesh
         cost = w*L                                                  # Clenshaw-Curtis quadrature
         dx = d.dot(xi)
+        dstmi = d.dot(stmi).T
         ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri)  for xii,fi,ai,bi,xri,uri,uii,dxi in zip(xi,f,a,b,xr,ur,ui,dx) ] # Differential equation constraints
-        states.append(cvx.Problem(cvx.Minimize(cost), ode))
+        # stm_ode = [dstmii == ai*stmii for ai,stmii,dstmii in zip(a,stmi,dstmi)]
+        ode_stm = []
+        for ai,stmii,dstmii in zip(a,stmi,dstmi):
+            for s,ds in zip(stmii,dstmii):
+
+                ode_stm.append(ds == ai*s) 
+
+        states.append(cvx.Problem(cvx.Minimize(cost), ode+ode_stm))
 
     # sums problem objectives and concatenates constraints.
     prob = sum(states)
@@ -76,13 +88,19 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     print "optimal value: ", np.around(prob.value,3)
     print "solution time: {}s".format(t2-t1)
     print "setup time: {}s\n".format(t1-t0)
+    print stm[0][0].value.A
+    print stm[0][1].value.A
 
+    stm_sol = np.array([[s.value.A for s in S] for S in stm]).squeeze()
+    import pdb 
+    pdb.set_trace()
+    
     try:
         x_sol = np.array([xi.value.A for xi in x]).squeeze()
         u_sol = u.value.A.squeeze()
-        return x_sol.T, u_sol
+        return x_sol.T, u_sol, stm_sol
     except:
-        return x_ref.T,u_ref
+        return x_ref.T,u_ref,np.zeros((N,n,n))
 
 
 def test():
@@ -130,6 +148,7 @@ def test():
     X = []
     X_cvx = []
     U = []
+    STM = []
 
     tf = 5
     mesh = Mesh(tf=tf,orders=[3]*12)
@@ -157,11 +176,11 @@ def test():
 
         X.append(x)
         umax = 3
-        x_approx,u = LTV(x0, A, B, F, x_approx.T, u, mesh, trust_region=8, P=0*P[it], umax=umax )
+        x_approx,u, stm_approx = LTV(x0, A, B, F, x_approx.T, u, mesh, trust_region=8, P=0*P[it], umax=umax )
         X_cvx.append(x_approx)
+        STM.append(stm_approx)
 
 
-    # mesh.bisect()
     for i in range(2):
         mesh.bisect()
         t_u = t
@@ -176,7 +195,7 @@ def test():
             f,g = dynamics(x)
             F = f.T + g.T*u[:,None]
             A,B = jac(x)
-            x_approx,u = LTV(x0, A, B, F, x.T, u, mesh, trust_region=1,P=0,umax=umax)
+            x_approx,u, stm_approx = LTV(x0, A, B, F, x.T, u, mesh, trust_region=1,P=0,umax=umax)
 
             u = u.T
             x,u = integrate(x0, u, t,return_u=True)
