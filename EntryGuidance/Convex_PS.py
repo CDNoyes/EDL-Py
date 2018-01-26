@@ -70,8 +70,8 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 
     # Lagrange cost and ode constraints
     states = []
-    for d,xi,f,a,b,xr,ur,ui,w,stmi,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,STM,V):
-        L = 1*cvx.abs(ui)**1                                          # Lagrange integrands for a single mesh
+    for d,xi,f,a,b,xr,ur,ui,w,stmi,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,STM,V): # Iteration over the segments of the mesh
+        L = 1*cvx.abs(ui)**2                                          # Lagrange integrands for a single mesh
         cost = w*L                                                  # Clenshaw-Curtis quadrature
 
         # Estimated derivatives:
@@ -80,7 +80,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
             dstmi = d.dot(stmi)
 
         # Differential equation constraints
-        ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) + vii  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ]
+        ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) + vii  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # Iteration over individual collocation points
         if use_stm:
             ode_stm = [dstmii == ai*stmii for ai,bi,stmii,dstmii in zip(a,b,stmi,dstmi)]
         else:
@@ -88,7 +88,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 
         states.append(cvx.Problem(cvx.Minimize(cost), ode+ode_stm))
 
-        # Mayer Cost, including penalty for virtual control
+    # Mayer Cost, including penalty for virtual control
     Phi = cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))
     Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),'inf') ))
 
@@ -196,8 +196,8 @@ def test():
     T = []
 
     umax = 3
-    tf = 4
-    mesh = Mesh(tf=tf,orders=[6]*5)
+    tf = 6
+    mesh = Mesh(tf=tf,orders=[10]*2)
     t = mesh.times
     x0 = [3,-3]
     P0 = np.eye(2)*0.1              # Initial covariance
@@ -214,11 +214,9 @@ def test():
     x_approx = x
 
 
-    iters = 20                       # Maximum number of iterations
-    bisectMax = 3                       # Maximum number of bisections of the mesh
-    n_bisect = 0
+    iters = 30                       # Maximum number of iterations
     P = np.linspace(1,0.1,iters)
-    trust_region = 5
+    trust_region = 4
     # Main Loop
     for it in range(iters):
         print "Iteration {}".format(it)
@@ -250,23 +248,19 @@ def test():
             T.append(t)
             STM.append(stm_approx)
             # Check for convergence
-            if len(J_cvx)>1 and np.abs(J_cvx[-1]-J_cvx[-2])<0.1:
-                if n_bisect >= bisectMax:
-                    break
-                if it < iters-1:
-                    mesh.bisect()
-                    n_bisect += 1
+
+            if len(J_cvx)>1 and np.abs(J_cvx[-1]-J_cvx[-2]) < 0.05: # check state convergence instead
+
+                if it < iters-1: # In contrast to NLP, we only refine after the solution converges on the current mesh
+                    current_size = mesh.times.size
+                    mesh.refine(x_approx.T, F, tol=1e-5, rho=2)
+                    if mesh.times.size > 500 or current_size == mesh.times.size:
+                        break
                     t_u = t
+                    print "Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh._times),t.size)
                     t = mesh.times
-                    print "Bisecting mesh -> {} collocation points".format(t.size)
-                    # plt.figure(666)
-                    # plt.plot(t_u,u,'o-',label='Original')
                     u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                    # plt.plot(t,u,'x-',label='Resampled')
-                    # plt.legend()
-                    # plt.show()
-                    x = integrate(x0, u, t).T
-                    x_approx = x
+                    x_approx = interp1d(t_u, x, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
                     f,g = dynamics(x_approx)
                     F = f.T + g.T*u[:,None]
                     A,B = jac(x_approx)
@@ -300,7 +294,10 @@ def test():
         plt.title('Control Iterations')
 
     plt.figure(3)
-    plt.plot(X_cvx[-1][0],X_cvx[-1][1],'o-',label='Discretization')
+    ti = mesh._times
+    xcvx = interp1d(T[-1], X_cvx[-1].T, kind='linear', axis=0, assume_sorted=True)(ti).T
+    plt.plot(xcvx[0],xcvx[1],'o-',label='Discretization')
+    # plt.plot(X_cvx[-1][0],X_cvx[-1][1],'o-',label='Discretization')
     plt.plot(X[-1][0],X[-1][1],label='Integration')
     plt.title('Optimal Trajectory')
     plt.legend()
