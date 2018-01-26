@@ -1,18 +1,21 @@
 """ A class for working with multiple intervals of collocation points """
 
 import numpy as np
+from scipy.interpolate import interp1d
 from Chebyshev import ChebyshevDiff, ChebyshevQuad
 
 class Mesh(object):
 
-    def __init__(self, tf, orders=None, min_order=2, max_order=100):
+    def __init__(self, tf, orders=None, min_order=2, max_order=30):
         self.min = min_order
         self.max = max_order
         self.default = 6                    # Default order when splitting a mesh into two
+        self.inc = 10                      # Default increase when raising the order of a segment
 
         Ni = range(self.min,self.max+1)
         tw = [ChebyshevQuad(N) for N in Ni]
 
+        # Stores of data
         self._D = [ChebyshevDiff(N) for N in Ni]        # All possible differentiation matrices
         self._tau = [twi[0] for twi in tw]              # All [-1,1] points
         self._w   = [twi[1] for twi in tw]              # All Clenshaw-Curtis weights
@@ -24,7 +27,7 @@ class Mesh(object):
 
         self._times = np.linspace(0,tf,len(self.orders)+1).tolist() # The times representing the mesh end points [t0, t1, t2, ..., tf]
         self.points = [self.tau(N) for N in self.orders] # list over array because they may be different lengths
-        self.diffs = [self.D(N)*2./interval for N,interval in zip(self.orders,np.diff(self._times))] # Differentiation matrices scaled the their appropriate interval
+        self.diffs = [self.D(N)*2./interval for N,interval in zip(self.orders,np.diff(self._times))] # Differentiation matrices scaled for their appropriate interval
         self.n_points = sum(self.orders)+1 # number of actual collocation points, accounting for meshes overlap in the interior (and e.g. N=2 yields 3 points)
         self.times = self.tau2time(self._times)
         self.weights = [self.w(N)*interval/2. for N,interval in zip(self.orders,np.diff(self._times))]
@@ -81,7 +84,7 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
-    def split(self, i, t=None, order=None):
+    def split(self, i, t=None):
         """ Splits the ith mesh at time t into 2 meshes
             If t is not given, the mesh is bisected.
         """
@@ -92,9 +95,6 @@ class Mesh(object):
         else:
             assert(t>self._times[i])
             assert(t<self._times[i+1])
-
-        if order is None:
-            order=self.default
 
         self._times.insert(i+1, t)
         intervals = np.diff(self._times)
@@ -114,13 +114,81 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
-    def bisect(self,order=None):
-        if order is None:
-            order=self.default
-
+    def bisect(self):
         for i in range(0, 2*len(self.orders),2):
             self.split(i, t=None)
 
+
+    def refine(self, X, F, tol=1e-2, rho=2):
+        """ Refines the mesh using hp-adaptation
+
+            tol is the tolerance on the residual matrix above which the mesh is refined
+            rho is a fraction (>0) relative to the mean scaled residual
+                e.g. rho=0.5 corresponds to errors 50% greater than the mean error
+
+        """
+        # X,F are the current solution and its derivative on the current mesh
+        rho += 1.
+
+        intervals = np.diff(self._times)/2.
+        Tc = self.points
+        Xc = self.chunk(X)
+        Fc = self.chunk(F)
+
+        segment = 0
+        for t,x,f,interval in zip(Tc,Xc,Fc,intervals):
+            ti = t[:-1] + np.diff(t)  # Midpoints in (-1,1)
+            Di = colloc(ti)          # Collocation matrix on arbitrary points
+
+            xi = interp1d(t, x, kind='cubic', assume_sorted=True, axis=0)(ti)
+            fi = interp1d(t, f, kind='cubic', assume_sorted=True, axis=0)(ti)
+
+            R = np.abs(Di.dot(xi) - interval*fi)    # Residual matrix
+            ij = np.unravel_index(R.argmax(), R.shape)
+            col = ij[1]
+            r = R[:,col]                    # Residual column with the largest error
+            beta = r/r.mean()               # scaled midpoint residual vector
+
+            if R[ij] > tol:
+                print "Refining segment {}".format(segment)
+
+                if beta.max() <= rho and (self.orders[segment]+self.inc<self.max): # Uniform type error
+                    print "Raising polynomial order..."
+                    self.update(segment, self.orders[segment]+self.inc)
+
+                else: # Isolated errors or max order reached 
+                    print "Splitting the segment..."
+                    # Find the highest points (skipping adjacent errors )
+                    isplit = np.argmax(beta) # for now, just split at the highest error point
+                    tsplit = (ti[isplit]*interval + self._times[segment] +self._times[segment+1])/2. # convert to real time
+                    self.split(segment, t=tsplit) # have to add another increment each time a split is done
+                    segment +=1
+            segment+= 1
+
+
+def colloc(x):
+    """
+        Computes the pseudospectral/collocation differentiation matrix for the
+        arbitrary nodes stored in the vector x. Uses the lagrange polynomial
+        formulation.
+
+        Reference:
+        Jean-Paul Berrut & Lloyd N. Trefethen, "Barycentric Lagrange Interpolation"
+        http://web.comlab.ox.ac.uk/oucl/work/nick.trefethen/berrut.ps.gz
+    """
+    x = np.asarray(x)
+    x.sort()
+    N = x.size
+    N1 = N+1
+    N2 = N*N
+    X = np.tile(x,(N,1)).T
+    Xd = X-X.T+np.eye(N)
+    W = np.tile(1./np.prod(Xd, axis=1),(N,1)).T
+    D = W/(W.T * Xd)
+    Ds = np.sum(D,axis=0)
+    D = D - np.diag(np.diag(D)) + np.diag(1-Ds)
+    D = -D.T
+    return D
 
 
 
