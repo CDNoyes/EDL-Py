@@ -17,7 +17,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     A - state linearization around x_ref
     B - control linearization around x_ref
     f_ref - the original nonlinear dynamics evaluated along x_ref
-    x_ref - the trajectory used to linearize the problem, typically the current iterate
+    x_ref - the trajectory used to linearize the problem, the current iterate
 
     x0 - initial condition
     mesh - Mesh.Mesh instance
@@ -38,7 +38,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     u = cvx.Variable(N,m) # Only works for m=1
     v = np.array([cvx.Variable(n) for _ in range(N)]) # Virtual controls
     # K = cvx.Variable(rows=1,cols=2) # Linear feedback gain
-
+    K = np.array([1,1]).T
     # Alternatively, we could create meshes of variables directly
     X = mesh.chunk(x)
     A = mesh.chunk(A)
@@ -71,7 +71,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     # Lagrange cost and ode constraints
     states = []
     for d,xi,f,a,b,xr,ur,ui,w,stmi,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,STM,V): # Iteration over the segments of the mesh
-        L = 1*cvx.abs(ui)**2                                          # Lagrange integrands for a single mesh
+        L = cvx.abs(ui)**2                                          # Lagrange integrands for a single mesh
         cost = w*L                                                  # Clenshaw-Curtis quadrature
 
         # Estimated derivatives:
@@ -99,7 +99,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     prob.constraints += constr
 
     t1 = time.time()
-    prob.solve()
+    prob.solve(solver='ECOS')
     t2 = time.time()
     print "status:        ", prob.status
     print "optimal value: ", np.around(prob.value,3)
@@ -120,6 +120,9 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
         return x_sol.T, u_sol, stm_sol, prob.value
     except:
         return x_ref.T,u_ref,np.zeros((N,n,n)),None
+
+
+
 
 
 def test():
@@ -147,18 +150,6 @@ def test():
         A[1,1,:] = mu*(1-x[0]**2)
 
         return np.moveaxis(A, -1, 0),np.moveaxis(B, -1, 0)
-
-    def hess(x):
-        x1,x2=x
-        try:
-            N = x1.shape[0]
-        except:
-            N = 1
-        H = np.zeros((N,2,2,2)) # Will be (N,2,3,3) if mu is included
-        H[:,1,0,0] = -2*mu*x2
-        H[:,1,0,1] = -2*mu*x1
-        H[:,1,1,0] = -2*mu*x1
-        return H.squeeze()
 
     def stm_dyn(stm,t,A):
         return np.asarray(A(t)).dot(stm)
@@ -196,13 +187,19 @@ def test():
     T = []
 
     umax = 3
-    tf = 6
-    mesh = Mesh(tf=tf,orders=[10]*2)
+    tf = 5
+    mesh = Mesh(tf=tf,orders=[5]*5)
     t = mesh.times
     x0 = [3,-3]
     P0 = np.eye(2)*0.1              # Initial covariance
     sp,wm,wc = Unscented.Transform(x0,P0)
-    print sp
+    # Cerify mean and cov of initial points
+    print sp.T.dot(wm)
+    e = (sp-np.array(x0))
+    C = sum([wci*np.outer(ei,ei) for ei,wci in zip(e,wc)])
+    # print sp
+    print wm
+
     # Initial "guess" used for linearization
     u = np.zeros_like(t)
     # x = np.vstack((np.linspace(x0[0],0,u.shape[0]),np.linspace(x0[1],0,u.shape[0])))
@@ -247,23 +244,30 @@ def test():
             U.append(u)
             T.append(t)
             STM.append(stm_approx)
-            # Check for convergence
 
-            if len(J_cvx)>1 and np.abs(J_cvx[-1]-J_cvx[-2]) < 0.05: # check state convergence instead
+            if len(J_cvx)>1:
+                if J_cvx[-1] > 1e-3:
+                    rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/(J_cvx[-1])
+                else: #near zero cost so we use the absolute difference instead
+                    rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
 
-                if it < iters-1: # In contrast to NLP, we only refine after the solution converges on the current mesh
-                    current_size = mesh.times.size
-                    mesh.refine(x_approx.T, F, tol=1e-5, rho=2)
-                    if mesh.times.size > 500 or current_size == mesh.times.size:
-                        break
-                    t_u = t
-                    print "Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh._times),t.size)
-                    t = mesh.times
-                    u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                    x_approx = interp1d(t_u, x, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                    f,g = dynamics(x_approx)
-                    F = f.T + g.T*u[:,None]
-                    A,B = jac(x_approx)
+                if rel_diff < 0.05: # check state convergence instead?
+                    # In contrast to NLP, we only refine after the solution converges on the current mesh
+                    if it < iters-1:
+                        current_size = mesh.times.size
+                        refined = mesh.refine(x_approx.T, F, tol=1e-6, rho=1)
+                        if mesh.times.size > 1000 or not refined:
+                            print 'Terminating'
+                            break
+                        t_u = t
+                        print "Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders),t.size)
+                        t = mesh.times
+                        u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
+                        x_approx = interp1d(t_u, x, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
+                        f,g = dynamics(x_approx)
+                        F = f.T + g.T*u[:,None]
+                        A,B = jac(x_approx)
+
 
 
     x = integrate(x0, u, t)
@@ -271,6 +275,13 @@ def test():
     T.append(t)
     U.append(u)
     STM.append(stm_approx)
+    X_sp = []
+    x_bar = np.zeros_like(x)
+    for sigma_pt,wmi in zip(sp,wm):
+        x_sp = integrate(sigma_pt, u, t)
+        x_bar += x_sp*wmi
+        X_sp.append(x_sp)
+
 
     # print len(X)
     # print len(U)
@@ -296,7 +307,7 @@ def test():
     plt.figure(3)
     ti = mesh._times
     xcvx = interp1d(T[-1], X_cvx[-1].T, kind='linear', axis=0, assume_sorted=True)(ti).T
-    plt.plot(xcvx[0],xcvx[1],'o-',label='Discretization')
+    plt.plot(xcvx[0],xcvx[1],'o',label='Discretization')
     # plt.plot(X_cvx[-1][0],X_cvx[-1][1],'o-',label='Discretization')
     plt.plot(X[-1][0],X[-1][1],label='Integration')
     plt.title('Optimal Trajectory')
@@ -314,6 +325,12 @@ def test():
     plt.semilogy(J_cvx,'o-')
     plt.ylabel('Objective Function')
     plt.xlabel('Iteration')
+
+    plt.figure(8)
+    for pt in X_sp:
+        plt.plot(pt.T[0],pt.T[1])
+    plt.plot(x_bar.T[0],x_bar.T[1],'k--')
+    plt.title('Optimal Sigma Point Trajectories')
 
     for fig in [1,2,5,3]:
         plt.figure(fig)
