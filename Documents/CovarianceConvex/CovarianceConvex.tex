@@ -13,19 +13,26 @@
 
 
 	\section*{}
-	\textbf{This paper presents a numerical approach for solving a class of nonlinear optimal control problems in which the cost functional is a convex function of the system's covariance. Using recent advances in successive convexification, the original nonlinear optimal control is solved via a convergent sequence of convex subproblems. The state transition matrix used to propagate the system's covariance is the solution to a linear, time-varying differential equation and thus fits naturally into a convex approach. An \textit{hp}-adaptive Chebyshev pseudospectral method is used to transcribe each optimal control subproblem into a convex optimization problem and displays benefit relative to typical discretization methods (i.e. the integration methods of Euler and Heun). Numerical results are presented to demonstrate the approach.}
+	\textbf{This paper presents a numerical approach for solving a class of nonlinear optimal control problems in which the cost functional is a convex function of the system's covariance. Using recent advances in successive convexification, the original nonlinear optimal control is solved via a convergent sequence of convex subproblems. The unscented transform is used to propagate the system's covariance and fits naturally into a convex approach. An \textit{hp}-adaptive Chebyshev pseudospectral method is used to transcribe each optimal control subproblem into a convex optimization problem and displays benefit relative to typical discretization methods (i.e. the integration methods of Euler and Heun). Numerical results are presented to demonstrate the approach.}
 	
 	\section{Introduction}
 	% One point to consider: we can swap the independent variable to normalized time, or energy etc and consider a fixed final IV problem. The change of variable increases the nonlinearity but we are iterating over linearizations anyway so it is possible.
+	One major challenge in control is to have autonomous systems operate optimally under uncertain conditions. Examples in aerospace engineering include spacecraft, ascent vehicles, and EDL capsules where uncertainty exists in the mass properties, environment models, aerodynamics, etc.
 
-
+	Reference~\cite{PCE_OCP_Bhattacharya} considered the problem of optimal trajectory generation for systems with probabilistic uncertainty. Polynomial chaos expansions were used to transform stochastic optimal control problems including minimum expectation and minimum covariance problems into deterministic optimal control problems solved by nonlinear programming. This formulation is limited to low dimensional uncertainty spaces due to the factorial increase in the number of terms of the expansion required as the dimensionality grows. In contrast, the unscented transform used in this work scales quadratically. Ref.~\cite{OpenLoopUncertain} also explored robust open-loop solutions with a mean-covariance framework based on second order Taylor expansions. Ref.~\cite{Desensitized} introduced the closely related desensitized optimal trajectories framework which included both open- and closed-loop formulations. A key difference in the desensitized framework is that it is independent of any probabilistic description of the uncertainty.
+	
+	Ref.~\cite{RSOptimalControl} posed the very general Riemann-Stieljtes optimal control problem for uncertain nonlinear systems and solved the problem using hyper-pseudospectral methods implemented in \textit{DIDO}. The unscented optimal control problem corresponds to a particular discretization of the uncertainty space and is therefore a special case of the Riemann-Stieljtes formulation.
+	
 	% Review of covariance minimization or control 
 		% Bhattacharya paper with PCE 
+		
+	% Review of uncertain optimal control, including unscented optimal control techniques 
 		
 	% Review of successive convex optimization (Mao's papers, lossless paper(s)?)
 	
 	% Review of pseudospectral methods (and the one paper that combines it with convex optimization)
 		% Include mention of hp-mesh adaptive NLP and indicate that the results apply here as well 
+	
 		
 	\section{Problem Statement}
 	% We can also consider covariance based constraints with a different convex objective function
@@ -34,90 +41,45 @@
 	\begin{align}
 	\dot{x}(t) = f(x(t),u(t,x),\lambda) \label{eq_dynamics}
 	\end{align}
-	where $x:[0,t_f]\mapsto \mathbb{R}^n$ is the state trajectory, $u:[0,t_f]\mapsto \mathbb{R}^m$ is the control input, and $\lambda\in\mathbb{R}^p$ is a constant vector representing the parametric uncertainty. The only state constraints considered here are constraints on the final state, $x(t_f)\in X_f$ where $X_f$ is a convex set. It is further assumed the control is subject to a convex constraint $u(t) \in U \subset \mathbb{R}^m$, and that the parameters are jointly distributed according to a multivariate normal with zero mean and covariance $P_{\lambda}$, i.e. $\lambda \sim \mathcal{N}(0,P_{\lambda})$. The initial condition uncertainty is similarly described by $x_0 \sim \mathcal{N}(\bar{x}_0,P_x(0))$ and the total initial covariance is then $P(0) = \left[\begin{array}{cc}
+	where $x:[0,t_f]\mapsto \mathbb{R}^n$ is the state trajectory, $u:[0,t_f]\mapsto \mathbb{R}^m$ is the control input, and $\lambda\in\mathbb{R}^p$ is a constant vector representing the parametric uncertainty. Let $z(t)\mathrel{:}=[x(t),\, \lambda]\in\mathbb{R}^{n+p}$. The only state constraints considered here are constraints on the final state, $x(t_f)\in X_f$ where $X_f$ is a convex set. It is further assumed the control is subject to a convex constraint $u(t) \in U \subset \mathbb{R}^m$, and that the parameters are jointly distributed according to a multivariate normal with zero mean and covariance $P_{\lambda}$, i.e. $\lambda \sim \mathcal{N}(0,P_{\lambda})$. The initial condition uncertainty is similarly described by $x_0 \sim \mathcal{N}(\bar{x}_0,P_x(0))$ and the total initial covariance of $z(0)$ is then $P(0) = \left[\begin{array}{cc}
 		P_{x}(0)& 0_{n\mathrm{x}p} \\
 		 0_{p\mathrm{x}n} & P_{\lambda}
 		\end{array}\right]$.
 	
-	An extended state transition matrix (STM) is used to propagate the covariance along a trajectory. Denote by $\Phi^X(t,0) \in \mathbb{R}^{n\mathrm{x}n}$ the standard STM, i.e. the matrix of sensitivities of the state $ x(t) $ to changes in the state $x(0)$. Similarly, $\Phi^P(t,0) \in \mathbb{R}^{n\mathrm{x}p}$ is the matrix of sensitivities of the state $ x(t) $ to the uncertain parameters. Then the extended STM $\Phi(t,0)\in\mathbb{R}^{(n+p)\mathrm{x}(n+p)}$ which includes parametric uncertainty and its governing dynamics may be written succinctly as 
-	\begin{align}
-	&\Phi \triangleq \left[\begin{array}{cc}
-	\Phi^X & \Phi^P \\
-	 0_{p\mathrm{x}n} & I_{p\mathrm{x}p}
-	\end{array}\right] \\
-	&D \triangleq \left[\begin{array}{cc}
-		f_x & f_p \\
-		 0_{p\mathrm{x}n} & 0_{p\mathrm{x}p}
-		\end{array}\right] \\
-		&\dot{\Phi}(t,0) = D(t)\Phi(t) \label{eq_stm_dyn} \\
-		&\Phi(0,0) = I
-	\end{align}
-	where the partial derivative matrix $ D $ is evaluated along a trajectory $(x(t),u(t),\lambda)$. Notice that Eq.~(\ref{eq_stm_dyn}) is an LTV system. Let $(x^*(t),u^*(t),\lambda^*)$ be the trajectory along which Eq.~(\ref{eq_stm_dyn}) is integrated with $x^*(0)$ and $\lambda^*$ assuming their expected values ($x^*(0)=\bar{x}_0$ and $\lambda^*=0$) and define the deviations from this trajectory as
-	\begin{align}
-	\delta x(t) &= x(t)-x^*(t) \\
-	%\delta u(t) = u(t)-u^*(t) \\
-	\delta \lambda &= \lambda-\lambda^*
-	\end{align}
-	and finally let $z = [x(t),\,\lambda]$. Consider the first few terms of a Taylor series expansion of $\delta x(t) $ about $ (x^*(t),u^*(t),\lambda^*) $:
+	For highly nonlinear systems, or those with significant uncertainty, a linear approach (the state transition matrix approach or directly propagating the differential equations using the Jacobian linearization) may not accurately capture the evolution of the mean and covariance. In contrast, the unscented transform \cite{UT,UKF1} offers an alternative, higher order (and thus generally more accurate) estimate of the covariance and also captures second order effects of $\lambda$ on the mean. The unscented transform relies on sigma points which are chosen such that they have the same first two moments, i.e. $ (\mathbb{E}[z(0)],\mathbb{V}[z(0)]) = ([\bar{x}_0,\,0],P_0) $, of the initial distribution. These sigma points are then propagated through the nonlinear transformation (here, the integration of nonlinear dynamics) and the transformed points are used to estimate the first two moments of the resulting distribution. There is no unique set of sigma points satisfying these conditions, and there exist both symmetric and asymmetric \cite{UT_simplex} sets that match the first two moments. The symmetric version of the method requires integration of $2(n+p)$ additional trajectories resulting in $2n(n+p)$ dynamic constraints in the optimal control problem. The complexity as a function of \textit{n} and \textit{p} is the same as in the linear approach, requiring a constant factor of two more constraints. 
 	
+	The sigma points are computed via square root of scaled covariance matrix 
 	\begin{align}
-	\delta x(t) &= \dfrac{\partial x(t)}{\partial x(0)} \delta x(0) + \dfrac{\partial x(t)}{\partial \lambda} \delta \lambda \nonumber\\
-	&+\frac{1}{2}\left(\delta x^T(0) \dfrac{\partial^2 x(t)}{\partial x^2(0)} \delta x(0) + 2\delta x^T(0)\dfrac{\partial^2 x(t)}{\partial x(0)\partial\lambda} \delta \lambda +\delta \lambda^T \dfrac{\partial^2 x(t)}{\partial \lambda^2} \delta \lambda\right) \label{eq_taylor_exp}\\
-	\nonumber &+ h.o.t.
+	&z_0 = \bar{z}(0) \\
+	&SS^T = (n+p+\kappa)P(0 \\
+	&z_i = \bar{z(0)} \pm S_i 
 	\end{align}
-	Truncating the series at first order provides a linear approximation to Eq.~(\ref{eq_taylor_exp}) that can be written simply as:
+	where the Cholesky decomposition is used to efficiently compute \textit{S}, each $S_i$ is understood to be a row of \textit{S}, and $\kappa$ is an additional tuning parameter. Let $\mathcal{S}$ denote the set of sigma points. Each sigma point is propagated forward and the mean and covariance at any point along the trajectory are computed via the following linear relationships
 	\begin{align}
-	\delta z(t) \approx \Phi(t,0)\delta z(0).
+	&\bar{z}(t) = \mathbb{E}[z(t)] \approx \sum_{i=0}^{2n+2p}w_iz_i(t) \\
+	&P(t) = \mathbb{V}[z(t)] \approx \sum_{i=0}^{2n+2p}w_i(z_i(t) - \bar{z}(t))(z_i(t) - \bar{z}(t))^T
 	\end{align}
-	Let $\mathbb{E}[\cdot]$ be the expectation operator and noting that $\mathbb{E}[z]=0$ we arrive at the linearized estimate of the covariance
-	\begin{align}
-	P(t) &= \mathbb{E}[\delta z(t)\delta z^T(t)] &\mathrm{ (definition)} \\
-	     &= \mathbb{E}[\Phi(t,0)\delta z(0)\delta z(0)^T\Phi^T(t,0)] &\mathrm{(substitution)} \\
-	     &= \Phi(t,0)\mathbb{E}[\delta z(0)\delta z(0)^T] \Phi^T(t,0) \\
-	     &= \Phi(t,0)P(0)\Phi^T(t,0) &\mathrm{ (definition)} \label{eq_cov_stm}
-	\end{align}
-	where the third equality is due to the linearity of $\mathbb{E}$ and because $\Phi$ is a deterministic quantity. The covariance matrix $P(t)$ may be mapped through a $\mathcal{C}^1$ function $h(z)$ by another congruence transformation (like Eq.~(\ref{eq_cov_stm})):
-	\begin{align}
-	&H = \dfrac{\partial h}{\partial z} \\
-	&P_h(t) = HP(t)H^T.
-	\end{align}
-	Hence we define the following optimal control problem:
+	where $w_i$ are the mean and covariance weights corresponding to the sigma points.
+	Thus we pose the following problem:
 	\\\\
-	\textbf{Problem 1 - Linear Covariance}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
-	\begin{align}
-	J(x,u) = M(x(t_f),P(t_f)) + \int_{0}^{t_f}L(x(t),u(t),P(t))\mathrm{d}t
-	\end{align}
-	\textit{	subject to the constraints }
-	\begin{align}
-	&\dot{x}(t) = f(x(t),u(t),\lambda) \\
-	&x(0) = \bar{x}_0 \\
-	&\dot{\Phi}(t) = D(t)\Phi(t) \\
-	&\Phi(0) = I \\
-	&u(t) \in U \\
-	&x(t_f) \in X_f
-	\end{align}
-	\textit{where} $ M:\mathbb{R}^{n\mathrm{x}n}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,}  $L:\mathbb{R}^{n\mathrm{x}n}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
-	
-	\textit{Remark}: For highly nonlinear systems, or those with significant uncertainty, the linear approach in Problem 1 may not accurately capture the mean and covariance, which may be approximated in other ways. The STM differential equations in Problem 1 represent $n(n+p)$ equality constraints. The unscented transform \cite{UT,UKF1} offers an alternative, generally more accurate estimate of the covariance and also captures second order effects of $\lambda$ on the mean. The method requires integration of $2(n+p)$ additional trajectories resulting in $2n(n+p)$ equality constraints. The complexity as a function of \textit{n} and \textit{p} is the same as in the linear approach, requiring a constant factor of two more constraints. This leads naturally to the following variation of Problem 1:
-	\\\\
-	\textbf{Problem 2 - Unscented Covariance}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
+	\textbf{Problem 1 - Unscented Optimal Control}. \textit{Determine a control function $ u^* $ and state trajectory $ x^* $ that minimize the functional}
 		\begin{align}
 		J(x,u) = M(x(t_f),P(t_f)) + \int_{0}^{t_f}L(x(t),u(t),P(t))\mathrm{d}t
 		\end{align}
 		\textit{	subject to the constraints }
 		\begin{align}
-		&\dot{x}^i(t) = f(x^i(t),u(t),\lambda^i) \\
-		&x^i(0) = x^i_0 \\
+		&\dot{x}_i(t) = f(x_i(t),u(t),\lambda_i) \\
+		&x_i(0) = x_{i_0} \\
 		&u(t) \in U \\
-		&\sum_{i=0}^{2n+2p}w^ix^i(t_f) \in X_f \label{eq_endpoint_UT}
+		&\bar{x}(t_f) \in X_f \label{eq_endpoint_UT}
 		\end{align}
-	\textit{where M and L are as in Problem 1.}
+	\textit{where} $ M:\mathbb{R}^{n\mathrm{x}n}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,}  $L:\mathbb{R}^{n\mathrm{x}n}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
 		
-	Unlike Problem 1, which assumes that $\mathbb{E}[x(t)] = \mathbb{E}[x(0)] + \int_{0}^{t} f(x,u,\mathbb{E}[\lambda]) d\tau = \bar{x}_0 + \int_{0}^{t} f(x,u,0) d\tau$, Problem 2 constructs a higher order estimate of the mean trajectory. We thus choose in Problem 2 to enforce the endpoint constraint not on the nominal trajectory $x^0(t)$ but on the mean as represented by Eq.~(\ref{eq_endpoint_UT}) while they are the same for Problem 1.
+	\textit{Remark.} There exists flexibility in Problem 1 to enforce the endpoint constraint on the nominal trajectory $x^0(t)$ or on the expected trajectory as represented by Eq.~(\ref{eq_endpoint_UT}).
 	
 	% Does using UT allow for accounting for control constraints in a closed-loop formulation?
 	
-	% Problem 3 could be a normal objective function with a covariance constraint instead 
+	% Problem 2 could be a normal objective function with a covariance constraint instead 
 		
 %	In particular, we seek trajectories that take advantage of the closed-loop dynamics.
 	
@@ -126,12 +88,12 @@
 %	Trace alone is bad here because it doesn't account for the parameter effects.
 	
 	\section{Solution Methodology}
-	Under the stated assumptions, only the nonlinear dynamics render Problems 1 and 2 nonconvex. These problems may be solved directly by nonlinear programming (NLP) methods such as sequential quadratic programming (SQP) but such methods do not inherit the guarantees of convex programming.
-	Several iterative convex programming methods have been proposed to solve optimal control problems with nonlinear dynamics \cite{SeqConProg,SuccConvex1}. We proceed as in Ref.~\cite{SuccConvex1}. The algorithm proceeds by linearizing Eq.~(\ref{eq_dynamics}) around an initial trajectory $ (x^i(t),u^i(t),0) $ (notice that $ \lambda=0 $ is always the linearization point for Problem 1), resulting in the following system dynamics
+	Under the stated assumptions, only the nonlinear dynamics render Problem 1 nonconvex. These problems may be solved directly by nonlinear programming (NLP) methods such as sequential quadratic programming (SQP) but such methods do not inherit the powerful guarantees of convex programming.
+	Several iterative convex programming methods have been proposed to solve optimal control problems with nonlinear dynamics \cite{SeqConProg,SuccConvex1}. We proceed as in Ref.~\cite{SuccConvex1}. The algorithm begins by assuming an initial control history (typically we take the null control $u(t)=0$) and integrating the nonlinear model for each sigma point. The algorithm proceeds by linearizing Eq.~(\ref{eq_dynamics}) around each initial trajectory $ (x^k(t),u^k(t),\lambda) $, resulting in the following system dynamics
 	\begin{align}
-	\dot{x}^{i+1} = f(x^{i},u^i) + f_x(x^i,u^i)(x^{i+1}-x^i) + f_u(x^i,u^i)(u^{i+1}-u^i) \label{eq_linearized}
+	\dot{x}^{k+1} = f(x^{k},u^k) + f_x(x^k,u^k)(x^{k+1}-x^k) + f_u(x^k,u^k)(u^{k+1}-u^k) \label{eq_linearized}
 	\end{align}
-	which are valid in a neighborhood around $ (x^i(t),u^i(t),0) $. In order to ensure this validity, we seek a solution $ (x^{i+1}(t),u^{i+1}(t),0) $ within an ellipsoidal trust region defined by $||x^{i+1}-x^i||_Q <= \delta$.
+	which are valid in a neighborhood around $ (x^k(t),u^k(t),0) $. In order to ensure this validity, we seek a solution $ (x^{k+1}(t),u^{k+1}(t),0) $ within an ellipsoidal trust region defined by $||x^{k+1}-x^k||_Q <= \delta$.
 	
 %	each convex subproblem
 	
@@ -157,12 +119,9 @@
 	
 	Neither of the applications \cite{PS_Convex,PS_Convex_ascent} to convex optimization referred to another strength of pseudospectral methods: $ hp $-adaptive (mesh based) solutions \cite{GPOPS,hp_adapt}. This well-developed theory can be leveraged here as in the NLP context. A full review is beyond the scope of this paper but the underlying ideas are presented. It is easy to imagine that trajectories $x(t)$ exist for which even the best global polynomial approximation cannot provide an adequate solution. In order to improve the quality of the solution, we can instead divide the time horizon into segments and approximate the state on each segment by a comparatively low order polynomial. Refining solutions by allowing the divisions of the time horizon to increase leads to \textit{h}-adaptive methods, while refining the solution by increasing the order of the polynomials on a fixed grid is referred to as a \textit{p}-adaptive method. Combining these two ideas leads to the \textit{hp}-adaptive methods which were originally studied in finite element solutions to fluid mechanics problems \cite{HPAdapt_origin} before being adapted for optimal control. For areas where the solution is very smooth, spectral convergence is expected as the order of the approximation is increased.
 	
+	In the NLP context, the mesh is refined after every solution because the solution is expected to match the nonlinear dynamics. In the successive convexification approach used here, the iterative linearization of the dynamics means that if the trust region is sufficiently large, the solution to the linearized problem may not match the dynamics very closely resulting in large refinement of the mesh. Instead, the solution is solved repeatedly on the same mesh until convergence, then refined.
+	
 	% In the above para, NLP is not the original context - it seems hp-adaptation was used in finite element models prior to that.
-	
-	% RefPS Convex showed both superior solutions (as measured by the objective function) for an equal number of nodes, as well as greater consistency with the integrated solution ( as measured by the mean and maximal errors between the two solutions)
-	
-	% Spectral convergence for smooth problems
-	% Mesh adaptation for non-smooth problems 
 	
 	\section{Numerical Results}
 
@@ -174,10 +133,6 @@
 %		R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
 %		Coron, editors, Control of Partial Differential Equations, pages 101-129. Springer,
 %			Berlin-Heidelberg, 2012.
-	
-		
-%		\bibitem{RSOptimalControl}
-%		I.M. Ross, R.J. Proulx, M. Karpenko, and Q. Gong, ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
 		
 %		\bibitem{UncertainOptimalControl}
 %		C. Phelps, J.O. Royset, and Q. Gong, ``Optimal Control of Uncertain Systems Using Sample Average Approximations," SIAM Journal on Control and Optimization, 2016.
@@ -188,7 +143,11 @@
 		\bibitem{OpenLoopUncertain}
 		Darlington, John, et al. ``Decreasing the sensitivity of open-loop optimal solutions in decision making under uncertainty." European Journal of Operational Research 121.2 (2000): 343-362.
 		
+		\bibitem{Desensitized}
+		Seywald, Hans, and Renjith R. Kumar. ``Desensitized optimal trajectories." Spaceflight mechanics 1996 (1996): 103-115.
 		
+		\bibitem{RSOptimalControl}
+				I.M. Ross, R.J. Proulx, M. Karpenko, and Q. Gong, ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
 		
 		\bibitem{BoydConvexBook}
 		Boyd, S., and L. Vandenberghe, ``Convex optimization," Cambridge university press, 2004.
@@ -198,14 +157,16 @@
 		
 		
 		\bibitem{UT}
-		S.J. Julier, J.K. Uhlmann, ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
+		Julier, S.J., and Uhlmann, J.K., ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
 
 		\bibitem{UKF1}
-		S.J. Julier, J.K. Uhlmann, ``A New Extension of the Kalman Filter for Nonlinear Systems" In Int. symp. aerospace/defense sensing, simul. and controls (Vol. 3, No. 26, pp. 182-193), 1997.
+		Julier, S.J., and Uhlmann, J.K., ``A New Extension of the Kalman Filter for Nonlinear Systems" In Int. symp. aerospace/defense sensing, simul. and controls (Vol. 3, No. 26, pp. 182-193), 1997.
 		
 		\bibitem{UKF2}
-		Julier, S. J., and Uhlmann, J. K. ``Unscented filtering and nonlinear estimation." Proceedings of the IEEE, 92(3), 401-422. 2004.
-				
+		Julier, S.J., and Uhlmann, J.K., ``Unscented filtering and nonlinear estimation." Proceedings of the IEEE, 92(3), 401-422. 2004.
+		
+		\bibitem{UT_simplex}
+		Julier, S.J., and Uhlmann, J.K., ``Reduced Sigma Point Filters for the Propagation of Means and Covariances Through Nonlinear Transformation"
 				
 		\bibitem{ChebyPS}
 		Fahroo, Fariba, and I. Michael Ross. ``Direct trajectory optimization by a Chebyshev pseudospectral method." Journal of Guidance, Control, and Dynamics 25.1 (2002): 160-166.
@@ -218,7 +179,6 @@
 		
 		\bibitem{GPOPS}		
 		Rao, Anil V., et al. ``Algorithm 902: Gpops, a matlab software for solving multiple-phase optimal control problems using the gauss pseudospectral method." ACM Transactions on Mathematical Software (TOMS) 37.2 (2010): 22.				
-					
 				
 		\bibitem{PS_Convex}
 		M. Sagliano, ``Pseudospectral Convex Optimization for Powered Descent and Landing," Journal of Guidance, Control, and Dynamics, 2017.
