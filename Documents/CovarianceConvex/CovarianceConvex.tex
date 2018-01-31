@@ -13,7 +13,7 @@
 
 
 	\section*{}
-	\textbf{This paper presents a numerical approach for solving a class of nonlinear optimal control problems in which the cost functional is a convex function of the system's covariance. Using recent advances in successive convexification, the original nonlinear optimal control is solved via a convergent sequence of convex subproblems. The unscented transform is used to propagate the system's covariance and fits naturally into a convex approach. An \textit{hp}-adaptive Chebyshev pseudospectral method is used to transcribe each optimal control subproblem into a convex optimization problem and displays benefit relative to typical discretization methods (i.e. the integration methods of Euler and Heun). Numerical results are presented to demonstrate the approach.}
+	\textbf{This paper presents a numerical approach for solving a class of nonlinear optimal control problems in which the cost functional is a convex function of the system's covariance. Using recent advances in successive convexification, the original nonlinear optimal control problem is solved via a convergent sequence of convex subproblems. The unscented transform is used to propagate the system's covariance and fits naturally into a convex approach. An \textit{hp}-adaptive Chebyshev pseudospectral method is used to transcribe each optimal control subproblem into a convex optimization problem and displays benefit relative to typical discretization methods (i.e. the integration methods of Euler and Heun). Numerical results are presented to demonstrate the approach.}
 	
 	\section{Introduction}
 	% One point to consider: we can swap the independent variable to normalized time, or energy etc and consider a fixed final IV problem. The change of variable increases the nonlinearity but we are iterating over linearizations anyway so it is possible.
@@ -83,7 +83,7 @@
 		
 %	In particular, we seek trajectories that take advantage of the closed-loop dynamics.
 	
-	\subsection{Objective Functions}
+%	\subsection{Objective Functions}
 	% discussion of possible cost functions here 
 %	Trace alone is bad here because it doesn't account for the parameter effects.
 	
@@ -97,13 +97,9 @@
 	
 %	each convex subproblem
 	
-	\subsection{Open Loop vs Closed Loop Formulations}
-	In an open loop formulation, only the trajectory through the state space can be optimized to reduce the covariance. This is an inherently nonlinear problem that cannot easily be solved by linearizing around a trajectory. This is because the LTV system Eq.~(\ref{eq_stm_dyn}) resulting from the Jacobian linearization around a trajectory depends only on the current iterate $ (x^i(t),u^i(t),0) $ and not the solution variables $ (x^{i+1}(t),u^{i+1}(t),0) $. The unscented transform in Problem 2 does capture the effect of nominal control on the covariance. 
-	
-	
-
-	
-	By introducing linear feedback, the covariance may be shaped regardless of the nominal trajectory. 
+%	\subsection{Open Loop vs Closed Loop Formulations}
+%	In an open loop formulation, only the trajectory through the state space can be optimized to reduce the covariance. This is an inherently nonlinear problem that cannot easily be solved by linearizing around a trajectory. This is because the LTV system Eq.~(\ref{eq_stm_dyn}) resulting from the Jacobian linearization around a trajectory depends only on the current iterate $ (x^i(t),u^i(t),0) $ and not the solution variables $ (x^{i+1}(t),u^{i+1}(t),0) $. The unscented transform in Problem 2 does capture the effect of nominal control on the covariance. 
+%	By introducing linear state feedback, the covariance may be shaped regardless of the nominal trajectory. 
 		
 		
 		
@@ -111,17 +107,17 @@
 
 	
 	\subsection{Chebyshev Pseudospectral Transcription}
-	The idea behind spectral methods is to approximate solutions (here, state-control trajectories $ (x(t),u(t) $) by a finite sum $x(t) \approx x_N(t) = \sum_{i=0}^{N}b_i\phi_i(t)$ where $b_i$ are the coefficients and $ {\phi_k} $ is a chosen set of basis functions. A wide range of orthogonal polynomial bases have been researched \cite{ChebyPS,LegendrePS,RadauPS,GPOPS} and in practice it seems that many of them are capable of producing acceptable solutions. For instance, the Legendre and Chebyshev polynomials are often touted as having desirable properties (they correspond to the optimal polynomial approximation in the $L^2([-1,1])$ and $L^\infty([-1,1])$ senses, respectively)\textbf{Citation here for Lp space} but other methods remain common in the literature as well.
+	The idea behind spectral methods is to approximate solutions (here, state-control trajectories $ (x(t),u(t) $) by a finite sum $x(t) \approx x_N(t) = \sum_{i=0}^{N}b_i\phi_i(t)$ where $b_i$ are the coefficients and $ {\phi_k} $ is a chosen set of basis functions. A wide range of orthogonal polynomial bases and collocation points have been researched \cite{ChebyPS,LegendrePS,RadauPS,GPOPS} and while in theory some are superior to others, in practice it seems that many of them are capable of producing acceptable solutions. For instance, the Legendre and Chebyshev polynomials are often touted as having desirable properties in pseudospectral methods because they correspond to the optimal polynomial approximation in the $L^2([-1,1])$ and $L^\infty([-1,1])$ senses, respectively \cite{Polynomials}, but other methods remain common in the literature as well.
 	
-	In general, the use of a pseudospectral (PS) method converts the infinite-dimensional optimal control problem into a finite nonlinear programming problem. Due to the underlying convexity of the subproblems posed here, however, the pseudospectral method will result in a convex program that can be solved efficiently and to global optimality by a primal-dual interior point method. The idea to utilize a PS method with convex optimization appears to originate in Ref.~\cite{PS_Convex} where Flipped Radau and Lobatto methods are introduced and used to solve a planetary landing problem. Ref.~\cite{PS_Convex_ascent} used a Gauss PS method to solve convex iterations of an optimal ascent trajectory problem. 
+	In general, the use of a pseudospectral (PS) method converts the infinite-dimensional optimal control problem into a finite nonlinear programming problem. Due to the underlying convexity of the subproblems posed here, however, the pseudospectral method will result in a convex program that can be solved efficiently and to global optimality by a primal-dual interior point method. The idea to utilize a PS method with convex optimization appears to originate in Ref.~\cite{PS_Convex} where Flipped Radau and Lobatto methods are introduced and used to solve a planetary landing problem. Ref.~\cite{PS_Convex_ascent} used a Gauss PS method to transcribe convex iterations of an optimal ascent trajectory problem. 
 	
-	Here a Chebyshev PS method, in which solutions are collocated at the extrema of a Chebyshev polynomial, is utilized to transcribe the dynamic constraints. A corresponding Clenshaw-Curtis quadrature scheme is used to estimate the integral in the running cost of each optimal control problem because it's integration points are exactly the collocation points.\cite{CCQuad} Ref.~\cite{PS_Convex} found that using a PS method produced solutions that better approximated the true continuous dynamics with fewer total collocation points compared to Euler integration. We claim the same is true here for the cost function approximation, where it is known that equally spaced (i.e. Newton-Coates) quadrature methods converge very slowly while the CC quadrature employed has very favorable convergence properties.
+	Here a Chebyshev PS method, in which solutions are collocated at the extrema of a Chebyshev polynomial, is utilized to transcribe the dynamic constraints. A corresponding Clenshaw-Curtis quadrature scheme is used to estimate the integral in the running cost of each optimal control problem due to the fact it's integration points are exactly the collocation points.\cite{CCQuad} Ref.~\cite{PS_Convex} found that using a PS method produced solutions that better approximated the true continuous dynamics with fewer total collocation points compared to Euler integration. We claim the same is also true here for the cost function approximation, where it is known that equally spaced (i.e. Newton-Coates) quadrature methods converge very slowly while the CC quadrature employed has very favorable convergence properties.
 	
 	Neither of the applications \cite{PS_Convex,PS_Convex_ascent} to convex optimization referred to another strength of pseudospectral methods: $ hp $-adaptive (mesh based) solutions \cite{GPOPS,hp_adapt}. This well-developed theory can be leveraged here as in the NLP context. A full review is beyond the scope of this paper but the underlying ideas are presented. It is easy to imagine that trajectories $x(t)$ exist for which even the best global polynomial approximation cannot provide an adequate solution. In order to improve the quality of the solution, we can instead divide the time horizon into segments and approximate the state on each segment by a comparatively low order polynomial. Refining solutions by allowing the divisions of the time horizon to increase leads to \textit{h}-adaptive methods, while refining the solution by increasing the order of the polynomials on a fixed grid is referred to as a \textit{p}-adaptive method. Combining these two ideas leads to the \textit{hp}-adaptive methods which were originally studied in finite element solutions to fluid mechanics problems \cite{HPAdapt_origin} before being adapted for optimal control. For areas where the solution is very smooth, spectral convergence is expected as the order of the approximation is increased.
 	
-	In the NLP context, the mesh is refined after every solution because the solution is expected to match the nonlinear dynamics. In the successive convexification approach used here, the iterative linearization of the dynamics means that if the trust region is sufficiently large, the solution to the linearized problem may not match the dynamics very closely resulting in large refinement of the mesh. Instead, the solution is solved repeatedly on the same mesh until convergence, then refined.
+	In the NLP context, the mesh is refined after every solution because the solution is expected to match the nonlinear dynamics. In the successive convexification approach used here, the iterative linearization of the dynamics means that if the trust region is sufficiently large, the solution to the linearized problem may not match the dynamics very closely resulting in large refinement of the mesh at each iteration. Instead, the solution is solved repeatedly on the same mesh until convergence, then refined.
 	
-	% In the above para, NLP is not the original context - it seems hp-adaptation was used in finite element models prior to that.
+	% Mesh refinement uses the true nonlinear dynamics, not the linearized version 
 	
 	\section{Numerical Results}
 
@@ -206,6 +202,9 @@
 		
 		\bibitem{CCQuadCompare}
 		``Is Gauss Quadrature Better Than Clenshaw-Curtis?"
+		
+		\bibitem{Polynomials}
+		Boyd, John P., and Rolfe Petschek. ``The relationships between Chebyshev, Legendre and Jacobi polynomials: the generic superiority of Chebyshev polynomials and three important exceptions." Journal of Scientific Computing 59.1 (2014): 1-27.
 		
 	\end{thebibliography}
 \end{document}
