@@ -10,114 +10,111 @@ from Utils.RK4 import RK4, RK4_STM
 from Mesh import Mesh
 import Unscented
 
-def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3, use_stm=False):
+def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
 
     """ Solves a convex LTV subproblem
 
     A - state linearization around x_ref
     B - control linearization around x_ref
-    f_ref - the original nonlinear dynamics evaluated along x_ref
-    x_ref - the trajectory used to linearize the problem, the current iterate
+    f_sp - the original nonlinear dynamics evaluated along each x_ref in x_sp
+    x_sp - the trajectories used to linearize the problem, the current iterate
 
     x0 - initial condition
     mesh - Mesh.Mesh instance
 
     """
     t0 = time.time()
+    prob = None
 
-    n = A[0].shape[0]
-    m = 1
     N = mesh.n_points
     T = range(N)
 
-    x = np.array([cvx.Variable(n) for _ in range(N)])       # This has to be done to "chunk" it later
-    if use_stm:
-        stm = np.array([cvx.Variable(n,n) for _ in range(N)])
-    else:
-        stm = np.zeros((N,n,n))
+    n = len(sigma_points[0])
+    m = 1
+
+
+    # Define the controls, which are used across all sigma points
     u = cvx.Variable(N,m) # Only works for m=1
-    v = np.array([cvx.Variable(n) for _ in range(N)]) # Virtual controls
-    # K = cvx.Variable(rows=1,cols=2) # Linear feedback gain
-    K = np.array([1,1]).T
-    # Alternatively, we could create meshes of variables directly
-    X = mesh.chunk(x)
-    A = mesh.chunk(A)
-    B = mesh.chunk(B)
-    F = mesh.chunk(f_ref)
-    Xr = mesh.chunk(x_ref)
+    v = np.array([cvx.Variable(n) for _ in range(N)]) # Virtual controls, might need a different one for each sp
+    x_var = np.array([[cvx.Variable(n) for _ in range(N)] for __ in sigma_points])       # This has to be done to "chunk" it later
     U = mesh.chunk(u)
     Ur = mesh.chunk(u_ref)
-    STM = mesh.chunk(stm)
     V = mesh.chunk(v)
-
-    if P > 0: # Relaxed final conditions - we can make P a variable (or vector) and penalize it heavily in the cost function like v
-        bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1]
-    else:
-        bc = [x[-1] == xf, x[0] == x0]
-        # bc = [x[0] == x0]   # Initial condition only
-        # bc = [x[-1] == xf]  # Final condition only
-
-    if use_stm:
-        stm_ic = [stm[0] == np.eye(n)]
-        bc += stm_ic
-
-    constr = []
-    for t,xr in zip(T,x_ref):
-        constr += [cvx.norm((x[t]-xr)) <= trust_region]
 
     # Control constraints
     Cu = cvx.abs(u) <= umax
 
-    # Lagrange cost and ode constraints
-    states = []
-    for d,xi,f,a,b,xr,ur,ui,w,stmi,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,STM,V): # Iteration over the segments of the mesh
-        L = cvx.abs(ui)**1                                          # Lagrange integrands for a single mesh
-        cost = w*L                                                  # Clenshaw-Curtis quadrature
+    # Iteration over each of the sigma points
+    for x0, x, A, B, f_ref, x_ref in zip(sigma_points, x_var, A_sp, B_sp, f_sp, x_sp):
 
-        # Estimated derivatives:
-        dx = d.dot(xi)
-        if use_stm:
-            dstmi = d.dot(stmi)
+        # K = cvx.Variable(rows=1,cols=2) # Linear feedback gain
+        # K = np.array([1,1]).T
 
-        # Differential equation constraints
-        ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) + vii  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # Iteration over individual collocation points
-        if use_stm:
-            ode_stm = [dstmii == ai*stmii for ai,bi,stmii,dstmii in zip(a,b,stmi,dstmi)]
+        X = mesh.chunk(x)
+        A = mesh.chunk(A)
+        B = mesh.chunk(B)
+        F = mesh.chunk(f_ref)
+        Xr = mesh.chunk(x_ref)
+
+
+        # if P > 0: # Relaxed final conditions - we can make P a variable (or vector) and penalize it heavily in the cost function like v
+        #     bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1]
+        # else:
+            # bc = [x[-1] == xf, x[0] == x0]
+        bc = [x[0] == x0]   # Initial condition only
+            # bc = [x[-1] == xf]  # Final condition only
+
+
+        Ctr = []
+        for t,xr in zip(T,x_ref):
+            Ctr += [cvx.norm((x[t]-xr)) <= trust_region]
+
+        # Lagrange cost and ode constraints
+        states = []
+        for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,V): # Iteration over the segments of the mesh
+            L = cvx.abs(ui)**2                                          # Lagrange integrands for a single mesh
+            cost = w*L                                                  # Clenshaw-Curtis quadrature
+
+            # Estimated derivatives:
+            dx = d.dot(xi)
+
+            # Differential equation constraints
+            ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) + vii  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # Iteration over individual collocation points
+
+            states.append(cvx.Problem(cvx.Minimize(cost), ode))
+
+
+
+        # sums problem objectives and concatenates constraints.
+        if prob is None:
+            prob = sum(states)
         else:
-            ode_stm = []
+            prob += sum(states)
+        prob.constraints += Ctr # Apply the trust region constraints
+        prob.constraints += bc  # Apply the initial boundary conditions
 
-        states.append(cvx.Problem(cvx.Minimize(cost), ode+ode_stm))
-
-    # Mayer Cost, including penalty for virtual control
-    Phi = cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))
-    Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),'inf') ))
-
-    # sums problem objectives and concatenates constraints.
-    prob = sum(states) + Phi + Penalty
-    prob.constraints.append(Cu)
-    prob.constraints += bc
-    prob.constraints += constr
+    Endpoint = []
+    Phi = cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))                        # Mayer Cost
+    Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),'inf') ))    # Penalty for virtual control
+    prob.constraints.append(Cu)     # Apply the control constraints
+    prob.constraints.append(x_var[0,0]=xf) # End point constraint, on mean or nominal trajectory 
+    prob += Phi + Penalty
 
     t1 = time.time()
     prob.solve(solver='ECOS')
     t2 = time.time()
-    # import pdb
-    # pdb.set_trace()
     print "status:        ", prob.status
     print "optimal value: ", np.around(prob.value,3)
     print "solution time:  {} s".format(np.around(t2-t1,3))
     print "setup time:     {} s".format(np.around(t1-t0,3))
 
     try:
-        x_sol = np.array([xi.value.A for xi in x]).squeeze()
+        x_sol = [np.array([xi.value.A for xi in x]).squeeze() for x in x_var]
         u_sol = u.value.A.squeeze()
         v_sol = np.array([xi.value.A for xi in v]).squeeze()
         print "penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(),np.inf))
 
-        if use_stm:
-            stm_sol = np.array([s.value.A for s in stm]).squeeze()
-        else:
-            stm_sol = np.zeros((N,n,n))
+        stm_sol = np.zeros((N,n,n))
 
         return x_sol.T, u_sol, stm_sol, prob.value
     except:
@@ -190,10 +187,10 @@ def test():
 
     umax = 3
     tf = 5
-    mesh = Mesh(tf=tf,orders=[4]*5)
+    mesh = Mesh(tf=tf,orders=[5]*5)
     t = mesh.times
     x0 = [3,-3]
-    P0 = np.eye(2)*0.01              # Initial covariance
+    P0 = np.eye(2)*0.1              # Initial covariance
     sp,wm,wc = Unscented.Transform(x0,P0)
     # Cerify mean and cov of initial points
     print sp.T.dot(wm)
@@ -253,19 +250,13 @@ def test():
                 else: #near zero cost so we use the absolute difference instead
                     rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
 
-                if rel_diff < 0.1: # check state convergence instead?
+                if rel_diff < 0.05: # check state convergence instead?
                     # In contrast to NLP, we only refine after the solution converges on the current mesh
                     if it < iters-1:
                         current_size = mesh.times.size
-                        if it%2 and False:
-                            _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
-                        else:
-                            refined = mesh.refine(x_approx.T, F, tol=1e-5, rho=0.5) # Dynamics based refinement for convergence check
-                        if mesh.times.size > 1000:
-                            print "Terminating because maximum number of collocation points has been reached."
-                            break
-                        if not refined:
-                            print 'Terminating with optimal solution.'
+                        refined = mesh.refine(x_approx.T, F, tol=1e-6, rho=1)
+                        if mesh.times.size > 1000 or not refined:
+                            print 'Terminating'
                             break
                         t_u = t
                         print "Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders),t.size)
@@ -339,8 +330,6 @@ def test():
         plt.plot(pt.T[0],pt.T[1])
     plt.plot(x_bar.T[0],x_bar.T[1],'k--')
     plt.title('Optimal Sigma Point Trajectories')
-
-    mesh.plot(show=False)
 
     for fig in [1,2,5,3]:
         plt.figure(fig)
