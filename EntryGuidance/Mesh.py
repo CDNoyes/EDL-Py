@@ -6,11 +6,11 @@ from Chebyshev import ChebyshevDiff, ChebyshevQuad
 
 class Mesh(object):
 
-    def __init__(self, tf, orders=None, min_order=2, max_order=30):
+    def __init__(self, tf, orders=None, min_order=2, max_order=24):
         self.min = min_order
         self.max = max_order
-        self.default = 6                    # Default order when splitting a mesh into two
-        self.inc = 10                      # Default increase when raising the order of a segment
+        self.default = 4                    # Default order when splitting a mesh into two
+        self.inc = 6                      # Default increase when raising the order of a segment
 
         Ni = range(self.min,self.max+1)
         tw = [ChebyshevQuad(N) for N in Ni]
@@ -31,6 +31,8 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1 # number of actual collocation points, accounting for meshes overlap in the interior (and e.g. N=2 yields 3 points)
         self.times = self.tau2time(self._times)
         self.weights = [self.w(N)*interval/2. for N,interval in zip(self.orders,np.diff(self._times))]
+
+        self.history = [self._times[:]]
 
     def D(self,N):
         return self._D[N-self.min]
@@ -119,7 +121,7 @@ class Mesh(object):
             self.split(i, t=None)
 
 
-    def refine(self, X, F, tol=1e-2, rho=2):
+    def refine(self, X, F, tol=1e-2, rho=2, scaling=None):
         """ Refines the mesh using hp-adaptation
 
             tol is the tolerance on the residual matrix above which the mesh is refined
@@ -128,6 +130,11 @@ class Mesh(object):
 
         """
         # X,F are the current solution and its derivative on the current mesh
+
+        if scaling is None:
+            scaling = np.ones_like(X)
+
+        refined = False
         rho += 1.
 
         intervals = np.diff(self._times)/2.
@@ -145,26 +152,49 @@ class Mesh(object):
 
             R = np.abs(Di.dot(xi) - interval*fi)    # Residual matrix
             ij = np.unravel_index(R.argmax(), R.shape)
-            col = ij[1]
-            r = R[:,col]                    # Residual column with the largest error
+            if len(ij)==2:
+                col = ij[1]
+                r = R[:,col]                    # Residual column with the largest error
+            else:
+                col=ij
+                r = R
             beta = r/r.mean()               # scaled midpoint residual vector
 
             if R[ij] > tol:
                 print "Refining segment {}".format(segment)
-
+                refined = True
                 if beta.max() <= rho and (self.orders[segment]+self.inc<self.max): # Uniform type error
                     print "Raising polynomial order..."
                     self.update(segment, self.orders[segment]+self.inc)
 
-                else: # Isolated errors or max order reached 
+                else: # Isolated errors or max order reached
                     print "Splitting the segment..."
                     # Find the highest points (skipping adjacent errors )
-                    isplit = np.argmax(beta) # for now, just split at the highest error point
-                    tsplit = (ti[isplit]*interval + self._times[segment] +self._times[segment+1])/2. # convert to real time
-                    self.split(segment, t=tsplit) # have to add another increment each time a split is done
-                    segment +=1
+                    if self.orders[segment]+self.inc<self.max:
+                        # splits = np.where(beta>=rho)[0]
+                        # ds = np.diff(splits)
+                        splits = [np.argmax(beta)] # for now, just split at the highest error point
+                    else:
+                        splits = [np.argmax(beta)]
+                    for isplit in splits:
+                        tsplit = (ti[isplit]*interval + self._times[segment] +self._times[segment+1])/2. # convert to real time
+                        self.split(segment, t=tsplit) # have to add another increment each time a split is done
+                        segment +=1
             segment+= 1
+        self.history.append(self._times[:])
+        return refined
 
+    def plot(self,show=True):
+        """ Plots the mesh history """
+        import matplotlib.pyplot as plt
+
+        plt.figure()
+        for i,t in enumerate(self.history):
+            plt.plot(t,np.ones_like(t)*i,'x')
+        plt.xlabel('Grid points')
+        plt.ylabel('Refinements')
+        if show:
+            plt.show()
 
 def colloc(x):
     """
