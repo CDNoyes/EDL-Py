@@ -1,15 +1,15 @@
-""" A class for working with multiple intervals of collocation points """
-
 import numpy as np
 from scipy.interpolate import interp1d
 from Chebyshev import ChebyshevDiff, ChebyshevQuad
 
 class Mesh(object):
-
-    def __init__(self, tf, orders=None, min_order=2, max_order=24):
+    """ Defines a mesh class for working with multiple intervals of collocation points """
+    
+    def __init__(self, tf, orders=None, min_order=2, max_order=24, t0=0):
+        """ Initializes an instance of the Mesh class """
         self.min = min_order
         self.max = max_order
-        self.default = 4                    # Default order when splitting a mesh into two
+        self.default = 6                    # Default order when splitting a mesh into two
         self.inc = 6                      # Default increase when raising the order of a segment
 
         Ni = range(self.min,self.max+1)
@@ -25,7 +25,7 @@ class Mesh(object):
         else:
             self.orders = orders
 
-        self._times = np.linspace(0,tf,len(self.orders)+1).tolist() # The times representing the mesh end points [t0, t1, t2, ..., tf]
+        self._times = np.linspace(t0,tf,len(self.orders)+1).tolist() # The times representing the mesh end points [t0, t1, t2, ..., tf]
         self.points = [self.tau(N) for N in self.orders] # list over array because they may be different lengths
         self.diffs = [self.D(N)*2./interval for N,interval in zip(self.orders,np.diff(self._times))] # Differentiation matrices scaled for their appropriate interval
         self.n_points = sum(self.orders)+1 # number of actual collocation points, accounting for meshes overlap in the interior (and e.g. N=2 yields 3 points)
@@ -75,7 +75,6 @@ class Mesh(object):
             tally += order
         return X
 
-
     def update(self, i, new_order):
         """ Change the order of the ith mesh """
         intervals = np.diff(self._times)
@@ -116,12 +115,7 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
-    def bisect(self):
-        for i in range(0, 2*len(self.orders),2):
-            self.split(i, t=None)
-
-
-    def refine(self, X, F, tol=1e-2, rho=2, scaling=None):
+    def refine(self, X, F, tol=1e-3, rho=1, scaling=None):
         """ Refines the mesh using hp-adaptation
 
             tol is the tolerance on the residual matrix above which the mesh is refined
@@ -163,7 +157,8 @@ class Mesh(object):
             if R[ij] > tol:
                 print "Refining segment {}".format(segment)
                 refined = True
-                if beta.max() <= rho and (self.orders[segment]+self.inc<self.max): # Uniform type error
+
+                if beta.max() <= rho and (self.orders[segment]+self.inc < self.max): # Uniform type error
                     print "Raising polynomial order..."
                     self.update(segment, self.orders[segment]+self.inc)
 
@@ -193,6 +188,11 @@ class Mesh(object):
             plt.plot(t,np.ones_like(t)*i,'x')
         plt.xlabel('Grid points')
         plt.ylabel('Refinements')
+
+        plt.figure()
+        plt.hist(self.orders)
+        plt.xlabel('Mesh orders')
+
         if show:
             plt.show()
 
