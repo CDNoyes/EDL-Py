@@ -1,6 +1,6 @@
 # from pyaudi import sin, cos, tan
-from numpy import sin, cos, tan
-import numpy as np
+from autograd.numpy import sin, cos, tan
+import autograd.numpy as np
 from functools import partial
 
 from EntryVehicle import EntryVehicle
@@ -14,7 +14,7 @@ sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
 
-    def __init__(self, PlanetModel = Planet('Mars'), VehicleModel = EntryVehicle(), Coriolis = False, Powered = False, Energy=False):
+    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Velocity=False):
 
         self.planet = PlanetModel
         self.vehicle = VehicleModel
@@ -24,12 +24,16 @@ class Entry(object):
         self.nx = 8 # [r,lon,lat,v,gamma,psi,s,m]
         self.nu = 3 # bank command, throttle, thrust angle
         self.__jacobian = None # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
-        # import pdb
-        # pdb.set_trace()
+
         if Coriolis:
             self.dyn_model = self.__entry_vinhs
         else:
             self.dyn_model = self.__entry_3dof
+
+        self.use_velocity = Velocity
+        if self.use_velocity:
+            self.dyn_model = self.__vel_2dof
+            self.nx = 4
 
         self.use_energy = Energy
         if self.use_energy:
@@ -81,15 +85,12 @@ class Entry(object):
         dpsi = -L*sin(sigma)/v/cos(gamma) - v*cos(gamma)*cos(psi)*tan(phi)/r
         ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)
         dm = np.zeros_like(dh)
-        # print "DEBUG + {}".format(self.__energy)
         if self.use_energy:
-            # import pdb
-            # pdb.set_trace()
-            # self.dE = -np.mean(v*D)
-            self.dE = np.tile(-v*D,(self.nx,1))
+            self.dE = np.tile(-v*D,(8,1))
+        if self.use_velocity:
+            self.dE = np.tile(dv,(8,))
 
         return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
-
 
     #3DOF, Rotating Planet Model - Highest fidelity
     def __entry_vinhs(self, x, t, u):
@@ -113,6 +114,16 @@ class Entry(object):
         sigma,throttle,thrustAngle = u
 
         return np.array([0,0,0,self.vehicle.ThrustApplied*throttle*cos(thrustAngle-gamma)/m, self.vehicle.ThrustApplied*throttle*sin(thrustAngle-gamma)/(m*v), 0, 0, self.vehicle.mdot(throttle)])/self.dE
+
+    def __vel_2dof(self, x, v, u):
+        """ Longitudinal EoM with respect to velocity """
+        r,gamma,s,m = x
+        z = np.zeros_like(r)
+        x3 = np.array([r,z,z,v,gamma,z,s,m])
+        dx3 = self.__entry_3dof(x3, 0, u)
+
+        return dx3[[0,4,6,7]]
+
 
     # Utilities
     def altitude(self, r, km=False):
@@ -140,22 +151,38 @@ class Entry(object):
         if self.__jacobian is None:
             from numdifftools import Jacobian
             self.__jacobian = Jacobian(self.__dynamics())            #, method='complex'
-        return self.__jacobian(np.concatenate((x,u)))
+
+        state = np.concatenate((x,u))
+        if self.use_velocity:
+            state = np.concatenate((x[:-1],u,x[-1,None]))
+
+        return self.__jacobian(state)
 
     def jacobian_(self, x, u):
-        ''' try the pyaudi jacobian '''
+        ''' The jacobian computed via pyaudi '''
         from Utils import DA as da
         vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
         X = da.make(np.concatenate((x,u)), vars, 2, array=True)
         f = self.__dynamics()(X)
         return da.jacobian(f, vars), da.vhessian(f,vars)
 
+    def jacobian_ad(self, x, u):
+        """ Jacobian computed via autograd """
+        from autograd import jacobian
+        grad = jacobian(self.__dynamics(), argnum=0)
+        state = np.concatenate((x,u))
+        if self.use_velocity:
+            state = np.concatenate((x[:-1],u,x[-1,None]))
+
+        return grad(state)
+
     def __dynamics(self):
         ''' Used in jacobian. Returns an object callable with a single combined state '''
+
         if self.powered:
-            return lambda xu: self.dyn_model(xu[0:self.nx], 0, xu[self.nx:self.nx+self.nu])+self.__thrust_3dof(xu[0:self.nx], xu[self.nx:self.nx+self.nu])
+            return lambda xu: self.dyn_model(xu[0:self.nx], xu[-1], xu[self.nx:self.nx+self.nu])+self.__thrust_3dof(xu[0:self.nx], xu[self.nx:self.nx+self.nu])
         else:
-            return lambda xu: self.dyn_model(xu[0:self.nx], 0, xu[self.nx:self.nx+self.nu])
+            return lambda xu: self.dyn_model(xu[0:self.nx], xu[-1], xu[self.nx:self.nx+self.nu])
 
     def aeroforces(self, r, v, m):
         """  Returns the aerodynamic forces acting on the vehicle at a given radius, velocity and mass. """
@@ -173,11 +200,36 @@ class Entry(object):
     def gravity(self, r):
         return self.planet.mu/r**2
 
+
+    # def jacobian_state(self, x, u):
+    #     """ Analytical jacobian """
+    #     r,theta,phi,v,gamma,psi,s,m = x
+    #     sigma,throttle,mu = u
+    #
+    #     zero = np.zeros_like(r, dtype=r.dtype)
+    #
+    #     h = r - self.planet.radius
+    #     hs = self.planet.scaleHeight
+    #     g = self.planet.mu/r**2
+    #     rho,a = self.planet.atmosphere(h)
+    #     M = v/a
+    #     cD,cL = self.vehicle.aerodynamic_coefficients(M)
+    #     f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)
+    #     L = f*cL*self.lift_ratio
+    #     D = f*cD*self.drag_ratio
+    #
+    #     dr = [zero, zero, zero, sin(gamma), v*cos(gamma), zero, zero, zero]
+    #     # dtheta
+    #     # dphi
+    #     dv = [D/hs+2*g/r, zero, zero, -2*D/v, -g*cos(gamma), zero, zero, zero] # doesnt account for weak CD dependence on Mach
+    #
+    #     return np.stack((dr,dv), axis=0)
+
 def EDL(InputSample=np.zeros(4),**kwargs):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
 
     CD,CL,rho0,sh = InputSample
-    return Entry(PlanetModel = Planet(rho0=rho0,scaleHeight=sh), VehicleModel = EntryVehicle(CD=CD,CL=CL), **kwargs)
+    return Entry(PlanetModel=Planet(rho0=rho0,scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD,CL=CL), **kwargs)
 
 
 
@@ -263,23 +315,44 @@ def CompareSaturation():
     plt.show()
 
 def CompareJacobian():
-    model = Entry()
+    vel = True
+    model = Entry(Velocity=vel)
     from InitialState import InitialState
     x = InitialState(radius=3450e3, velocity=3500)
-    print "state: {}".format(x)
     u = [0.3, 0, 0]
+
+    N = 100 # Number of calls to average over
+
+    if vel:
+        ind = [0,4,6,7,3]
+        print model.dyn_model(x[ind[:-1]], x[ind[-1]], u=u).shape
+    else:
+        ind = range(8)
+    # print "state: {}".format(x)
     import time
-    Jnum = model.jacobian(x,u)
+    Jnum = model.jacobian(x[ind],u)
     t0 = time.time()
-    Jnum = model.jacobian(x,u)
+    for _ in range(N):
+        Jnum = model.jacobian(x[ind],u)
     tnum = time.time()-t0
     t0 = time.time()
-    Jda = model.jacobian_(x,u)
+    # Jda = model.jacobian_state(x,u)
     tda = time.time()-t0
-    print "Numerical differencing: {} s".format(tnum)
-    print "Differential algebra  : {} s".format(tda)
-    err = Jnum-Jda
-    print err
+    t0 = time.time()
+    for _ in range(N):
+        Jauto = model.jacobian_ad(x[ind],u)
+    tauto = time.time()-t0
+    print "Numerical differencing: {} s".format(tnum/N)
+    # print "Differential algebra  : {} s".format(tda)
+    print "Autograd package      : {} s".format(tauto/N)
+    err = np.abs(Jnum-Jauto)
+    print "Maximum error: {}".format(err.max())
+    print "Ratio of NumDiffTools to Autograd: {}".format(tnum/tauto)
+
+    print Jnum.shape
+
+    # print Jauto[0][:8]-Jda[0]
+    # print Jauto[3][:8]-Jda[1]
 
 if __name__ == "__main__":
     # CompareSaturation()
