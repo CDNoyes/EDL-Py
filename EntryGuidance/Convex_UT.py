@@ -10,7 +10,7 @@ from Utils.RK4 import RK4, RK4_STM
 from Mesh import Mesh
 import Unscented
 
-def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
+def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, xf=0, umax=3):
 
     """ Solves a convex LTV subproblem
 
@@ -29,17 +29,18 @@ def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0
     N = mesh.n_points
     T = range(N)
 
-    n = len(sigma_points[0])
+    n = len(sigma_points[0]) #.shape[1]
     m = 1
 
 
     # Define the controls, which are used across all sigma points
     u = cvx.Variable(N,m) # Only works for m=1
     v = np.array([cvx.Variable(n) for _ in range(N)]) # Virtual controls, might need a different one for each sp
-    x_var = np.array([[cvx.Variable(n) for _ in range(N)] for __ in sigma_points])       # This has to be done to "chunk" it later
     U = mesh.chunk(u)
     Ur = mesh.chunk(u_ref)
     V = mesh.chunk(v)
+
+    x_var = np.array([[cvx.Variable(n) for _ in range(N)] for __ in sigma_points])       # This has to be done to "chunk" it later
 
     # Control constraints
     Cu = cvx.abs(u) <= umax
@@ -56,14 +57,7 @@ def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0
         F = mesh.chunk(f_ref)
         Xr = mesh.chunk(x_ref)
 
-
-        # if P > 0: # Relaxed final conditions - we can make P a variable (or vector) and penalize it heavily in the cost function like v
-        #     bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1]
-        # else:
-            # bc = [x[-1] == xf, x[0] == x0]
         bc = [x[0] == x0]   # Initial condition only
-            # bc = [x[-1] == xf]  # Final condition only
-
 
         Ctr = []
         for t,xr in zip(T,x_ref):
@@ -72,7 +66,7 @@ def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0
         # Lagrange cost and ode constraints
         states = []
         for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,V): # Iteration over the segments of the mesh
-            L = cvx.abs(ui)**2                                          # Lagrange integrands for a single mesh
+            L = 0*cvx.abs(ui)**1                                          # Lagrange integrands for a single mesh
             cost = w*L                                                  # Clenshaw-Curtis quadrature
 
             # Estimated derivatives:
@@ -84,7 +78,6 @@ def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0
             states.append(cvx.Problem(cvx.Minimize(cost), ode))
 
 
-
         # sums problem objectives and concatenates constraints.
         if prob is None:
             prob = sum(states)
@@ -94,14 +87,17 @@ def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0
         prob.constraints += bc  # Apply the initial boundary conditions
 
     Endpoint = []
-    Phi = cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))                        # Mayer Cost
-    Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),'inf') ))    # Penalty for virtual control
+    # Phi = cvx.Problem(cvx.Minimize(1*cvx.norm(x_var[0,-1],2)))                        # Mayer Cost
+    Phi = cvx.Problem(cvx.Minimize(1*cvx.norm(u,'inf')))                        # Mayer Cost
+    Penalty = cvx.Problem(cvx.Minimize(1e6*cvx.norm(cvx.vstack(*v),'inf') ))    # Penalty for virtual control
     prob.constraints.append(Cu)     # Apply the control constraints
-    prob.constraints.append(x_var[0,0]=xf) # End point constraint, on mean or nominal trajectory 
+    # import pdb
+    # pdb.set_trace()
+    prob.constraints.append(x_var[0,-1]==xf) # End point constraint, on mean or nominal trajectory
     prob += Phi + Penalty
 
     t1 = time.time()
-    prob.solve(solver='ECOS')
+    prob.solve() #solver='ECOS'
     t2 = time.time()
     print "status:        ", prob.status
     print "optimal value: ", np.around(prob.value,3)
@@ -115,10 +111,9 @@ def LTV(sigma_points, A_sp, B_sp, f_sp, x_sp, u_ref, mesh, trust_region=0.5, P=0
         print "penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(),np.inf))
 
         stm_sol = np.zeros((N,n,n))
-
-        return x_sol.T, u_sol, stm_sol, prob.value
+        return x_sol, u_sol, stm_sol, prob.value
     except:
-        return x_ref.T,u_ref,np.zeros((N,n,n)),None
+        return x_ref,u_ref,np.zeros((N,n,n)),None
 
 
 
@@ -130,7 +125,7 @@ def test():
     mu = 1.
     def dynamics(x):
         # returns f,g evaluated at x (vectorized)
-        return np.array([x[1],-x[0] + mu*(1-x[0]**2)*x[1]]),np.vstack((np.zeros_like(x[0]),np.ones_like(x[0]))).squeeze()
+        return np.array([x[1],-x[0] + mu*(1-x[0]**2)*x[1]]),np.stack((np.zeros_like(x[0]),np.ones_like(x[0]))).squeeze()
 
     def dyn(x,t,u): # integrable function
         f,g = dynamics(x)
@@ -142,13 +137,13 @@ def test():
         shape.extend(x.shape)
         A = np.zeros(shape)
 
-        B = np.vstack((np.zeros_like(x1),np.ones_like(x1))).squeeze()
+        B = np.stack((np.zeros_like(x1),np.ones_like(x1))).squeeze()
 
         A[0,1,:] = np.ones_like(x[0])
         A[1,0,:] = -np.ones_like(x[0]) -2*mu*x1*x2
         A[1,1,:] = mu*(1-x[0]**2)
 
-        return np.moveaxis(A, -1, 0),np.moveaxis(B, -1, 0)
+        return np.moveaxis(A, -2, 0),np.moveaxis(B, -2, 0)
 
     def stm_dyn(stm,t,A):
         return np.asarray(A(t)).dot(stm)
@@ -166,7 +161,10 @@ def test():
         if return_stm:
             X,STM = RK4_STM(dyn,x0,t,args=(ut,))
         else:
-            X = odeint(dyn,x0,t,args=(ut,))
+            if len(x0.shape)>1:
+                X = RK4(dyn,x0,t,args=(ut,))
+            else:
+                X = odeint(dyn,x0,t,args=(ut,))
 
         if return_stm:
             return np.asarray(X),np.asarray(STM)
@@ -187,38 +185,51 @@ def test():
 
     umax = 3
     tf = 5
-    mesh = Mesh(tf=tf,orders=[5]*5)
+    mesh = Mesh(tf=tf,orders=[6]*5)
     t = mesh.times
-    x0 = [3,-3]
+    x0 = np.array([3,-3])
     P0 = np.eye(2)*0.1              # Initial covariance
     sp,wm,wc = Unscented.Transform(x0,P0)
     # Cerify mean and cov of initial points
-    print sp.T.dot(wm)
+    # print sp.T.dot(wm)
     e = (sp-np.array(x0))
     C = sum([wci*np.outer(ei,ei) for ei,wci in zip(e,wc)])
     # print sp
-    print wm
+    # print wm
 
     # Initial "guess" used for linearization
     u = np.zeros_like(t)
-    # x = np.vstack((np.linspace(x0[0],0,u.shape[0]),np.linspace(x0[1],0,u.shape[0])))
-    x = integrate(x0, u, t).T
+    x = integrate(sp.T, u, t)
+    x = np.transpose(x,(1,0,2))
     f,g = dynamics(x)
-    F = f.T + g.T*u[:,None]
+    F = f + g*u[:,None]
     A,B = jac(x)
 
+    x = np.transpose(x,(2,1,0))
     x_approx = x
 
+    A = np.moveaxis(A,-1,0)
+    B = np.moveaxis(B,-1,0)
+    F = np.transpose(F,(2,1,0))
+    print sp.shape
+    print x.shape
+    print A.shape
+    print B.shape
+    print F.shape
 
-    iters = 30                       # Maximum number of iterations
+    # sys.exit()
+
+    iters = 20                       # Maximum number of iterations
     P = np.linspace(1,0.1,iters)
     trust_region = 4
     # Main Loop
     for it in range(iters):
         print "Iteration {}".format(it)
 
-        x_approx, u, stm_approx, J_approx = LTV(x0, A, B, F, x_approx.T, u, mesh, trust_region=trust_region, P=0*P[it], umax=umax, use_stm=False)
+        x_approx, u, stm_approx, J_approx = LTV([sp[0]], [A[0]], [B[0]], [F[0]], [x_approx[0]], u, mesh, trust_region=trust_region, umax=umax)
+        # x_approx, u, stm_approx, J_approx = LTV(sp, A, B, F, x_approx, u, mesh, trust_region=trust_region, umax=umax)
 
+        # sys.exit()
         if J_approx is None: # Failed iteration
             trust_region *= 0.8
             print "New trust region = {}".format(trust_region)
@@ -227,15 +238,22 @@ def test():
             t_u = t
             t = mesh.times
             u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-            x = integrate(x0, u, t).T
+            x = integrate(sp.T, u, t)
             x_approx = x
 
         else:
-            x = integrate(x0, u, t).T
-
+            x = integrate(sp.T, u, t)
+            x = np.transpose(x,(1,0,2))
+            x_approx = x #todo - remove this when done debugging
             f,g = dynamics(x_approx)
-            F = f.T + g.T*u[:,None]
+            F = f + g*u[:,None]
             A,B = jac(x_approx)
+            x_approx = np.transpose(x_approx,(2,1,0))
+            x = np.transpose(x,(2,1,0))
+
+            A = np.moveaxis(A,-1,0)
+            B = np.moveaxis(B,-1,0)
+            F = np.transpose(F,(2,1,0))
 
             X_cvx.append(x_approx)
             J_cvx.append(J_approx)
@@ -250,11 +268,11 @@ def test():
                 else: #near zero cost so we use the absolute difference instead
                     rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
 
-                if rel_diff < 0.05: # check state convergence instead?
+                if rel_diff < 0.3: # check state convergence instead?
                     # In contrast to NLP, we only refine after the solution converges on the current mesh
                     if it < iters-1:
                         current_size = mesh.times.size
-                        refined = mesh.refine(x_approx.T, F, tol=1e-6, rho=1)
+                        refined = mesh.refine(x_approx[0], F[0], tol=1e-6, rho=1)
                         if mesh.times.size > 1000 or not refined:
                             print 'Terminating'
                             break
@@ -262,14 +280,24 @@ def test():
                         print "Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders),t.size)
                         t = mesh.times
                         u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                        x_approx = interp1d(t_u, x, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                        f,g = dynamics(x_approx)
-                        F = f.T + g.T*u[:,None]
-                        A,B = jac(x_approx)
+                        x_approx = interp1d(t_u, x_approx, kind='linear', axis=1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
+                        print x_approx.shape
+                        x_approx = np.transpose(x_approx,(2,1,0))
 
+                        f,g = dynamics(x_approx)
+                        F = f + g*u[:,None]
+                        A,B = jac(x_approx)
+                        x_approx = np.transpose(x_approx,(2,1,0))
+
+                        A = np.moveaxis(A,-1,0)
+                        B = np.moveaxis(B,-1,0)
+                        F = np.transpose(F,(2,1,0))
 
 
     x = integrate(x0, u, t)
+    plt.figure(1)
+    plt.plot(x.T[0],x.T[1])
+    plt.show()
     X.append(x.T)
     T.append(t)
     U.append(u)
@@ -282,12 +310,12 @@ def test():
         X_sp.append(x_sp)
 
 
+
+
     # print len(X)
     # print len(U)
     # print len(T)
     # print len(X_cvx)
-    A,B = jac(x.T)
-    stm_true = integrate_stm(A,t)
 
     for i,xux in enumerate(zip(T,X,U,X_cvx)):
 

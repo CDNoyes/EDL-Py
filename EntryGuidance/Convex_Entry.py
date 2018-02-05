@@ -8,6 +8,7 @@ from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 from Utils.RK4 import RK4, RK4_STM
 from Mesh import Mesh
+from EntryEquations import EDL 
 import Unscented
 
 def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3, use_stm=False):
