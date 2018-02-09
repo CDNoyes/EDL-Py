@@ -5,7 +5,7 @@
 \usepackage{amssymb}
 \usepackage{graphicx}
 \author{Connor D. Noyes and Kenneth D. Mease}
-\title{Covariance Control of Nonlinear Systems via Successive Convexification}
+\title{Unscented Optimal Control for Mars Entry via Successive Convexification}
 \begin{document}
 	\maketitle
 
@@ -14,17 +14,16 @@
 	
 	\section{Introduction}
 	% One point to consider: we can swap the independent variable to normalized time, or energy etc and consider a fixed final IV problem. The change of variable increases the nonlinearity but we are iterating over linearizations anyway so it is possible.
-	One major challenge in control is to have autonomous systems operate optimally under uncertain conditions. Examples in aerospace engineering include spacecraft, ascent vehicles, and EDL capsules where uncertainty exists in the mass properties, environment models, aerodynamics, etc. Standard optimal control techniques consider the performance of a nominal, certain system without regard to the robustness of the solution under perturbations. By explicitly accounting for uncertainty both robustness and optimality can be attained. In this work we propose a successive convexification approach to optimal control problems in which the cost functional involves expectations of convex functions of state variables or convex functions of the state covariance.
+	One major challenge in control is to have autonomous systems operate optimally under uncertain conditions. Examples are widespread in aerospace engineering including spacecraft, ascent vehicles, and entry capsules where uncertainty exists in the mass properties, environmental conditions, and vehicle aerodynamics to name only a few, and vehicles resources such as onboard propellant are limited and must therefore be used economically. Standard optimal control techniques consider the performance of a nominal, certain system without regard for the robustness of the solution under perturbations. By explicitly accounting for uncertainty robust optimality can be attained. In order to do so, we consider robust objective functionals which involve expectations of state variables and/or elements of the state covariance. In this work we propose a successive convexification approach to such robust optimal control problems in which the objective functional is convex.
 
-	Reference~\cite{PCE_OCP_Bhattacharya} considered the problem of optimal trajectory generation for systems with probabilistic uncertainty. Polynomial chaos expansions were used to transform stochastic optimal control problems including minimum expectation and minimum covariance problems into deterministic optimal control problems solved by nonlinear programming. This formulation is limited to low dimensional uncertainty spaces due to the factorial increase in the number of terms of the expansion required as the dimensionality grows. In contrast, the unscented transform used in this work scales quadratically. Ref.~\cite{OpenLoopUncertain} also explored robust open-loop solutions with a mean-covariance framework based on second order Taylor expansions. Ref.~\cite{Desensitized} introduced the closely related desensitized optimal trajectories framework which included both open- and closed-loop formulations. A key difference in the desensitized framework is that it is independent of any probabilistic description of the uncertainty.
+	Reference~\cite{PCE_OCP_Bhattacharya} considered the problem of optimal trajectory generation for systems with probabilistic uncertainty. Polynomial chaos expansions were used to transform stochastic optimal control problems including minimum expectation and minimum covariance problems into deterministic optimal control problems solved by nonlinear programming. This formulation is limited to low dimensional uncertainty spaces due to the factorial increase in the number of terms of the expansion required as the dimensionality grows. In contrast, the unscented transform used in our work scales quadratically. Reference~\cite{OpenLoopUncertain} also explored robust open-loop solutions with a mean-covariance framework based on second order Taylor expansions. Reference~\cite{Desensitized} introduced the closely related desensitized optimal trajectories framework which included both open- and closed-loop formulations. A key difference in the desensitized framework is that it is independent of any probabilistic description of the uncertainty. %but Todd Small's thesis showed they can produce the same results for some weights and that the covariance formulation was more flexible ultimately
 	
-	Reference~\cite{RSOptimalControl} posed the very general Riemann-Stieljtes optimal control problem for uncertain nonlinear systems and solved the problem using hyper-pseudospectral methods implemented in \textit{DIDO}. The unscented optimal control problem corresponds to a particular discretization of the uncertainty space and is therefore a special case of the Riemann-Stieljtes formulation. \textbf{Review of uncertain optimal control, including unscented optimal control techniques }
+	Reference~\cite{UnscentedOptimalControl} used the unscented transformation to manage uncertainty in an open-loop optimal control framework, and later extended it to the more general Riemann-Stieljtes optimal control problem \cite{RSOptimalControl} and presented a solution based on hyper-pseudospectral methods. The unscented optimal control problem corresponds to a particular semi-discretization of the optimal control problem and is therefore a special case of the Riemann-Stieljtes formulation. 
 			
-	\textbf{Review of successive convex optimization (Mao's papers, lossless paper(s)?)}
+	Several iterative convex optimization methods have been proposed to solve deterministic optimal control problems with nonlinear dynamics \cite{SeqConProg,SuccConvex1}.	Reference~\cite{SuccConvex1} introduced the successive convexification algorithm based on linearization of nonlinear system dynamics and presented convergence analysis. The algorithm relies on trust regions and virtual controls to ensure solutions to the convexified problem are bounded and feasible. 		
 	
-	% Review of pseudospectral methods (and the one paper that combines it with convex optimization)
-		% Include mention of hp-mesh adaptive NLP and indicate that the results apply here as well 
-	
+	Our work applies the unscented transform to convert the optimal control problem with parametric uncertainty into a higher dimensional deterministic problem. Then, successive convexification is used to solve the resulting unscented optimal control problem. Additionally, closed loop formulations are also considered unlike the purely open loop solutions considered in Refs.~\cite{PCE_OCP_Bhattacharya,OpenLoopUncertain,UnscentedOptimalControl,RSOptimalControl}. In contrast to discretization of continuous dynamics by, e.g., Euler's method, pseudospectral collocation is used to transcribe the problem. The use of pseudospectral methods in convex optimization is rather new \cite{PS_Convex,PS_Convex_ascent} and this appears to be the first use of \textit{hp}-adaptive pseudospectral methods \cite{hp_adapt} which are essential to efficiently solving the large scale problems discussed in this paper. %Although we are motivated by aerospace systems, the method is expected to be more widely applicable.
+		
 	\section{Problem Statement}
 	% We can also consider covariance based constraints with a different convex objective function
 	
@@ -37,7 +36,7 @@
 		 0_{p\mathrm{x}n} & P_{\lambda}
 		\end{array}\right]$.
 	
-	For highly nonlinear systems, or those with significant uncertainty, a linear approach (the state transition matrix approach or directly propagating the differential equations using the Jacobian linearization) may not accurately capture the evolution of the mean and covariance. In contrast, the unscented transform \cite{UT,UKF1} offers an alternative, higher order (and thus generally more accurate) estimate of the covariance and also captures second order effects of $\lambda$ on the mean. The unscented transform relies on sigma points which are chosen such that they have the same first two moments, i.e. $ (\mathbb{E}[z(0)],\mathbb{V}[z(0)]) = ([\bar{x}_0,\,0],P_0) $, as the initial distribution. These sigma points are then propagated through the nonlinear transformation (here, the integration of nonlinear dynamics) and the transformed points are used to estimate the first two moments of the resulting distribution. There is no unique set of sigma points satisfying these conditions, and there exist both symmetric and asymmetric sets \cite{UT_simplex} that match the first two moments. The symmetric version of the method requires integration of $2(n+p)$ additional trajectories resulting in $2n(n+p)$ dynamic constraints in the optimal control problem. The complexity as a function of \textit{n} and \textit{p} is the same as in the linear approach, requiring a constant factor of two more constraints. 
+	For nonlinear systems with strong nonlinearity or significant uncertainty, a linear approach (the state transition matrix approach or directly propagating the covariance differential equations using the Jacobian linearization) may not accurately capture the evolution of the mean and covariance. In contrast, the unscented transform \cite{UT,UKF1} offers an alternative, second order (and thus generally more accurate) estimate of the covariance and also captures second order effects of the uncertainty on the mean. The unscented transform relies on sigma points which are chosen such that they have the same first two moments, i.e. $ (\mathbb{E}[z(0)],\mathbb{V}[z(0)]) = ([\bar{x}_0,\,0],P_0) $, as the initial distribution. These sigma points are then propagated through the nonlinear transformation (here, the integration of nonlinear dynamics) and the transformed points are used to estimate the first two moments of the resulting distribution. There is no unique set of sigma points satisfying these conditions, and there exist both symmetric and asymmetric sets \cite{UT_simplex} that match the first two moments. The symmetric version of the method requires integration of $2(n+p)$ additional trajectories resulting in $2n(n+p)$ dynamic constraints in the optimal control problem. The computational complexity as a function of \textit{n} and \textit{p} is the same as in the linear approach, requiring a constant factor of two more dynamic constraints. 
 	
 	The sigma points are computed via square root of the covariance matrix scaled by the dimensionality of the problem
 	\begin{align}
@@ -70,9 +69,9 @@
 			\vdots\\
 			\lambda_{2n+2p}\end{array}\right] \\
 	%&Z(t)\mathrel{:}=[X(t),\, \Lambda] 	\\		
-	&\dot{X}(t) = F(X(t),u(t),\Lambda)	
+%	&\dot{X}(t) = F(X(t),u(t),\Lambda)	
 	\end{align}
-	Thus we pose the following problem:
+	and we can therefore write the dynamics of the overall system as $\dot{X}(t) = F(X(t),u(t),\Lambda)$. Notice that while the uncertain dynamics of Eq.~(\ref{eq_dynamics}) are deterministic for any given realization, the evolution of the higher dimensional system state $X$ is completely deterministic. Thus we pose the following problem:
 	\\\\
 	\textbf{Problem 1 - Unscented Optimal Control}. \textit{Determine a control function $ u^*(t) $ and state trajectory $ X^*(t) $ that minimize the functional}
 		\begin{align}
@@ -85,9 +84,9 @@
 		&u(t) \in U \\
 		&\bar{x}(t_f) \in X_f \label{eq_endpoint_UT}
 		\end{align}
-	\textit{where} $ M:\mathbb{R}^{n}\times\mathbb{R}^{n\times (n+p)}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,} $L:\mathbb{R}^{n}\times U\times\mathbb{R}^{n\times (n+p)}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
+	\textit{where} $ M:\mathbb{R}^{n}\times\mathbb{R}^{(n+p)\times (n+p)}\mapsto \mathbb{R} $ \textit{is the Mayer (terminal) cost,} $L:\mathbb{R}^{n}\times U\times\mathbb{R}^{(n+p)\times (n+p)}\mapsto\mathbb{R}$ \textit{ is the Lagrange (running) cost and both are convex.}
 		
-	\textit{Remark.} There exists flexibility in Problem 1 to enforce the endpoint constraint on the nominal trajectory $x^0(t)$ or on the expected trajectory as represented by Eq.~(\ref{eq_endpoint_UT}).
+	\textit{Remark.} Problem 1 enforces the endpoint constraint on the expected trajectory as represented by Eq.~(\ref{eq_endpoint_UT}) but one may instead choose to enforce it on the nominal trajectory $x^0(t)$.
 	
 	% Does using UT allow for accounting for control constraints in a closed-loop formulation?
 	
@@ -101,17 +100,18 @@
 % we can also have expected values of convex functions of the state
 	
 	\section{Solution Methodology}
-	Under the stated assumptions, only the nonlinear dynamics render Problem 1 nonconvex. Problem 1 may be solved directly by nonlinear programming (NLP) methods such as sequential quadratic programming (SQP) but such methods do not inherit the powerful guarantees of convex programming.
-	Several iterative convex programming methods have been proposed to solve optimal control problems with nonlinear dynamics \cite{SeqConProg,SuccConvex1}. We proceed as in Ref.~\cite{SuccConvex1}. The algorithm begins by assuming an initial control history (typically we take the null control $u(t)=0$) and integrating the nonlinear model for each sigma point. The algorithm proceeds by linearizing Eq.~(\ref{eq_dynamics}) around each initial trajectory $ (x^k(t),u^k(t),\lambda) $, resulting in the following system dynamics for each sigma point
+	Under the stated assumptions, only the nonlinear dynamics render Problem 1 nonconvex. Problem 1 may be solved directly by nonlinear programming (NLP) methods such as sequential quadratic programming (SQP) but such methods do not possess the powerful guarantees of convex programming.
+	 We proceed as in Ref.~\cite{SuccConvex1}. The algorithm begins by assuming an initial control history (typically we take the null control $u(t)=0$) and integrating the nonlinear model for each sigma point. The algorithm proceeds by linearizing Eq.~(\ref{eq_dynamics}) around an initial trajectory $ (X^k(t),u^k(t),\Lambda) $, resulting in the following system dynamics for the collection of sigma points
 	\begin{align}
-	\dot{x}^{k+1} = f(x^{k},u^k) + f_x(x^k,u^k)(x^{k+1}-x^k) + f_u(x^k,u^k)(u^{k+1}-u^k) \label{eq_linearized}
+	\dot{X}^{k+1} = F(X^{k},u^k) + F_X(X^k,u^k)(X^{k+1}-X^k) + F_u(X^k,u^k)(u^{k+1}-u^k) \label{eq_linearized}
 	\end{align}
-	which are valid in a neighborhood around $ (x^k(t),u^k(t),0) $. In order to ensure this validity, we seek a solution $ (x^{k+1}(t),u^{k+1}(t),0) $ within an ellipsoidal trust region defined by $||x^{k+1}-x^k||_Q <= \delta$.
+	which are valid in a neighborhood around $ (X^k(t),u^k(t),\Lambda) $. In order to ensure this validity, we seek a solution $ (X^{k+1}(t),u^{k+1}(t),\Lambda) $ within an ellipsoidal trust region defined by $||X^{k+1}-X^k||_Q <= \delta$. Application of a trust region also prevents the unboundedness of the optimal control problem potentially arising from the use of linearization.\cite{SuccConvex1} 
 	
 %	each convex subproblem
 	
 	%\subsection{Extension to Closed Loop Formulations}
 	%In an open loop formulation, only the trajectory through the state space can be optimized to reduce the covariance. By introducing linear state feedback, the covariance may be shaped around a fixed trajectory. Problems with an a priori specified feedback gain (constant or scheduled) may be optimized directly using the existing formulation. The optimization of the feedback gains may be performed by convex optimization (as is done here) but other methods are also possible. Simultaneous optimization of the feedback gains and reference trajectory is not convex but we can find the open loop optimal, then optimize the feedback gains for a fixed reference trajectory. Then we alternate between optimizing the reference and feedback gains until convergence. If convergence is not achieved, the open loop optimal trajectory may still be used with gains optimized for that trajectory.
+	% Consider optimization of the system with fixed gains computed via LQR or Apollo specificly for Entry. Recompute the gains after each iteration 
 		
 	
 	\subsection{Chebyshev Pseudospectral Transcription}
@@ -121,16 +121,41 @@
 	
 	Here a Chebyshev PS method, in which solutions are collocated at the extrema of a Chebyshev polynomial, is utilized to transcribe the dynamic constraints. A corresponding Clenshaw-Curtis quadrature scheme is used to estimate the integral in the running cost of each optimal control problem due to the fact it's integration points are exactly the collocation points.\cite{CCQuad} Ref.~\cite{PS_Convex} found that using a PS method produced solutions that better approximated the true continuous dynamics with fewer total collocation points compared to Euler integration. We claim the same is also true here for the cost function approximation, where it is known that equally spaced (i.e. Newton-Coates) quadrature methods converge very slowly while the CC quadrature employed has very favorable convergence properties.
 	
-	Neither of the applications \cite{PS_Convex,PS_Convex_ascent} to convex optimization referred to another strength of pseudospectral methods: $ hp $-adaptive (mesh based) solutions \cite{GPOPS,hp_adapt}. This well-developed theory can be leveraged here as in the NLP context. A full review is beyond the scope of this paper but the underlying ideas are presented. It is easy to imagine that trajectories $x(t)$ exist for which even the best global polynomial approximation cannot provide an adequate solution. In order to improve the quality of the solution, we can instead divide the time horizon into segments and approximate the state on each segment by a comparatively low order polynomial. Refining solutions by allowing the divisions of the time horizon to increase leads to \textit{h}-adaptive methods, while refining the solution by increasing the order of the polynomials on a fixed grid is referred to as a \textit{p}-adaptive method. Combining these two ideas leads to the \textit{hp}-adaptive methods which were originally studied in finite element solutions to fluid mechanics problems \cite{HPAdapt_origin} before being adapted for optimal control. For areas where the solution is very smooth, spectral convergence is expected as the order of the approximation is increased.
+	Neither of the applications \cite{PS_Convex,PS_Convex_ascent} to convex optimization referred to another strength of pseudospectral methods: $ hp $-adaptive (mesh based) solutions \cite{GPOPS,hp_adapt}. This well-developed theory can be leveraged here as in the NLP context. A full review is beyond the scope of this paper but the underlying ideas are presented. It is easy to imagine that trajectories exist for which even the best global polynomial approximation cannot provide an adequate solution. In order to improve the quality of the solution, we can instead divide the time horizon into segments and approximate the state on each segment by a comparatively low order polynomial. Refining solutions by allowing the divisions of the time horizon to increase leads to \textit{h}-adaptive methods, while refining the solution by increasing the order of the polynomials on a fixed grid is referred to as a \textit{p}-adaptive method. Combining these two ideas leads to the \textit{hp}-adaptive methods which were originally studied in finite element solutions to fluid mechanics problems \cite{HPAdapt_origin} before being adapted for optimal control. For areas where the solution is smooth, spectral convergence is expected as the order of the approximation is increased.
 	
-	In the NLP context, the mesh is refined after every solution because the solution is expected to match the nonlinear dynamics. In the successive convexification approach used here, the iterative linearization of the dynamics means that if the trust region is sufficiently large, the solution to the linearized problem may not match the dynamics very closely resulting in large refinement of the mesh at each iteration. Instead, the solution is solved repeatedly on the same mesh until convergence, then refined.
+	In the NLP context, the mesh is refined after every solution because the solution is expected to approximate the nonlinear dynamics well. In the successive convexification approach used here, the iterative linearization of the dynamics means that if the trust region is sufficiently large, the solution returned by the convex subproblem may not match the dynamics very closely resulting in large refinement of the mesh at each iteration. Instead, the problem is solved repeatedly on the same mesh until convergence, then refined.
 	
 	% Mesh refinement uses the true nonlinear dynamics, not the linearized version 
 	
-	\section{Numerical Results}
-
+	\section{Numerical Results - Application to Mars Entry}
+	The technique is applied to an entry vehicle designed to deliver payload to the Martian surface. The longitudinal dynamics are modeled as 
+	\begin{align}
+	\dot{h} &= v\sin\gamma\\
+	\dot{s} &= v\cos\gamma\\
+	\dot{v} &= -D - g\sin\gamma \\
+	\dot{\gamma} &= \frac{L}{v}\cos\sigma + \left(\frac{v}{h+r_p}-\frac{g}{v}\right)\cos\gamma
+	\end{align}
+	where \textit{h} is the altitude of the vehicle, \textit{s} is the downrange distance traveled, \textit{v} is the velocity magnitude, and \textit{L} and \textit{D} are lift and drag accelerations given by	
+	\begin{align}
+	L &= \frac{1}{2}\rho v^2\frac{S}{m}C_l\\
+	D &= \frac{1}{2}\rho v^2\frac{S}{m}C_d\\
+	\end{align}
+	and the atmospheric density $\rho$ is modeled as exponentially decreasing with altitude
+	\begin{align}
+	\rho = \rho_0e^{-h/h_s} 
+	\end{align}
+	where $rho_0$ being the density at 0 altitude MOLA, and $h_s$ as an appropriate scale factor.  
+	We will use velocity as the independent variable so the full state vector is $x(v) = [h,s,\gamma]$ and define the control to be $u=\cos\sigma$ so that the dynamics may be written
+	\begin{align}
+	h' &= \dfrac{v\sin\gamma}{-D - g\sin\gamma}\\
+	s' &= \dfrac{v\cos\gamma}{-D - g\sin\gamma}\\
+%	\dot{v} &= -D - g\sin\gamma \\
+	\gamma' &= \dfrac{\frac{L}{v}u + \left(\frac{v}{h+r_p}-\frac{g}{v}\right)\cos\gamma}{-D - g\sin\gamma}
+	\end{align} 
 	
-
+	The uncertain parameters in this formulation are $C_l,\,C_d,\,\rho_0,\,\mathrm{ and},\,h_s$ (\textit{p}=4) in addition to initial state uncertainty arising from delivery errors. The total number of sigma points is 15 resulting in an extended state space $X \in \mathbb{R}^{45} $. Complete numerical results are forthcoming.
+	
+	%while the work herein is motivated by aerospace examples we expect the approach to be more broadly applicable 
 	
 	\begin{thebibliography}{1}
 %		\bibitem{brockett2012}
@@ -142,23 +167,25 @@
 %		C. Phelps, J.O. Royset, and Q. Gong, ``Optimal Control of Uncertain Systems Using Sample Average Approximations," SIAM Journal on Control and Optimization, 2016.
 		
 		\bibitem{PCE_OCP_Bhattacharya}
-		J. Fisher, R. Bhattacharya, ``Optimal Trajectory Generation with Probabilistic System Uncertainty Using Polynomial Chaos," ASME Journal of Dynamic Systems Measurement and Control, 2011.
+		 Fisher, J., Bhattacharya, R., ``Optimal Trajectory Generation with Probabilistic System Uncertainty Using Polynomial Chaos," ASME Journal of Dynamic Systems Measurement and Control, 2011.
 		
 		\bibitem{OpenLoopUncertain}
-		Darlington, John, et al. ``Decreasing the sensitivity of open-loop optimal solutions in decision making under uncertainty." European Journal of Operational Research 121.2 (2000): 343-362.
+		Darlington, J., et al. ``Decreasing the sensitivity of open-loop optimal solutions in decision making under uncertainty." European Journal of Operational Research 121.2 (2000): 343-362.
 		
 		\bibitem{Desensitized}
-		Seywald, Hans, and Renjith R. Kumar. ``Desensitized optimal trajectories." Spaceflight mechanics 1996 (1996): 103-115.
+		Seywald, H., and Kumar, R.R., ``Desensitized optimal trajectories." Spaceflight mechanics 1996 (1996): 103-115.
+		
+		\bibitem{UnscentedOptimalControl}
+		Ross, I.M., Proulx, R.J., and Karpenko, M., ``Unscented Optimal Control for Space Flight" 24th International Symposium on Space Flight Dynamics (ISSFD). 2014.
 		
 		\bibitem{RSOptimalControl}
-				I.M. Ross, R.J. Proulx, M. Karpenko, and Q. Gong, ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
+		Ross, I.M., Proulx, R.J., and Karpenko, M., and Gong, Q., ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
 		
 		\bibitem{BoydConvexBook}
-		Boyd, S., and L. Vandenberghe, ``Convex optimization," Cambridge university press, 2004.
+		Boyd, S., and Vandenberghe, L., ``Convex optimization," Cambridge university press, 2004.
 		
 		\bibitem{Boyd}
-		S. Boyd, C. Crusius, and A. Hansson, ``Control Applications of Nonlinear Convex Programming"
-		
+		Boyd, S., Crusius, C., and Hansson, A., ``Control Applications of Nonlinear Convex Programming"
 		
 		\bibitem{UT}
 		Julier, S.J., and Uhlmann, J.K., ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
@@ -173,19 +200,19 @@
 		Julier, S.J., and Uhlmann, J.K., ``Reduced Sigma Point Filters for the Propagation of Means and Covariances Through Nonlinear Transformation"
 				
 		\bibitem{ChebyPS}
-		Fahroo, Fariba, and I. Michael Ross. ``Direct trajectory optimization by a Chebyshev pseudospectral method." Journal of Guidance, Control, and Dynamics 25.1 (2002): 160-166.
+		Fariba, F., and Ross, I.M., ``Direct trajectory optimization by a Chebyshev pseudospectral method." Journal of Guidance, Control, and Dynamics 25.1 (2002): 160-166.
 		
 		\bibitem{LegendrePS}
-		Elnagar, Gamal, Mohammad A. Kazemi, and Mohsen Razzaghi. ``The pseudospectral Legendre method for discretizing optimal control problems." IEEE transactions on Automatic Control 40.10 (1995): 1793-1796.
+		Gamal, E., Kazemi, M.A., and Mohsen Razzaghi, M., ``The pseudospectral Legendre method for discretizing optimal control problems." IEEE transactions on Automatic Control 40.10 (1995): 1793-1796.
 		
 		\bibitem{RadauPS}
-		Garg, Divya, et al. ``Direct trajectory optimization and costate estimation of finite-horizon and infinite-horizon optimal control problems using a Radau pseudospectral method." Computational Optimization and Applications 49.2 (2011): 335-358.
+		Garg, D., et al. ``Direct trajectory optimization and costate estimation of finite-horizon and infinite-horizon optimal control problems using a Radau pseudospectral method." Computational Optimization and Applications 49.2 (2011): 335-358.
 		
 		\bibitem{GPOPS}		
-		Rao, Anil V., et al. ``Algorithm 902: Gpops, a matlab software for solving multiple-phase optimal control problems using the gauss pseudospectral method." ACM Transactions on Mathematical Software (TOMS) 37.2 (2010): 22.				
+		Rao, A.V., et al. ``Algorithm 902: Gpops, a matlab software for solving multiple-phase optimal control problems using the gauss pseudospectral method." ACM Transactions on Mathematical Software (TOMS) 37.2 (2010): 22.				
 				
 		\bibitem{PS_Convex}
-		M. Sagliano, ``Pseudospectral Convex Optimization for Powered Descent and Landing," Journal of Guidance, Control, and Dynamics, 2017.
+		Sagliano, M., ``Pseudospectral Convex Optimization for Powered Descent and Landing," Journal of Guidance, Control, and Dynamics, 2017.
 		
 		\bibitem{PS_Convex_ascent}
 		Cheng, X., Li, H., and Zhang, R. ``Efficient ascent trajectory optimization using convex models based on the newton-kantorovich/pseudospectral approach". Aerospace Science and Technology, 2017.
@@ -194,25 +221,25 @@
 		Darby, Christopher L., William W. Hager, and Anil V. Rao. ``An hp-adaptive pseudospectral method for solving optimal control problems." Optimal Control Applications and Methods 32.4 (2011): 476-502.
 		
 		\bibitem{SeqConProg}
-		Q.T. Dinh, and M. Diehl, ``Local Convergence of Sequential Convex Programming for Nonconvex Optimization"
+		Dinh, Q.T., and Diehl, M., ``Local Convergence of Sequential Convex Programming for Nonconvex Optimization"
 		
 		\bibitem{SuccConvex1}
 		Y. Mao, M. Szmuk, and B. Acikmese, ``Successive Convexification of Non-Convex Optimal Control Problems and Its Convergence Properties," 2017.
 		
-		\bibitem{SuccConvex2}
-		Y. Mao, D. Dueri, M. Szmuk, and B. Acikmese, ``Successive Convexification of Non-Convex Optimal Control Problems with State Constraints," 2017.
+%		\bibitem{SuccConvex2}
+%		Y. Mao, D. Dueri, M. Szmuk, and B. Acikmese, ``Successive Convexification of Non-Convex Optimal Control Problems with State Constraints," 2017.
 		
 		\bibitem{CCQuad}
-		W.M. Gentleman, ``Algorithm 424: Clenshaw-Curtis quadrature [D1]"
+		Gentleman, W.M., ``Algorithm 424: Clenshaw-Curtis quadrature [D1]"
 		
 		\bibitem{HPAdapt_origin}
-		Devloo, P.R.B. ``H-p adaptive finite-element method for steady compressible flow," Univ. of Texas,Austin, TX, United States. 1987.
+		Devloo, P.R.B. ``H-p adaptive finite-element method for steady compressible flow," University of Texas, Austin, TX, United States. 1987.
 		
 		\bibitem{CCQuadCompare}
-		``Is Gauss Quadrature Better Than Clenshaw-Curtis?"
+		Trefethen, L.N., ``Is Gauss Quadrature Better Than Clenshaw-Curtis?" Society for Industrial and Applied Mathematics, 2008.
 		
 		\bibitem{Polynomials}
-		Boyd, John P., and Rolfe Petschek. ``The relationships between Chebyshev, Legendre and Jacobi polynomials: the generic superiority of Chebyshev polynomials and three important exceptions." Journal of Scientific Computing 59.1 (2014): 1-27.
+		Boyd, J.P., and Petschek, R., ``The relationships between Chebyshev, Legendre and Jacobi polynomials: the generic superiority of Chebyshev polynomials and three important exceptions," Journal of Scientific Computing 59.1 (2014): 1-27.
 		
 	\end{thebibliography}
 \end{document}
