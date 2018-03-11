@@ -3,29 +3,40 @@
 import numpy as np
 from pyaudi import gdual_double as gd
 from pyaudi import abs
-# TODO: This gradient gets the first derivative of a function wrt each variable.
-# Need to write a second that uses the polynomial differentiation method to obtain the gradient of the expansion?
-# Map inversion method?
 
-def invert(map):
-    # First subtract the constant part of the Map such that Map(0)=0
-    # Let Map = M + N  where M is the linear part and N is the remaining nonlinear part
-    # Then the Map's inverse derivatives can be found via fixed point iteration: Map^-1 = M^-1 o (IMap - N o Map^-1)
-    return
+def odeint(fun, x0, iv, args=(), min_order=4, max_order=40, tol=1e-3):
 
-def odeint(f, x0, args, integrationOrder=None):
-    ''' If integrationOrder is None then the order of the expansion of the initial conditions is used. '''
+    x_collect = [x0]
+    vars = ["x{}".format(i) for i in range(len(x0))] + ['t']
 
+    eval_pt = np.random.random((len(x0))).tolist()
+    zero_pt = np.zeros_like(eval_pt).tolist()
+    div = np.diff(iv)
 
-    return
+    for t, dt in zip(iv,div):
+        x = np.array([gd(0, var, 1) for var in vars[:-1]]) # Initialize
+        for order in range(2, max_order):
+            x_next = _step(fun, t, x0, x, dt, order, *args)
+            change = np.linalg.norm(evaluate(x-x_next,vars,[eval_pt+[dt]])[0][0]) # norm of just the new terms
+            # Update for next iteration
+            x = x_next
+            # Convergence criteria
+            if change <= tol and order >= min_order:
+                # print("Terminating at order = {}".format(order))
+                break
+        x0 = evaluate(x,vars,[zero_pt+[dt]])[0] # evaluate the endpoint model
+        x_collect.append(x0.squeeze())
+    return np.array(x_collect).squeeze()
 
-def __step(fun, zi, ti,tnew, args, integrationOrder):
-    ''' Used in odeint '''
-    for _ in range(integrationOrder+1):
-        f = fun(ti, zi, *args) # Get the taylor polynomials of the ode, including wrt to ti (or maybe tnew?)
-        # zi = zi + antiderivation(f) # no idea what to do. Map inverse? integrate componentwise?
+def _step(fun, t0, x0, x, dt, order, *args):
 
-    return zi
+    x0 = np.array([gd(x0i, 'x{}'.format(i), order) for i,x0i in enumerate(x0)])
+    t = gd(t0, 't', order)
+    x+= 0*t # This is done purely to promote the order of x
+
+    f = fun(x, t, *args)            # Expand around the current time and state
+    F = np.array([da.integrate('t') if isinstance(da,gd) else da*t for da in f], dtype=gd) # Anti-derivation
+    return x0 + F
 
 def evaluate(da_array, da_vars, pts):
     """
@@ -45,15 +56,19 @@ def evaluate(da_array, da_vars, pts):
     return np.array(new_pts)
 
 def differentiate(da, da_vars):
+    """Differentiates a generalized dual variable wrt da_vars"""
     g = np.zeros(len(da_vars), dtype=gd)
     for var in da.symbol_set:
         ind = da_vars.index(var)
         g[ind] = da.partial(var)
     return g
 
-
 def gradient(da, da_vars):
-    """ da_vars is 1-d list/array with string names in the order the gradient should be given """
+    """Returns the numerical value of the gradient of a generalized dual variable
+        Inputs:
+            da is a generalized dual variable
+            da_vars is 1-d list/array with string names in the order the gradient should be given
+    """
     g = np.zeros(len(da_vars))
     if isinstance(da,gd): # It may be the case that the DA was differentiated and became a constant
         for var in da.symbol_set:
@@ -61,11 +76,9 @@ def gradient(da, da_vars):
             g[ind] = da.partial(var).constant_cf
     return g
 
-
 def jacobian(da_array, da_vars):
     """ Forms the Jacobian matrix, i.e. the gradient of a vector valued function """
     return np.array([gradient(da, da_vars) for da in da_array])
-
 
 def hessian(da, da_vars):
     """ Retrieves the 2nd order coefficients forming the 2D Hessian matrix of a scalar function """
@@ -84,7 +97,7 @@ def hessian(da, da_vars):
     return np.array(h)
 
 
-def vhessian(da_array,da_vars):
+def vhessian(da_array, da_vars):
     """ Computes the tensor comprising the hessian of a vector valued function """
     return np.array([hessian(da,da_vars) for da in da_array])
 
@@ -98,15 +111,11 @@ def const(da_array, array=False):
         else:
             return [const(da, array=array) for da in da_array]
     except:
-        # print "Not an array"
         if isinstance(da_array, gd):
             return da_array.constant_cf
         else:
             return da_array
-    # if not array:
-    #     return [da.constant_cf if isinstance(da,gd) else da for da in da_array]
-    # else:
-    #     return np.array([da.constant_cf if isinstance(da,gd) else da for da in da_array])
+
 
 def const_dict(da_dict):
     con_dict = {}
@@ -130,7 +139,6 @@ def make(values, names, orders, array=False):
 
 def radians(x):
     return x*np.pi/180.0
-
 
 def degrees(x):
     return x*180.0/np.pi
