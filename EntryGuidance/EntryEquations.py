@@ -1,6 +1,7 @@
-# from pyaudi import sin, cos, tan
-from autograd.numpy import sin, cos, tan
-import autograd.numpy as np
+from pyaudi import sin, cos, tan
+# from autograd.numpy import sin, cos, tan
+# import autograd.numpy as np
+import numpy as np
 from functools import partial
 
 from EntryVehicle import EntryVehicle
@@ -14,7 +15,7 @@ sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
 
-    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Velocity=False):
+    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Velocity=False, DifferentialAlgebra=False):
 
         self.planet = PlanetModel
         self.vehicle = VehicleModel
@@ -24,6 +25,23 @@ class Entry(object):
         self.nx = 8 # [r,lon,lat,v,gamma,psi,s,m]
         self.nu = 3 # bank command, throttle, thrust angle
         self.__jacobian = None # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
+        self.__jacobianb = None
+        self._da = DifferentialAlgebra
+        self.planet._da = DifferentialAlgebra
+
+        # Non-dimensionalizing the states
+        if False:
+            self.dist_scale = self.planet.radius
+            self.acc_scale = self.gravity(self.dist_scale)
+            self.time_scale = np.sqrt(self.dist_scale/self.acc_scale)
+            self.vel_scale = np.sqrt(self.dist_scale/self.time_scale)
+            self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, self.dist_scale, 1])
+        else: # No scaling
+            self.dist_scale = 1
+            self.acc_scale = 1
+            self.time_scale = 1
+            self.vel_scale = 1
+            self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, self.dist_scale, 1])
 
         if Coriolis:
             self.dyn_model = self.__entry_vinhs
@@ -41,10 +59,16 @@ class Entry(object):
         else:
             self.dE = 1
 
-    def update_ratios(self,LR,DR):
+    def update_ratios(self, LR, DR):
         self.drag_ratio = DR
         self.lift_ratio = LR
 
+    def DA(self, bool=None):
+        if bool is None:
+            return self._da
+        else:
+            self._da = bool
+            self.planet._da = bool
 
     def ignite(self):
         """ Ignites the engines to begin powered flight. """
@@ -66,14 +90,16 @@ class Entry(object):
         r,theta,phi,v,gamma,psi,s,m = x
         sigma,throttle,mu = u
 
-        h = r - self.planet.radius
+        h = r - self.planet.radius/self.dist_scale
 
-        g = self.planet.mu/r**2
+        g = self.planet.mu/r**2 /self.acc_scale
 
-        rho,a = self.planet.atmosphere(h)
+        rho,a = self.planet.atmosphere(h*self.dist_scale)
         M = v/a
-        cD,cL = self.vehicle.aerodynamic_coefficients(M)
-        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)
+        cD,cL = self.vehicle.aerodynamic_coefficients(M*self.vel_scale)
+        # cD,cL = self.vehicle.aerodynamic_coefficients(M)
+        # f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)
+        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)/self.acc_scale
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
 
@@ -86,7 +112,8 @@ class Entry(object):
         ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)
         dm = np.zeros_like(dh)
         if self.use_energy:
-            self.dE = np.tile(-v*D,(8,1))
+            # self.dE = np.tile(-v*D,(8,1))
+            self.dE = np.tile(-v*D,(8,))
         if self.use_velocity:
             self.dE = np.tile(dv,(8,))
 
@@ -124,6 +151,43 @@ class Entry(object):
 
         return dx3[[0,4,6,7]]
 
+    def _bank(self, x):
+        """ Internal function used for jacobian of bank rate """
+
+        r,theta,phi,v,gamma,psi,s,m,sigma,T,mu,sigma_dot = x
+
+        if self.use_energy:
+            h = r - self.planet.radius/self.dist_scale
+            g = self.planet.mu/r**2 /self.acc_scale
+            rho,a = self.planet.atmosphere(h*self.dist_scale)
+            M = v*self.vel_scale/a
+            cD,cL = self.vehicle.aerodynamic_coefficients(M)
+            f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)/self.acc_scale
+            D = f*cD*self.drag_ratio
+            return sigma_dot/(-v*D)
+        else:
+            return sigma_dot
+
+    def bank_jacobian(self, x, u, sigma_dot):
+        # Superior DA approach - much faster
+        from Utils import DA as da
+        vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu','bank_rate']
+        X = np.concatenate((x,u))
+        X = np.append(X, sigma_dot)
+        X = da.make(X, vars, 1, array=True)
+        F = self._bank(X)
+        return da.jacobian([F], vars)
+
+        # Numerical version:
+        # if self.__jacobianb is None:
+        #     from numdifftools import Jacobian
+        #     self.__jacobianb = Jacobian(self._bank, method='complex')            #
+        #
+        # state = np.concatenate((x,u))
+        # state = np.append(state, sigma_dot)
+        #
+        # return self.__jacobianb(state)
+
 
     # Utilities
     def altitude(self, r, km=False):
@@ -146,11 +210,28 @@ class Entry(object):
         else:
             return E
 
+    def scale(self, state):
+        """Takes a state or array of states in physical units and returns the non-dimensional verison """
+        shape = np.asarray(state).shape
+        if len(shape)==1 and shape[0]==self.nx:
+            return state/self._scale
+        else:
+            return state/np.tile(self._scale, (shape[0],1))
+
+
+    def unscale(self, state):
+        """ Converts unitless states to states with units """
+        shape = np.asarray(state).shape
+        if len(shape)==1 and shape[0]==self.nx:
+            return state*self._scale
+        else:
+            return state*np.tile(self._scale, (shape[0],1))
+
     def jacobian(self, x, u):
         ''' Returns the full jacobian of the entry dynamics model. The dimension will be [nx, nx+nu].'''
         if self.__jacobian is None:
             from numdifftools import Jacobian
-            self.__jacobian = Jacobian(self.__dynamics())            #, method='complex'
+            self.__jacobian = Jacobian(self.__dynamics(), method='complex')            #
 
         state = np.concatenate((x,u))
         if self.use_velocity:
@@ -158,13 +239,16 @@ class Entry(object):
 
         return self.__jacobian(state)
 
-    def jacobian_(self, x, u):
+    def jacobian_(self, x, u, hessian=False):
         ''' The jacobian computed via pyaudi '''
         from Utils import DA as da
         vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
-        X = da.make(np.concatenate((x,u)), vars, 2, array=True)
+        X = da.make(np.concatenate((x,u)), vars, 1+hessian, array=True)
         f = self.__dynamics()(X)
-        return da.jacobian(f, vars), da.vhessian(f,vars)
+        if hessian:
+            return da.jacobian(f, vars), da.vhessian(f,vars)
+        else:
+            return da.jacobian(f, vars)
 
     def jacobian_ad(self, x, u):
         """ Jacobian computed via autograd """
@@ -252,12 +336,31 @@ class System(object):
         self.nav   = EDL(InputSample=InputSample) # For now, consider no knowledge error nor measurement error so nav = truth
         self.filter_gain  = -10.0
         self.powered = False
+        self._scale = np.concatenate((self.truth._scale, self.nav._scale, np.ones((4,))*self.truth.time_scale))
+        self.nx = 20
 
     def ignite(self):
         self.model.ignite()
         self.truth.ignite()
         self.nav.ignite()
         self.powered = True
+
+    def scale(self, state):
+        """Takes a state or array of states in physical units and returns the non-dimensional verison """
+        shape = np.asarray(state).shape
+        if len(shape)==1 and shape[0]==self.nx:
+            return state/self._scale
+        else:
+            return state/np.tile(self._scale, (shape[0],1))
+
+
+    def unscale(self, state):
+        """ Converts unitless states to states with units """
+        shape = np.asarray(state).shape
+        if len(shape)==1 and shape[0]==self.nx:
+            return state*self._scale
+        else:
+            return state*np.tile(self._scale, (shape[0],1))
 
     def dynamics(self, u):
         """ Returns an function integrable by odeint """
