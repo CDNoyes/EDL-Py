@@ -1,9 +1,10 @@
 
 
 class Planet:
-    def __init__(self, name='Mars', rho0=0, scaleHeight=0, model='exp'):
+    def __init__(self, name='Mars', rho0=0, scaleHeight=0, model='exp', da=False):
 
         self.name = name.capitalize()
+        self._da = da # Differential algebraic inputs
 
         if self.name == 'Mercury':
             self.radius = float('nan')  # equatorial radius, m
@@ -60,18 +61,33 @@ class Planet:
 
     def __exp_model_mars(self, h):
         ''' Defines an exponential model of the atmospheric density and local speed of sound as a function of altitude. '''
-        # try:
-            # h[1]
-        from numpy import exp
-        # except:
-        #     from pyaudi import exp
+        if self._da:
+            from pyaudi import exp
+            scalar=False
+            try:
+                h[0]
+            except:
+                scalar=True
+                h = [h]
+            #Density computation:
+            rho = [self.rho0*exp(-hi/self.scaleHeight) for hi in h]
 
-        #Density computation:
-        rho = self.rho0*exp(-h/self.scaleHeight)
+            # Local speed of sound computation:
+            coeff = [223.8, -0.2004e-3, -1.588e-8, 1.404e-13]
+            a = [sum([c*hi**i for i,c in enumerate(coeff)]) for hi in h]
+            if scalar:
+                a = a[0]
+                rho = rho[0]
 
-        # Local speed of sound computation:
-        coeff = [223.8, -0.2004e-3, -1.588e-8, 1.404e-13]
-        a = sum([c*h**i for i,c in enumerate(coeff)])
+        else:
+            from autograd.numpy import exp
+            #Density computation:
+            rho = self.rho0*exp(-h/self.scaleHeight)
+
+            # Local speed of sound computation:
+            coeff = [223.8, -0.2004e-3, -1.588e-8, 1.404e-13]
+            a = sum([c*h**i for i,c in enumerate(coeff)])
+
         return rho,a
 
     def __MG_model_mars(self, h):
