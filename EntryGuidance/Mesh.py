@@ -4,13 +4,13 @@ from Chebyshev import ChebyshevDiff, ChebyshevQuad
 
 class Mesh(object):
     """ Defines a mesh class for working with multiple intervals of collocation points """
-    
-    def __init__(self, tf, orders=None, min_order=2, max_order=24, t0=0):
+
+    def __init__(self, tf, orders=None, min_order=2, max_order=12, t0=0, default_order=6, increment=2):
         """ Initializes an instance of the Mesh class """
         self.min = min_order
         self.max = max_order
-        self.default = 6                    # Default order when splitting a mesh into two
-        self.inc = 6                      # Default increase when raising the order of a segment
+        self.default = default_order                 # Default order when splitting a mesh into two
+        self.inc = increment                         # Default increase when raising the order of a segment
 
         Ni = range(self.min,self.max+1)
         tw = [ChebyshevQuad(N) for N in Ni]
@@ -68,6 +68,8 @@ class Mesh(object):
         the same point for both segments.
 
         """
+        if np.shape(x):
+            assert(np.shape(x)[0]==len(self.times))
         X = []
         tally = 0
         for order in self.orders:
@@ -119,7 +121,7 @@ class Mesh(object):
         """ Refines the mesh using hp-adaptation
 
             tol is the tolerance on the residual matrix above which the mesh is refined
-            rho is a fraction (>0) relative to the mean scaled residual
+            rho is a fraction (>0) relative to the mean scaled residual above which the mesh is split
                 e.g. rho=0.5 corresponds to errors 50% greater than the mean error
 
         """
@@ -169,8 +171,9 @@ class Mesh(object):
                         # splits = np.where(beta>=rho)[0]
                         # ds = np.diff(splits)
                         splits = [np.argmax(beta)] # for now, just split at the highest error point
-                    else:
+                    else: # Resulting mesh order would be too high, so we split at the highest error point instead
                         splits = [np.argmax(beta)]
+
                     for isplit in splits:
                         tsplit = (ti[isplit]*interval + self._times[segment] +self._times[segment+1])/2. # convert to real time
                         self.split(segment, t=tsplit) # have to add another increment each time a split is done
