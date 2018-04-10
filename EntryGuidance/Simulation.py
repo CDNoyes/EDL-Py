@@ -61,7 +61,6 @@ class Simulation(Machine):
         self.__output = output
         self.__find_transitions = find_transitions
         self.__use_da = use_da
-        self.__use_energy = None
 
         self.cycle = cycle          # The guidance cycle governing the simulation. Data logging and control updates occur every cycle.duration seconds while trigger checking happens 10x per cycle
         self.time = 0.0             # Current simulation time
@@ -114,43 +113,22 @@ class Simulation(Machine):
             throttle, mu, zeta = self.control[self.index](**self.triggerInput)
             sigma = 0.
         else:
-            # if self.__use_energy:
-            #     import pdb
-            #     pdb.set_trace()
             sigma = self.control[self.index](**self.triggerInput)
             throttle = 0.   # fraction of max thrust
             mu = 0.         # pitch angle
             zeta = 0.       # yaw angle
 
-        if self.__use_energy:
-            L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]),np.array([self.x[7]]))
-            V = self.x[3]
-            E = self.edlModel.energy(self.x[0],self.x[3],Normalized=False)
-
-            if self.__use_da:
-                # import pdb
-                # pdb.set_trace()
-                E = E.constant_cf
-                V = V.constant_cf
-                D = D[0].constant_cf
-
-                X = RK4(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(E,E-self.cycle.duration*V*D,self.spc),())
-            else:
-                X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(E,E-self.cycle.duration*V*D,self.spc))
+        if self.__use_da:
+            X = RK4(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
         else:
-
-            if self.__use_da:
-                X = RK4(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
-            else:
-                X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
+            X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
         self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
 
 
-    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10, EnergyIV=False):
+    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10):
         """ Runs the simulation from a given a initial state, with the specified controllers in each phase, and using a chosen sample of the uncertainty space """
         self.reset()
         self.spc = StepsPerCycle
-        self.__use_energy = EnergyIV
 
         if InputSample is None:
             InputSample = np.zeros(4)
@@ -165,9 +143,9 @@ class Simulation(Machine):
                 print "BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7]))
 
         else:
-            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL), Energy=EnergyIV)
+            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self.__use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL))
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
-            if self.__output and not self.__use_da:
+            if self.__output:
                 print "L/D: {:.2f}".format(self.edlModel.vehicle.LoD)
                 print "BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7]))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
@@ -235,13 +213,14 @@ class Simulation(Machine):
                   'planet'          : self.edlModel.nav.planet,
                   'current_state'   : self.x[8:16],
                   'aero_ratios'     : self.x[16:18],
-                  'bank'            : self.u[0], # Should this be the current command or the current state?
+                  'bank'            : self.x[18], # Should this be the current command or the current state?
                   'energy'          : self.edlModel.nav.energy(self.x[8],self.x[11],Normalized=False), # Estimated energy
                   }
 
 
         else:
-            L,D = self.edlModel.aeroforces(np.array([self.x[0]]),np.array([self.x[3]]),np.array([self.x[7]]))
+            L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[7])
+
 
             d =  {
                   'time'            : self.time,
@@ -253,8 +232,8 @@ class Simulation(Machine):
                   'heading'         : self.x[5],
                   'rangeToGo'       : self.x[6],
                   'mass'            : self.x[7],
-                  'drag'            : D[0],
-                  'lift'            : L[0],
+                  'drag'            : D,
+                  'lift'            : L,
                   'vehicle'         : self.edlModel.vehicle,
                   'planet'          : self.edlModel.planet,
                   'current_state'   : self.x,
@@ -358,7 +337,7 @@ class Simulation(Machine):
 
             data = np.c_[self.times, energy, bank_cmd, h,   r,      theta,       phi,      v,         gamma,     psi,       range,     L,      D,
                                      energy_nav, bank, h_nav, r_nav, theta_nav,  phi_nav,  v_nav,     gamma_nav, psi_nav,   range_nav, L_nav,  D_nav]
-            vars = ['energy','bank','altitude','radius','longitude','latitude','velocity','fpa','heading','dr','cr','lift','drag']
+            vars = ['energy','bank','altitude','radius','longitude','latitude','velocity','fpa','heading','downrange','crossrange','lift','drag']
             all = ['time'] + vars + [var + '_nav' for var in vars ]
             self.df = pd.DataFrame(data, columns=all)
 
@@ -374,7 +353,10 @@ class Simulation(Machine):
             energy = self.edlModel.energy(r,v,Normalized=False)
 
             h = [self.edlModel.altitude(R,km=True) for R in r]
-            L,D = self.edlModel.aeroforces(r,v,m)
+            if self.__use_da:
+                L,D = np.array([self.edlModel.aeroforces(ri,vi,mi) for ri,vi,mi in zip(r,v,m)]).T
+            else:
+                L,D = self.edlModel.aeroforces(r,v,m)
 
             data = np.c_[self.times, energy, bank_cmd, h,   r,      theta,       phi,      v,         gamma, psi,       range,     L,      D, m]
             self.df = pd.DataFrame(data, columns=['time','energy','bank','altitude','radius','longitude','latitude','velocity','fpa','heading','downrange','crossrange','lift','drag','mass'])
@@ -397,7 +379,7 @@ class Simulation(Machine):
         self.x = None               # Current State vector
         self.history = []           # Collection of State Vectors
         self.u = None
-        self.control_history = []   # Collection of State Vectors
+        self.control_history = []   # Collection of Control Vectors
         self.ie = [0]
         self.edlModel = None
         self.triggerInput = None
@@ -479,10 +461,9 @@ class Simulation(Machine):
         a,b = drag_dynamics(drag, drag_rate, g, lift, radius, vel, fpa, self.edlModel.planet.atmosphere(radius-self.edlModel.planet.radius)[0], self.edlModel.planet.scaleHeight)
 
         # Independent variable
-        time = df['time']
         energy = df['energy'].values
         i_vmax = np.argmax(vel)             # Only interpolate from the maximum downward so the reference is monotonic
-        i_emax=0
+        i_emax=i_vmax
 
         # Interpolation objects (fill values are backward because energy is decreasing)
         fbl['bank']  = interp1d(energy[i_emax:], bank[i_emax:],    fill_value=(bank[-1],bank[i_emax]),             bounds_error=False, kind='cubic')
@@ -493,15 +474,6 @@ class Simulation(Machine):
         fbl['D']  = interp1d(energy[i_emax:], drag[i_emax:],       fill_value=(drag[-1],drag[i_emax]),             bounds_error=False, kind='cubic')
         fbl['D1'] = interp1d(energy[i_emax:], drag_rate[i_emax:],  fill_value=(drag_rate[-1],drag_rate[i_emax]),   bounds_error=False, kind='cubic')
         fbl['D2'] = interp1d(energy[i_emax:], drag_accel[i_emax:], fill_value=(drag_accel[-1],drag_accel[i_emax]), bounds_error=False, kind='cubic')
-
-        # Time-based for STT
-        fbl['bank_t']  = interp1d(time, bank,    fill_value=(bank[0],bank[-1]),             bounds_error=False, kind='cubic')
-
-        fbl['a_t']  = interp1d(time, a,          fill_value=(a[0],a[-1]),                   bounds_error=False, kind='cubic')
-        fbl['b_t']  = interp1d(time, b,          fill_value=(b[0],b[-1]),                   bounds_error=False, kind='cubic')
-        fbl['D_t']  = interp1d(time, drag,       fill_value=(drag[0],drag[-1]),             bounds_error=False, kind='cubic')
-        fbl['D1_t'] = interp1d(time, drag_rate,  fill_value=(drag_rate[0],drag_rate[-1]),   bounds_error=False, kind='cubic')
-        fbl['D2_t'] = interp1d(time, drag_accel, fill_value=(drag_accel[0],drag_accel[-1]), bounds_error=False, kind='cubic')
         return fbl
 
     def findTransition(self):
@@ -704,7 +676,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
         plt.legend(loc='best')
 
 # #########################################################################
-    if True:
+    if False:
         from FBL import drag_derivatives, drag_dynamics
         # u, L, D, g, r, V, gamma, rho, scaleHeight
         Ddot,Dddot = drag_derivatives(np.cos(control_history), L,D,g, history[:,0],history[:,3],history[:,4], edlModel.planet.atmosphere(history[:,0]-edlModel.planet.radius)[0],edlModel.planet.scaleHeight)
@@ -759,11 +731,11 @@ def SRP():
 
     return input
 
-def EntrySim():
+def EntrySim(Vf=500):
     ''' Defines conditions for a simple one phase guided entry '''
     from Triggers import VelocityTrigger,AltitudeTrigger
     states = ['Entry']
-    trigger = [VelocityTrigger(500)]
+    trigger = [VelocityTrigger(Vf)]
     # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
 
@@ -786,15 +758,16 @@ def testSim():
     return sim
 
 def testFullSim():
-
+    from InitialState import InitialState
     sim = Simulation(cycle=Cycle(1),output=True,**EntrySim())
     f = lambda **d: 0
     f2 = lambda **d: (1,2.88)
     c = [f,f,f2]
     r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
-    x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]*2 +[1,1] + [0,0])
-    sim.run(x0,c, FullEDL=True)
+    # x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, s0, 8500.0]*2 +[1,1] + [0,0])
+    x0 = InitialState(full_state=True)
+    sim.run(x0, c, FullEDL=True)
     return sim
 
 def NMPCSim(options):
