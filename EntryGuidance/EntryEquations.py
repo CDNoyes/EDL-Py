@@ -1,4 +1,3 @@
-from pyaudi import sin, cos, tan
 # from autograd.numpy import sin, cos, tan
 # import autograd.numpy as np
 import numpy as np
@@ -86,6 +85,11 @@ class Entry(object):
 
     #3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
     def __entry_3dof(self, x, t, u):
+        if self._da:
+            from pyaudi import sin, cos, tan
+        else:
+            from numpy import sin, cos, tan
+
 
         r,theta,phi,v,gamma,psi,s,m = x
         sigma,throttle,mu = u
@@ -137,10 +141,14 @@ class Entry(object):
 
 
     def __thrust_3dof(self, x, u):
+        if self._da:
+            from pyaudi import sin, cos, tan
+        else:
+            from numpy import sin, cos, tan
         r,theta,phi,v,gamma,psi,s,m = x
         sigma,throttle,thrustAngle = u
 
-        return np.array([0,0,0,self.vehicle.ThrustApplied*throttle*cos(thrustAngle-gamma)/m, self.vehicle.ThrustApplied*throttle*sin(thrustAngle-gamma)/(m*v), 0, 0, self.vehicle.mdot(throttle)])/self.dE
+        return np.array([0,0,0,self.vehicle.ThrustApplied*throttle*cos(sigma)*cos(thrustAngle-gamma)/m, self.vehicle.ThrustApplied*throttle*sin(thrustAngle-gamma)/(m*v), self.vehicle.ThrustApplied*throttle*cos(thrustAngle-gamma)*sin(sigma)/(cos(gamma)*m*v**2), 0, self.vehicle.mdot(throttle)])/self.dE
 
     def __vel_2dof(self, x, v, u):
         """ Longitudinal EoM with respect to velocity """
