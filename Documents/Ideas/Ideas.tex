@@ -1,0 +1,57 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[latin1]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\author{Connor Noyes}
+\title{Ideas for Next Generation EDL}
+\begin{document}
+%	\maketitle
+
+	Make a list of problems to solve, and demonstrate how they are related.
+	\section{SRP}
+	In which areas does this need work? Assume GFOLD is called only once instead of MPC. Then a suitable feedback approach would be welcomed? Does simple PID control suffice?
+	 
+	Can I alter/extend the probability-based Lyapunov guidance to atmospheric landing? This means both inclusion of drag effects (potentially), and fuel minimization as a priority. The original paper does not consider mass dynamics, thrust limits or other constraints. However, perhaps constraints such as glide slope and fuel limits can be imposed as hazardous regions of the statespace (in a non-physical sense).
+	
+	Can I design a feedback controller via Lyapunov around an arbitrary trajectory? (\textit{Yes.}) Then perhaps we can perform OUU to determine the best controller parameters for a given uncertainty set, and respecting control limitations.
+	
+	Broadly: can we design a trajectory tube of points originating in a hyper-ellipsoid (a convex set) of initial conditions (can represent knowledge error) that minimizes covariance (to be determined which variance(s) should be reduced) in addition to fuel optimality? I need to define what I really mean. Is it a weighted combination of the fuel performance and covariance minimization? Can I use something like 
+	\begin{align}
+	\min_u \mathbb{E}[m(t_f)] + 3\sqrt{\mathbb{V}[m(t_f)]} \\
+	\mathrm{subject\; to\; the\; constraints}\nonumber \\
+	\mathbb{E}[x(t_f)] = 0 \\
+	\mathrm{trace}(\mathbb{V}[x(t_f)]) < \delta
+	\end{align}
+	The problem with this formulation is selecting $\delta$. Perhaps no constraint on the variances. Alternatively, if we can find solutions that violate constraints with less than a given probability:
+	\begin{align}
+	\mathbb{P}[c(x)<0] < 0.1 
+	\end{align}
+	this would be more powerful than showing that it is met in expectation. 
+	
+	In order to be meaningful, \textbf{the solution must be amenable to onboard implementation} or autonomy is sacrificed. The tube is subject to constraints on thrust magnitude, glide slope, fuel capacity, etc. so \textbf{the formulation must be able to handle constraints} explicitly.
+	
+	\textit{Problem Idea}: Start SRP with an uncertainty ellipse. At some altitude, gain an update to onboard knowledge that instantaneously reduces the ellipse and potentially also moves the target to a new location (or correspondingly, moves the estimate of the spacecraft position in addition to changing the ellipse size)
+	
+	One issue with feedback control is that it should also respect the constraints (glideslope and other pointing). 
+	
+%	Comparison: Solve optimal trajectory from a cloud of points. Solve optimal trajectory from mean of cloud of points and apply feedback from 
+	
+	\section{Entry}
+	A fast, convergent replanning routine would solve this problem suitably. Single linearization convex replanning does not seem to be effective. 
+	
+	Opportunity: The B-spline parametrization currently used to solve the SRP problem could be adapted to work for entry guidance. No convergence proof. Potentially the control constraint can be made convex using the convex hull of the spline coefficients. 
+	
+	\section{General}
+	Demonstrate benefit of OUU and/or robust optimal control. 
+	Example: In entry, we want to maximize altitude for timeline margin, but we're actually interested in the final altitude of the bottom of the distribution to ensure it meets the minimum required. Maximizing the nominal case may work, but it may be possible to do better by considering the uncertainty and the closed-loop response
+	
+	Combined EG and Propulsive Descent approaches are another viable avenue. 
+
+	
+	\begin{thebibliography}{1}
+
+		
+	\end{thebibliography}
+\end{document}
