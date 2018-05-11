@@ -1,6 +1,6 @@
 import numpy as np
 
-def submatrix(M,rows,cols=None):
+def submatrix(M, rows, cols=None):
     """ From a matrix M returns the elements M[rows,cols] """
     if cols is None:
         cols=rows 

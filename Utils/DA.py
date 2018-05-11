@@ -58,9 +58,10 @@ def evaluate(da_array, da_vars, pts):
 def differentiate(da, da_vars):
     """Differentiates a generalized dual variable wrt da_vars"""
     g = np.zeros(len(da_vars), dtype=gd)
-    for var in da.symbol_set:
-        ind = da_vars.index(var)
-        g[ind] = da.partial(var)
+    if isinstance(da,gd):
+        for var in da.symbol_set:
+            ind = da_vars.index(var)
+            g[ind] = da.partial(var)
     return g
 
 def gradient(da, da_vars):
@@ -172,7 +173,7 @@ def sign(x):
 #       c = (c[1:-1-k] - c[:-2-k])* k / dt => c = (c[1:-1-k] - c[:-2-k])*(k/dt)    # For some reason, the dual variables couldn't be divided by a float, but multiplying worked fine
 
 
-from Utils.memoize import memoize
+from memoize import memoize
 
 @memoize
 def __getSplIdx(x,t):
