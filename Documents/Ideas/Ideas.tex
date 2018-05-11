@@ -10,73 +10,86 @@
 %	\maketitle
 
 %	Make a list of problems to solve, and demonstrate how they are related.
-	
-	``The sheer mass of Mars Science Laboratory prevented engineers from using the familiar airbags to deliver their rover safely to the martian surface. As rovers become more capable and carry more instruments, they become larger." Already the past methods for delivering payloads to Mars are becoming ineffective. Next generation missions will require ever-increasing payload masses especially with an eye toward manned missions. Standard disk-gap-band parachutes are fundamentally incapable of scaling to the conditions needed to decelerate vehicles with very high ballistic coefficients. Supersonic retropropulsion has been identified as an enabling technology for next generation missions. SpaceX has already demonstrated that the approach is feasible here on Earth but Mars brings with it additional challenges (lack of GPS for example). 
-	
-	MSL represents the current state-of-the-art approach to EDL on Mars. It used a guided entry approach based on neighboring optimal control techniques to steer to the parachute deployment conditions. After the parachute has sufficiently decelerated the vehicle and the heatshield has separated, the descent stage carrying the rover separates from the backshell. An innovative sky crane maneuver was used to finally land the rover and the descent stage powered away to crash far from the rover. 
-	
-	In SRP-based EDL, the goal is to land as much payload as possible, possibly at land site elevations higher than any prior mission. Thus fuel optimal propulsive descent is paramount. The role of entry guidance is then to steer the vehicle toward favorable (near optimal) ignition conditions. 
-	
-	\textit{To Do:} Pose the problem very generally. Then show how a certain parametrization/discretization can allow us to approximate a solution. Go from there. 
-	
-\textbf{	Assumptions: }
-	\begin{enumerate}
-	\item No navigated uncertainty (usually, this is relatively easy to relax)
-	\item No process noise
-	\item No winds (at least in guidance algorithm, could still perform MC with winds, see Joel's dissertation for reference)
-	\end{enumerate}
-	
-	
-	
-	\section{SRP}
-	In which areas does this need work? Assume GFOLD is called only once instead of repeatedly. Then a suitable feedback approach would be welcomed? Does simple PID control suffice?
-	 
-	Can I alter/extend the probability-based Lyapunov guidance to atmospheric landing? This means both inclusion of drag effects (potentially), and fuel minimization as a priority. The original paper does not consider mass dynamics, thrust limits or other constraints. However, perhaps constraints such as glide slope and fuel limits can be imposed as hazardous regions of the statespace (in a non-physical sense).
-	
-	Can I design a feedback controller via Lyapunov around an arbitrary trajectory? (\textit{Yes.}) Then perhaps we can perform OUU to determine the best controller parameters for a given uncertainty set, and respecting control limitations.
-	
-	Broadly: can we design a trajectory tube of points originating in a hyper-ellipsoid (a convex set) of initial conditions (can represent knowledge error) that minimizes covariance (to be determined which variance(s) should be reduced) in addition to fuel optimality? I need to define what I really mean. Is it a weighted combination of the fuel performance and covariance minimization? Can I use something like 
-	\begin{align}
-	\min_u -\mathbb{E}[m(t_f)] + n\sqrt{\mathbb{V}[m(t_f)]} \\
-	\mathrm{subject\; to\; the\; constraints}\nonumber \\
-	\mathbb{E}[x(t_f)] = 0 \\
-	\mathrm{trace}(\mathbb{V}[x(t_f)]) < \delta
-	\end{align}
-	The problem with this formulation is selecting $\delta$. The trace should be weighted to account for units. Perhaps no constraint on the variances. Alternatively, if we can find solutions that violate constraints with less than a given probability:
-	\begin{align}
-	\mathbb{P}[c(x)<0] < 0.1 
-	\end{align}
-	this would be more powerful than showing that it is met in expectation. \textit{n} represents a weight on the importance of the variance term relative to the expectation. For example, $n=3$ means we are trying to minimize the $3-\sigma$ value of the final mass. Larger values of n penalize uncertainty more at the cost of increasing the mean final mass but in this scenario we are not particularly concerned with the mean. $n=1$ represents a somewhat special case because from the definition of variance of a scalar random variable we can perform the following rearrangements
-	\begin{align}
-	\mathbb{V}[X] = \mathbb{E}[X^2] - \mathbb{E}[X]^2\\
-	\mathbb{E}[X^2] = \mathbb{V}[X] + \mathbb{E}[X]^2\\
-	\sqrt{\mathbb{E}[X^2]} = \sqrt{\mathbb{V}[X] + \mathbb{E}[X]^2}\\
-	\sqrt{\mathbb{E}[X^2]} \le \sqrt{\mathbb{V}[X]} + \mathbb{E}[X]\\
-	\sqrt{\mathbb{E}[X^2]} \le  \bar{x} + \sigma_x
-	\end{align} 
-	to yield that the cost function is the square root of the second (non-central) moment. Since both terms are guaranteed to be non-negative, the square will have the same minimizer.
-	
-	In order to be meaningful, \textbf{the solution must be amenable to onboard implementation} or autonomy is sacrificed. The tube is subject to constraints on thrust magnitude, glide slope, fuel capacity, etc. so \textbf{the formulation must be able to handle constraints} explicitly. \textit{These conditions make MPC a strong contender}.
-	
-	\textit{Problem Idea}: Start SRP with an uncertainty ellipse. At some altitude, gain an update to onboard knowledge that instantaneously reduces the ellipse and potentially also moves the target to a new location (or correspondingly, moves the estimate of the spacecraft position in addition to changing the ellipse size)
-	
-	One issue with feedback control is that it should also respect the constraints (glideslope and other pointing). 
-	
-	Show that when optimized, a PID controller coupled with a reference trajectory far from the constraints is still very conservative compared to a near-optimal trajectory (with little to no margin) tracked by an MPC controller. Don't need end to end optimization for this, just pick a reasonable initial condition. 
+%	
+%	``The sheer mass of Mars Science Laboratory prevented engineers from using the familiar airbags to deliver their rover safely to the martian surface. As rovers become more capable and carry more instruments, they become larger." Already the past methods for delivering payloads to Mars are becoming ineffective. Next generation missions will require ever-increasing payload masses especially with an eye toward manned missions. Standard disk-gap-band parachutes are fundamentally incapable of scaling to the conditions needed to decelerate vehicles with very high ballistic coefficients. Supersonic retropropulsion has been identified as an enabling technology for next generation missions. SpaceX has already demonstrated that the approach is feasible here on Earth but Mars brings with it additional challenges (lack of GPS for example). 
+%	
+%	MSL represents the current state-of-the-art approach to EDL on Mars. It used a guided entry approach based on neighboring optimal control techniques to steer to the parachute deployment conditions. After the parachute has sufficiently decelerated the vehicle and the heatshield has separated, the descent stage carrying the rover separates from the backshell. An innovative sky crane maneuver was used to finally land the rover and the descent stage powered away to crash far from the rover. 
+%	
+%	In SRP-based EDL, the goal is to land as much payload as possible, possibly at land site elevations higher than any prior mission. Thus fuel optimal propulsive descent is paramount. The role of entry guidance is then to steer the vehicle toward favorable (near optimal) ignition conditions. 
+%	
+%	\textit{To Do:} Pose the problem very generally. Then show how a certain parametrization/discretization can allow us to approximate a solution. Go from there. 
+%	
+%\textbf{	Assumptions: }
+%	\begin{enumerate}
+%	\item No navigated uncertainty (usually, this is relatively easy to relax)
+%	\item No process noise
+%	\item No winds (at least in guidance algorithm, could still perform MC with winds, see Joel's dissertation for reference)
+%	\end{enumerate}
+%	
+%	
+%	
+%	\section{SRP}
+%	In which areas does this need work? Assume GFOLD is called only once instead of repeatedly. Then a suitable feedback approach would be welcomed? Does simple PID control suffice?
+%	 
+%	Can I alter/extend the probability-based Lyapunov guidance to atmospheric landing? This means both inclusion of drag effects (potentially), and fuel minimization as a priority. The original paper does not consider mass dynamics, thrust limits or other constraints. However, perhaps constraints such as glide slope and fuel limits can be imposed as hazardous regions of the statespace (in a non-physical sense).
+%	
+%	Can I design a feedback controller via Lyapunov around an arbitrary trajectory? (\textit{Yes.}) Then perhaps we can perform OUU to determine the best controller parameters for a given uncertainty set, and respecting control limitations.
+%	
+%	Broadly: can we design a trajectory tube of points originating in a hyper-ellipsoid (a convex set) of initial conditions (can represent knowledge error) that minimizes covariance (to be determined which variance(s) should be reduced) in addition to fuel optimality? I need to define what I really mean. Is it a weighted combination of the fuel performance and covariance minimization? Can I use something like 
+%	\begin{align}
+%	\min_u -\mathbb{E}[m(t_f)] + n\sqrt{\mathbb{V}[m(t_f)]} \\
+%	\mathrm{subject\; to\; the\; constraints}\nonumber \\
+%	\mathbb{E}[x(t_f)] = 0 \\
+%	\mathrm{trace}(\mathbb{V}[x(t_f)]) < \delta
+%	\end{align}
+%	The problem with this formulation is selecting $\delta$. The trace should be weighted to account for units. Perhaps no constraint on the variances. Alternatively, if we can find solutions that violate constraints with less than a given probability:
+%	\begin{align}
+%	\mathbb{P}[c(x)<0] < 0.1 
+%	\end{align}
+%	this would be more powerful than showing that it is met in expectation. \textit{n} represents a weight on the importance of the variance term relative to the expectation. For example, $n=3$ means we are trying to minimize the $3-\sigma$ value of the final mass. Larger values of n penalize uncertainty more at the cost of increasing the mean final mass but in this scenario we are not particularly concerned with the mean. $n=1$ represents a somewhat special case because from the definition of variance of a scalar random variable we can perform the following rearrangements
+%	\begin{align}
+%	\mathbb{V}[X] = \mathbb{E}[X^2] - \mathbb{E}[X]^2\\
+%	\mathbb{E}[X^2] = \mathbb{V}[X] + \mathbb{E}[X]^2\\
+%	\sqrt{\mathbb{E}[X^2]} = \sqrt{\mathbb{V}[X] + \mathbb{E}[X]^2}\\
+%	\sqrt{\mathbb{E}[X^2]} \le \sqrt{\mathbb{V}[X]} + \mathbb{E}[X]\\
+%	\sqrt{\mathbb{E}[X^2]} \le  \bar{x} + \sigma_x
+%	\end{align} 
+%	to yield that the cost function is the square root of the second (non-central) moment. Since both terms are guaranteed to be non-negative, the square will have the same minimizer.
+%	
+%	In order to be meaningful, \textbf{the solution must be amenable to onboard implementation} or autonomy is sacrificed. The tube is subject to constraints on thrust magnitude, glide slope, fuel capacity, etc. so \textbf{the formulation must be able to handle constraints} explicitly. \textit{These conditions make MPC a strong contender}.
+%	
+%	\textit{Problem Idea}: Start SRP with an uncertainty ellipse. At some altitude, gain an update to onboard knowledge that instantaneously reduces the ellipse and potentially also moves the target to a new location (or correspondingly, moves the estimate of the spacecraft position in addition to changing the ellipse size)
+%	
+%	One issue with feedback control is that it should also respect the constraints (glideslope and other pointing). 
+%	
+%	Show that when optimized, a PID controller coupled with a reference trajectory far from the constraints is still very conservative compared to a near-optimal trajectory (with little to no margin) tracked by an MPC controller. Don't need end to end optimization for this, just pick a reasonable initial condition. 
 	
 %	Idea: Use cost function as lyapunov function? That way as the lyapunov value decreases so does
 	
 %	Comparison: Solve optimal trajectory from a cloud of points. Solve optimal trajectory from mean of cloud of points and apply feedback from 
 	
-	\section{Entry}
-	A fast, convergent replanning routine would solve this problem suitably. 
+%	\section{Entry}
+%		A fast, convergent replanning routine would solve this problem suitably. 
+%	
+%		One possibility in targeting SRP conditions is still to maximize altitude to reach low velocity with the other important part being the heading which should be closely aligned with the target at ignition.
+%		
+%		Opportunity: The B-spline parametrization currently used to solve the SRP problem could be adapted to work for entry guidance. No convergence proof. Potentially the control constraint can be made convex using the convex hull of the spline coefficients. 
 	
-		One possibility in targeting SRP conditions is still to maximize altitude to reach low velocity with the other important part being the heading which should be closely aligned with the target at ignition.
+	\section{Convex Replanning}
+	\textbf{Some opening remarks:} 
+	
+	\textit{The current literature does not address the selection of a trust region. In all the papers known to me (cf. Ref.~\cite{SOCP Lu, SOCP WangGrant}) addressing entry trajectory optimization as a convex optimization problem, the trust region is simply imposed with no qualification or discussion of how to choose its size, and it is held constant both across iterations and along each trajectory. }
 		
-		Opportunity: The B-spline parametrization currently used to solve the SRP problem could be adapted to work for entry guidance. No convergence proof. Potentially the control constraint can be made convex using the convex hull of the spline coefficients. 
+		\textit{Additionally, Ref.~\cite{SOCP Lu} proposed a convex relaxation of the controls} 
+	\begin{align*}
+		u_1^2+u_2^2\le1 \\
+		u_1 = \cos\sigma\\
+		u_2 = \sin\sigma
+	\end{align*}
+	\textit{and proved that at an optimal solution the inequality holds strictly (if it did not, the optimal solution of the relaxed problem would not be a valid solution of the original optimal control problem). The delicate proof given requires the assumption that the trust region constraint is \underline{always} inactive. The authors claim this is almost always true but this is counter to intuition, and is likely only true when the trajectory used to linearize is very close to the optimal solution, unless the trust region is selected to be large. Perhaps this can be justified in a successive approach where the problem is solved repeatedly, but in our approach where only a single problem is solved it is not appropriate.}
 	
-	\subsection{Trust Region}
-	Convex replanning based on linearization of the highly nonlinear dynamics is not effective when a constant trust region is used. This is in part because the dynamics during entry vary wildly over the course of the trajectory, and in order for a constant trust region to lead to an accurate solution, it must correspond to the smallest allowable value over the entire trajectory or errors will accumulate. This necessitates a very small trust region which is undesirable. Intuitively, then, we should use a trust region that varies according to some measure of higher order information. Building on an idea from saddle-free Newton's method in optimization, we can compute the largest trust region allowed at each point along a trajectory. This allows us to continue using the linearized approximation in the convex optimization problem while also taking larger steps. At each point along the trajectory the Hessian of the dynamics is computed and used to compute the difference between the first-order and second-order Taylor expansion:
+	\subsection{Trust Region Selection}
+	Convex replanning based on linearization of the highly nonlinear dynamics is not effective when a constant trust region is used. This is in part because the dynamics during entry vary wildly over the course of the trajectory, and in order for a constant trust region to lead to an accurate solution, it must correspond to the smallest allowable value over the entire trajectory or errors will accumulate. This necessitates a very small trust region which is undesirable. Intuitively, then, we should use a trust region that varies according to some measure of higher order information. Building on an idea from saddle-free Newton's method in optimization, we can use Hessian matrices to the estimate a trust region at each point along a trajectory. This allows us to continue using the linearized approximation in the convex optimization problem while also producing larger refinements of the solution. At each point along the trajectory the Hessian of each element of the dynamics is computed and used to compute the difference between the first-order and second-order Taylor expansion:
 	\begin{align}
 	&|f(x) + \nabla f(x)\Delta x + \frac{1}{2}\Delta x^T \nabla^2f\Delta x - f(x) - \nabla f(x)\Delta x |\\
 	&= \frac{1}{2}|\Delta x^T \nabla^2f\Delta x| \\
@@ -86,38 +99,46 @@
 	\begin{align}
 	\frac{1}{2}|\Delta x^T H\Delta x| \le \frac{1}{2}\Delta x^T |H|\Delta x
 	\end{align}
-	where $ |H| $ denotes the Hessian formed with its negative eigenvalues replaced by their absolute value. Note that H is required to be nonsingular. Thus, during when solving the optimization problem, the trust region will be defined by quadratic constraints of the form
+	where $ |H| $ denotes the Hessian formed with its negative eigenvalues replaced by their absolute value. Note that H is required to be nonsingular for this to hold. Thus, during when solving the optimization problem, the trust region will be defined by quadratic constraints of the form
 	\begin{align}
 	\frac{1}{2}\Delta x^T |H|\Delta x \le \Delta \label{eq_trust_region}
 	\end{align}
-	which can be reformulated as a second order cone constraint and thus fits naturally in a convex setting. The result is a time-varying trust region that utilizes curvature information to determine how much the new solution may deviate from the previous subject to accuracy constraints. Notice that when H is positive definite, the inequality in Eq.~(\ref{eq_trust_region}) holds strictly and no conservatism is introduced. 
+	which can be reformulated as a second order cone constraint and thus fits naturally in a convex setting. The result is a time-varying trust region that utilizes curvature information to determine how much the new solution may deviate from the previous subject to accuracy constraints. Notice that when H is positive definite, the constraint is convex, the inequality in Eq.~(\ref{eq_trust_region}) holds strictly, and no conservatism is introduced. 
 	\subsubsection{Choosing $ \Delta $}
-	Choosing $\Delta$ naturally has a big impact on how large the resulting trust region is. One natural choice is to use a fraction of the dynamics along the trajectory used to linearize, i.e., $\Delta = \eta f(x)$ with $\eta\in(0,1]$. There is the possibility that at certain points along the trajectory that some elements of $f(x)$ will be zero (or nearly so) and the trust region in that direction will also become zero (if only temporarily). Examples include the point of lofting where $\dot{h}=0$, or early in the trajectory where $\dot{\phi}=0$. A simple modification is simply $\Delta = \min(\eta f(x), \;\Delta_{min})$ where the minimization is taken element-wise.
+	Choosing $\Delta$ naturally has a big impact on how large the resulting trust region is. One natural choice is to use a fraction of the dynamics along the trajectory used to linearize, i.e., $\Delta = \eta f(x)$ with $\eta\in(0,1]$. There is the possibility that at certain points along the trajectory that some elements of $f(x)$ will be zero (or nearly so) and the trust region in that direction will also become zero (if only temporarily). Examples include the point of lofting where $\dot{h}=0$, or early in the trajectory where the vehicle, in the guidance frame, is assumed to be flying with $\phi(E_0)=\psi(E_0)=0$ which leads to $\dot{\phi}=0$. A simple modification is simply $\Delta = \max(\eta f(x),\; \Delta_{min})$ where the minimization is taken element-wise.
 	\subsubsection{Singular Hessians }
-	Another obstacle in using Eq.~(\ref{eq_trust_region}) directly is the possibility for singular Hessian matrices. In practice this occurs frequently. In this case, some of the eigenvalues are zero (or numerically, close enough to zero). This means that the system dynamics are locally linear in certain directions.  
+	Another obstacle in applying the constraint given by Eq.~(\ref{eq_trust_region}) directly is the possibility for singular Hessian matrices. In practice this occurs frequently. In this case, some of the eigenvalues are zero (or numerically, sufficiently close to zero). This means that the system dynamics are locally linear in certain directions at the point of linearization. This is beneficial in the sense that the trust region can be unrestricted (\textit{is this true}?) in those directions but detrimental in that additional work must be done to compute the trust region constraint. A reduced Hessian which does not include the singular dimensions can be formed and then used to estimate the trust region for the remaining directions.
+	
+	\subsection{Control Convexification}
+	To reiterate, Ref.~\cite{SOCP Lu} relies on a convex relaxation of the controls that is not suitable to our application (due to the assumption of an inactive trust region). They suggest that instantaneous bank reversals are an inherent part of solutions to some optimal control problems in atmospheric entry trajectories. Clearly, however, these instantaneous reversals are not flyable by a real system, and thus another benefit of treating the bank rate as the control is that all planned profiles we more easily tracked/flown. Treating the bank angle rate as the control as a form of convexification appears to have first appeared in Ref.~\cite{SOCP WangGrant} and is the approach adopted in our work, although we note that past research has suggested doing so in order to make the dynamics affine in the control.
+	
+	
 %	This can be utilized to find the choice of independent variable (time, energy, altitude, etc.) that allows for the largest updates to the current solution.
 
-
-	
-	\section{General}
-	Demonstrate benefit of OUU and/or robust optimal control. 
-	Example: In entry, we want to maximize altitude for timeline margin, but we're actually interested in the final altitude of the bottom of the distribution to ensure it meets the minimum required. Maximizing the nominal case may work, but it may be possible to do better by considering the uncertainty and the closed-loop response.
-	
-	\textbf{Combined EG and Propulsive Descent} approaches are another viable (and important) avenue. If nothing else, the EG should be targeting SRP conditions. 
-	
-	From \textit{Dual Adaptive MPC} ``Current covariance is evaluated prior to evaluating objective function. covariance at future times is a variable and the obj funcion rewards uncertainty reduction through control inputs that reduce future covariances. 
-
-	Use a neural network with uncertain parameters as well as control parameters to determine optimal EG for SRP. I.e. the samples used to train the network should contain uncertainty, a control parametrization for EG (closed-loop?), and solution of the SRP phase by OCP (should this also be closed loop? I.e. extend the reference + UQ idea all the way from end-to-end). However, once we have a solution, we will still need some sort of adaptive trigger (like calling GFOLD repeatedly, maybe look at Joel's approach) to begin SRP. Additionally, how can this approach cope with numerically realized feedback like MPC? The approach could automatically generate an SRP reference that when tracked by a prechosen controller (whose parameters can also be optimized) satisfies the constraints (in probability) and minimizes the 'robust' cost functional given above. 
-	
-	Ultimately we are seeking a robust solution for end to end EDL that generalizes well over uncertain dynamics and only partially observable states (at the very least the uncertain parameters are not known). 
-	
-	In SRP-based landings, the optimal energy at ignition is not known. This is in contrast to parachute-based EDL in which the parachute deployment conditions on Mach and dynamic pressure can be mapped into altitude-velocity space from which the range of acceptable energy levels is immediate.
-	
-	Is it possible to treat the final time as an additional uncertainty in the model? I.e. in the same way that $ C_D $ is a parameter, can we use a normalized time variable [0,1] and make the final time tf an additional uncertainty? It is different because it is not an input but rather falls out of the local optimization.
+%
+%	
+%	\section{General}
+%	Demonstrate benefit of OUU and/or robust optimal control. 
+%	Example: In entry, we want to maximize altitude for timeline margin, but we're actually interested in the final altitude of the bottom of the distribution to ensure it meets the minimum required. Maximizing the nominal case may work, but it may be possible to do better by considering the uncertainty and the closed-loop response.
+%	
+%	\textbf{Combined EG and Propulsive Descent} approaches are another viable (and important) avenue. If nothing else, the EG should be targeting SRP conditions. 
+%	
+%	From \textit{Dual Adaptive MPC} ``Current covariance is evaluated prior to evaluating objective function. covariance at future times is a variable and the obj funcion rewards uncertainty reduction through control inputs that reduce future covariances. 
+%
+%	Use a neural network with uncertain parameters as well as control parameters to determine optimal EG for SRP. I.e. the samples used to train the network should contain uncertainty, a control parametrization for EG (closed-loop?), and solution of the SRP phase by OCP (should this also be closed loop? I.e. extend the reference + UQ idea all the way from end-to-end). However, once we have a solution, we will still need some sort of adaptive trigger (like calling GFOLD repeatedly, maybe look at Joel's approach) to begin SRP. Additionally, how can this approach cope with numerically realized feedback like MPC? The approach could automatically generate an SRP reference that when tracked by a prechosen controller (whose parameters can also be optimized) satisfies the constraints (in probability) and minimizes the 'robust' cost functional given above. 
+%	
+%	Ultimately we are seeking a robust solution for end to end EDL that generalizes well over uncertain dynamics and only partially observable states (at the very least the uncertain parameters are not known). 
+%	
+%	In SRP-based landings, the optimal energy at ignition is not known. This is in contrast to parachute-based EDL in which the parachute deployment conditions on Mach and dynamic pressure can be mapped into altitude-velocity space from which the range of acceptable energy levels is immediate.
+%	
+%	Is it possible to treat the final time as an additional uncertainty in the model? I.e. in the same way that $ C_D $ is a parameter, can we use a normalized time variable [0,1] and make the final time tf an additional uncertainty? It is different because it is not an input but rather falls out of the local optimization.
 	
 	
 	\begin{thebibliography}{1}
-
-		
+	\bibitem{SOCP Lu}
+	Liu, Z., Shen, Z., and Lu, P., ``Entry Trajectory Optimization by Second Order Cone Programming", Journal of Guidance, Control, and Dynamics, Vol. 39, No.2,  AIAA, 2015.
+	
+	\bibitem{SOCP WangGrant}
+	Wang, Z., and Grant, M., ``Constrained Trajectory Optimization for Planetary Entry via Sequential Convex Programming" Atmospheric Flight Mechanics, AIAA, 2016. 
 	\end{thebibliography}
 \end{document}
