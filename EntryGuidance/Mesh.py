@@ -30,7 +30,7 @@ class Mesh(object):
         self.diffs = [self.D(N)*2./interval for N,interval in zip(self.orders,np.diff(self._times))] # Differentiation matrices scaled for their appropriate interval
         self.n_points = sum(self.orders)+1 # number of actual collocation points, accounting for meshes overlap in the interior (and e.g. N=2 yields 3 points)
         self.times = self.tau2time(self._times)
-        self.weights = [self.w(N)*interval/2. for N,interval in zip(self.orders,np.diff(self._times))]
+        self.weights = [self.w(N)*interval/2. for N,interval in zip(self.orders, np.diff(self._times))]
 
         self.history = [self._times[:]]
 
@@ -96,8 +96,12 @@ class Mesh(object):
         if t is None: #Split the mesh in half by default
             t = (self._times[i]+self._times[i+1])/2.
         else:
-            assert(t>self._times[i])
-            assert(t<self._times[i+1])
+            if self._times[i]<self._times[i+1]:
+                assert(t>self._times[i])
+                assert(t<self._times[i+1])
+            else:
+                assert(t<self._times[i])
+                assert(t>self._times[i+1])
 
         self._times.insert(i+1, t)
         intervals = np.diff(self._times)
@@ -117,7 +121,7 @@ class Mesh(object):
         self.n_points = sum(self.orders)+1
         self.times = self.tau2time(self._times)
 
-    def refine(self, X, F, tol=1e-3, rho=1, scaling=None):
+    def refine(self, X, F, tol=1e-3, rho=1, scaling=None, verbose=True):
         """ Refines the mesh using hp-adaptation
 
             tol is the tolerance on the residual matrix above which the mesh is refined
@@ -129,6 +133,8 @@ class Mesh(object):
 
         if scaling is None:
             scaling = np.ones_like(X)
+        if len(np.shape(scaling))==1:
+            scaling = np.asarray(scaling)[None,:]
 
         refined = False
         rho += 1.
@@ -146,7 +152,7 @@ class Mesh(object):
             xi = interp1d(t, x, kind='cubic', assume_sorted=True, axis=0)(ti)
             fi = interp1d(t, f, kind='cubic', assume_sorted=True, axis=0)(ti)
 
-            R = np.abs(Di.dot(xi) - interval*fi)    # Residual matrix
+            R = np.abs(Di.dot(xi) - interval*fi)/scaling    # Residual matrix
             ij = np.unravel_index(R.argmax(), R.shape)
             if len(ij)==2:
                 col = ij[1]
@@ -157,15 +163,15 @@ class Mesh(object):
             beta = r/r.mean()               # scaled midpoint residual vector
 
             if R[ij] > tol:
-                print "Refining segment {}".format(segment)
+                if verbose: print "Refining segment {}".format(segment)
                 refined = True
 
                 if beta.max() <= rho and (self.orders[segment]+self.inc < self.max): # Uniform type error
-                    print "Raising polynomial order..."
+                    if verbose: print "Raising polynomial order..."
                     self.update(segment, self.orders[segment]+self.inc)
 
                 else: # Isolated errors or max order reached
-                    print "Splitting the segment..."
+                    if verbose: print "Splitting the segment..."
                     # Find the highest points (skipping adjacent errors )
                     if self.orders[segment]+self.inc<self.max:
                         # splits = np.where(beta>=rho)[0]
@@ -223,41 +229,26 @@ def colloc(x):
     D = -D.T
     return D
 
+def test_quad():
+    """ A test of numerical quadrature using a mesh with Chebyshev polynomials"""
+    from scipy.integrate import quad
+
+    y = lambda x: (x**4 - 2 * x**3)*np.sin(x) + np.exp(0.1*x)*np.cos(x)*x
+
+    bound = -2 # Integration bounds
+
+    I = quad(y, -bound, bound)[0]
+    M = Mesh(t0=-bound, tf=bound, orders=[12], max_order=30)
+    integral = 0
+    for x,w in zip(M.tau2time(M._times, True), M.weights):
+        integral += w.dot(y(x))
+
+
+
+    print("Integrating test function: \nf(x) = (x**4 - 2 * x**3)*sin(x) + exp(0.1*x)*cos(x)*x")
+    print("True value using scipy.integrate.quad = {}".format(I))
+    print("Value using mesh quad = {}".format(integral))
 
 
 if __name__ == "__main__":
-    mesh = Mesh(tf=5, orders=[4,4], min_order=2, max_order=10)
-    # print mesh.tau2time([0,3,10])
-    # print mesh.tau2time([1,9,10])
-
-    print mesh.orders
-    print mesh.times
-    # mesh.update(0, 6)
-    # mesh.split(0, t=None, order=None)
-    # mesh.split(2, t=None, order=None)
-    mesh.bisect()
-    print mesh.orders
-    print mesh.times
-
-
-    # x = np.linspace(0,mesh.n_points-1,mesh.n_points)
-    # u = np.linspace(0,mesh.n_points-2,mesh.n_points-1)
-    # x = np.random.random((mesh.n_points,3,3))
-    # print x
-    # X = mesh.chunk(x)
-    # U = mesh.chunk(u)
-    # print X
-    # print U
-
-    # mesh.update(0, 6)
-    # x = np.linspace(0,mesh.n_points-1,mesh.n_points)
-    # X = mesh.chunk(x)
-    # print X
-    # print mesh.times
-    # print mesh._times
-    # mesh.split(0)
-    # print mesh._times
-    # print mesh.diffs[0]
-    # print mesh.diffs[2]
-    # print mesh.orders
-    # print mesh.points
+    test_quad()

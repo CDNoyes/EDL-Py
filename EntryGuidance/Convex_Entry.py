@@ -46,52 +46,62 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region, xf, umax, solver='ECO
 
 
     bc = [x[0] == x0]   # Initial condition only
-    # bc = [x[-1] == xf, x[0] == x0] # Both ends fixed
-    # bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1] # Relaxed final conditions
-    # bc = [x[-1] == xf]  # Final condition only
-
+    bc += [x[-1][3]<475] # Final velocity constraint
+    # bc += [x[-1][2] == xf[2]] # Final latitude constraint
     constr = bc
     for t,xr in zip(T,x_ref):
-        constr += [cvx.abs(x[t]-xr) <= trust_region]
-        constr += [cvx.abs(x[t][-1]) <= np.radians(80)]
-        # constr += [v[t][0] == 0]
+        # constr += [cvx.abs(x[t]-xr) <= trust_region]
+        # constr += [cvx.abs(x[t][-1]) <= np.radians(90)]
+        constr += [cvx.abs(x[t][-1]-xr[-1]) <= np.radians(10)]
+        # constr += [v[t][1:3] == 0]
+        # constr += [v[t][5] == 0]
+        # constr += [v[t][-1] == 0] # No helping the actual control!
 
     # Control constraints
     constr.append(cvx.abs(u) <= umax)
 
+    Q = np.diag([1, 0.01, 0.01, 1, 0.01, 0.001, 0.0001])/9.e3
+
     # Lagrange cost and ode constraints
     states = []
     for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,V): # Iteration over the segments of the mesh
-        # w = np.abs(w)
-        L = 0*(ur-ui)**2                                              # Lagrange integrands for a single mesh
-        cost = w*L                                            # Clenshaw-Curtis quadrature
-        lqi = np.array([cvx.quad_form(xii-xri,np.diag([1,1,1,1.,1,1,1])) for xii,xri in zip(xi,xr)]) # LQ type cost
-        lq = w.dot(lqi)/np.sum(w)
-        cost += lq
+        L = 0.0001*(ur-ui)**2
+        L = 0.0001*cvx.abs(ur-ui)
+        cost = -w*L                                            # Lagrange integrands for a single mesh
+        # cost = cvx.abs(w*L/np.sum(w))                                            # Clenshaw-Curtis quadrature
+        # cost = 0
+        # lqi = np.array([cvx.quad_form(xii-xri,np.diag([0,.1,1,0,0,0,0])) for xii,xri in zip(xi,xr)]) # LQ type cost
+        # lqi = np.array([cvx.quad_form(xii-xri,np.diag([0,0,0,0,0,0,1])) for xii,xri in zip(xi,xr)]) # LQ type cost
+        # lq = w.dot(lqi)/np.sum(w)
         # cost += cvx.abs(lq)
         # Estimated derivatives:
         dx = d.dot(xi)
 
         # Differential equation constraints
-        # ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # No virtual control
-        ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) + vii  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # Iteration over individual collocation points
+        # ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) for xii,fi,ai,bi,xri,uri,uii,dxi in zip(xi,f,a,b,xr,ur,ui,dx) ] # No virtual control
+        ode =  [dxi == fi + ai*(xii-xri) + bi*(uii-uri) + Q*vii  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # Iteration over individual collocation points
         states.append(cvx.Problem(cvx.Minimize(cost), ode))
+        # ode =  [np.linalg.inv(Q)*cvx.abs(-dxi + fi + ai*(xii-xri) + bi*(uii-uri) + Q*vii)  for xii,fi,ai,bi,xri,uri,uii,dxi,vii in zip(xi,f,a,b,xr,ur,ui,dx,vi) ] # Iteration over individual collocation points
+        # states.append(cvx.Problem(cvx.Minimize(cvx.norm(sum(ode),'inf'))))
+        # states.append(cvx.Problem(cvx.Minimize(cvx.norm(cvx.vstack(*ode),'inf'))))
 
     # Mayer Cost, including penalty for virtual control
-    hf = x[-1][0]/1000 - 3397. # Not sure if correct syntax
-    miss = 0*(x[-1][1]-xf[1])**2 + (x[-1][2]-xf[2])**2
-    weight = 3397
-    Phi = cvx.Problem(cvx.Minimize(weight*miss - 0*hf))
-    Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),'inf') ))
+    hf = x[-1][0]/1000 - 3397.
+    vf = x[-1][3]
+    miss = 0*(x[-1][1]-xf[1])**2 + cvx.power(x[-1][2]-xf[2],2)
+    # miss = 0*cvx.abs(x[-1][1]-xf[1]) + cvx.abs(x[-1][2]-xf[2])
+    weight = 3397*0
+    Phi = cvx.Problem(cvx.Minimize(weight*miss + 0*(x[-1][0]-xf[0]+350)**2))
+    Penalty = cvx.Problem(cvx.Minimize(1e3*cvx.norm(cvx.vstack(*v),'inf') ))
+    # Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),1)))
 
     # sums problem objectives and concatenates constraints.
-    prob = sum(states) + Penalty #+ Phi
+    prob = sum(states) + Penalty + Phi
     prob.constraints += constr
 
     t1 = time.time()
-    # prob.solve(solver='CVXOPT')
-    # prob.solve(solver='SCS')
-    prob.solve(solver=solver)
+    prob.solve(solver='MOSEK')
+    # prob.solve(solver=solver)
     t2 = time.time()
 
     print "status:        ", prob.status
@@ -105,10 +115,10 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region, xf, umax, solver='ECO
         try:
             v_sol = np.array([xi.value.A for xi in v]).squeeze()
             print "penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(), np.inf))
-            for v in v_sol.T:
-                plt.figure()
-                plt.plot(x_sol.T[3], v)
-            plt.show()
+            # for v in v_sol.T:
+            #     plt.figure()
+            #     plt.plot(x_sol.T[3], v)
+            # plt.show()
         except:
             print "Could not compute penalty value"
 

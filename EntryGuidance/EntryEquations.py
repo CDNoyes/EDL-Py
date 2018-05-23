@@ -14,7 +14,7 @@ sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
 
-    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Velocity=False, DifferentialAlgebra=False):
+    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Velocity=False, Altitude=False, DifferentialAlgebra=False, Scale=False):
 
         self.planet = PlanetModel
         self.vehicle = VehicleModel
@@ -29,12 +29,14 @@ class Entry(object):
         self.planet._da = DifferentialAlgebra
 
         # Non-dimensionalizing the states
-        if False:
+        if Scale:
             self.dist_scale = self.planet.radius
             self.acc_scale = self.gravity(self.dist_scale)
             self.time_scale = np.sqrt(self.dist_scale/self.acc_scale)
-            self.vel_scale = np.sqrt(self.dist_scale/self.time_scale)
+            self.vel_scale = np.sqrt(self.dist_scale*self.acc_scale)
+            self.mass_scale = 1
             self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, self.dist_scale, 1])
+
         else: # No scaling
             self.dist_scale = 1
             self.acc_scale = 1
@@ -57,6 +59,11 @@ class Entry(object):
             self.dE = None
         else:
             self.dE = 1
+
+        self.use_altitude = Altitude
+        if self.use_altitude:
+            self.dE = None
+
 
     def update_ratios(self, LR, DR):
         self.drag_ratio = DR
@@ -96,14 +103,12 @@ class Entry(object):
 
         h = r - self.planet.radius/self.dist_scale
 
-        g = self.planet.mu/r**2 /self.acc_scale
+        g = (self.planet.mu/(r*self.dist_scale)**2)/self.acc_scale
 
         rho,a = self.planet.atmosphere(h*self.dist_scale)
-        M = v/a
-        cD,cL = self.vehicle.aerodynamic_coefficients(M*self.vel_scale)
-        # cD,cL = self.vehicle.aerodynamic_coefficients(M)
-        # f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)
-        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)/self.acc_scale
+        M = v*self.vel_scale/a
+        cD,cL = self.vehicle.aerodynamic_coefficients(M)
+        f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
 
@@ -113,14 +118,16 @@ class Entry(object):
         dv = -D - g*sin(gamma)
         dgamma = L/v*cos(sigma) + cos(gamma)*(v/r - g/v)
         dpsi = -L*sin(sigma)/v/cos(gamma) - v*cos(gamma)*cos(psi)*tan(phi)/r
-        ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)
+        ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)/self.dist_scale
         dm = np.zeros_like(dh)
+
         if self.use_energy:
             # self.dE = np.tile(-v*D,(8,1))
-            self.dE = np.tile(-v*D,(8,))
+            self.dE = np.tile(-v*D, (8,))
         if self.use_velocity:
-            self.dE = np.tile(dv,(8,))
-
+            self.dE = np.tile(dv, (8,))
+        if self.use_altitude:
+            self.dE = np.tile(dh, (8,)) # trajectory length
         return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
     #3DOF, Rotating Planet Model - Highest fidelity
@@ -186,21 +193,10 @@ class Entry(object):
         F = self._bank(X)
         return da.jacobian([F], vars)
 
-        # Numerical version:
-        # if self.__jacobianb is None:
-        #     from numdifftools import Jacobian
-        #     self.__jacobianb = Jacobian(self._bank, method='complex')            #
-        #
-        # state = np.concatenate((x,u))
-        # state = np.append(state, sigma_dot)
-        #
-        # return self.__jacobianb(state)
-
 
     # Utilities
     def altitude(self, r, km=False):
         """ Computes the altitude from radius """
-
         if km:
             return (r-self.planet.radius)/1000.
         else:
@@ -226,6 +222,8 @@ class Entry(object):
         else:
             return state/np.tile(self._scale, (shape[0],1))
 
+    def scale_time(self, time):
+        return time/self.time_scale
 
     def unscale(self, state):
         """ Converts unitless states to states with units """
@@ -234,6 +232,8 @@ class Entry(object):
             return state*self._scale
         else:
             return state*np.tile(self._scale, (shape[0],1))
+    def unscale_time(self, time):
+        return time*self.time_scale
 
     def jacobian(self, x, u):
         ''' Returns the full jacobian of the entry dynamics model. The dimension will be [nx, nx+nu].'''
@@ -293,29 +293,6 @@ class Entry(object):
         return self.planet.mu/r**2
 
 
-    # def jacobian_state(self, x, u):
-    #     """ Analytical jacobian """
-    #     r,theta,phi,v,gamma,psi,s,m = x
-    #     sigma,throttle,mu = u
-    #
-    #     zero = np.zeros_like(r, dtype=r.dtype)
-    #
-    #     h = r - self.planet.radius
-    #     hs = self.planet.scaleHeight
-    #     g = self.planet.mu/r**2
-    #     rho,a = self.planet.atmosphere(h)
-    #     M = v/a
-    #     cD,cL = self.vehicle.aerodynamic_coefficients(M)
-    #     f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)
-    #     L = f*cL*self.lift_ratio
-    #     D = f*cD*self.drag_ratio
-    #
-    #     dr = [zero, zero, zero, sin(gamma), v*cos(gamma), zero, zero, zero]
-    #     # dtheta
-    #     # dphi
-    #     dv = [D/hs+2*g/r, zero, zero, -2*D/v, -g*cos(gamma), zero, zero, zero] # doesnt account for weak CD dependence on Mach
-    #
-    #     return np.stack((dr,dv), axis=0)
 
 def EDL(InputSample=np.zeros(4),**kwargs):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''

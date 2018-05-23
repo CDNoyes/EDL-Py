@@ -72,14 +72,16 @@ def ChebyshevDiff(n):
 
 
 def test_quad():
-    """ Seems ChebQuad works best with even values """
+    """ Test of Chebyshev quadrature
+            Seems ChebQuad works best with even ordered polynomials
+    """
     from scipy.integrate import quad
 
     y = lambda x: (x**4 - 2 * x**3)*np.sin(x) + np.exp(0.1*x)*np.cos(x)*x
 
-    bound = 1
+    bound = 1 # Integration bounds
 
-    I = quad(y, -bound,bound)[0]
+    I = quad(y, -bound, bound)[0]
 
     # A single 4th order integration is sufficient
     xi,wi = ChebyshevQuad(4)
@@ -96,14 +98,14 @@ def test_quad():
     Isplit = 0
 
     for ta,tb in zip(ti,ti[1:]):
-        tau = 0.5*((tb-ta)*xi + ta+tb) #map the collocation points to the true time interval
+        tau = 0.5*((tb-ta)*xi + ta + tb) #map the collocation points to the true time interval
         Isplit += sum(y(tau)*wi)*(0.5*(tb-ta))
 
-
-    print I
-    print I4
-    print I2
-    print Isplit
+    print("Integrating test function: \nf(x) = (x**4 - 2 * x**3)*sin(x) + exp(0.1*x)*cos(x)*x")
+    print("True value using scipy.integrate.quad = {}".format(I))
+    print("Value using a single 2nd order poly   = {}".format(I2))
+    print("Value using a single 4th order poly   = {}".format(I4))
+    print("Value using {} 2nd order poly         = {}".format(intervals, Isplit))
 
 if __name__ == "__main__":
     test_quad()

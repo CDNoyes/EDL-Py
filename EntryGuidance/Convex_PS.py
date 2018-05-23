@@ -35,7 +35,8 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
         stm = np.array([cvx.Variable(n,n) for _ in range(N)])
     else:
         stm = np.zeros((N,n,n))
-    u = cvx.Variable(N,m) # Only works for m=1
+    # u = cvx.Variable(N,m) # Only works for m=1
+    u = np.array([cvx.Variable(m) for _ in range(N)])
     v = np.array([cvx.Variable(n) for _ in range(N)]) # Virtual controls
     # K = cvx.Variable(rows=1,cols=2) # Linear feedback gain
     K = np.array([1,1]).T
@@ -63,16 +64,19 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 
     constr = []
     for t,xr in zip(T,x_ref):
-        constr += [cvx.norm((x[t]-xr)) <= trust_region]
+        # constr += [cvx.norm((x[t]-xr)) <= trust_region]
+        # constr += [cvx.abs(x[t]-xr) <= trust_region]
+        constr += [(x[t]-xr)**2 <= trust_region**2]
+        constr += [cvx.abs(u[t]) <= umax]
+
 
     # Control constraints
-    Cu = cvx.abs(u) <= umax
 
     # Lagrange cost and ode constraints
     states = []
     for d,xi,f,a,b,xr,ur,ui,w,stmi,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,STM,V): # Iteration over the segments of the mesh
-        L = cvx.abs(ui)**1                                          # Lagrange integrands for a single mesh
-        cost = w*L                                                  # Clenshaw-Curtis quadrature
+        L = np.array([cvx.abs(uii)**1 for uii in ui])               # Lagrange integrands for a single mesh
+        cost = np.dot(w,L)                                                  # Clenshaw-Curtis quadrature
 
         # Estimated derivatives:
         dx = d.dot(xi)
@@ -89,20 +93,19 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
         states.append(cvx.Problem(cvx.Minimize(cost), ode+ode_stm))
 
     # Mayer Cost, including penalty for virtual control
-    Phi = cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))
+    # Phi = cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))
+    Phi = 0
     Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),'inf') ))
 
     # sums problem objectives and concatenates constraints.
     prob = sum(states) + Phi + Penalty
-    prob.constraints.append(Cu)
     prob.constraints += bc
     prob.constraints += constr
 
     t1 = time.time()
     prob.solve(solver='ECOS')
     t2 = time.time()
-    # import pdb
-    # pdb.set_trace()
+
     print "status:        ", prob.status
     print "optimal value: ", np.around(prob.value,3)
     print "solution time:  {} s".format(np.around(t2-t1,3))
@@ -110,7 +113,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 
     try:
         x_sol = np.array([xi.value.A for xi in x]).squeeze()
-        u_sol = u.value.A.squeeze()
+        u_sol = np.array([ui.value for ui in u]).squeeze()
         v_sol = np.array([xi.value.A for xi in v]).squeeze()
         print "penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(),np.inf))
 
@@ -120,7 +123,8 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
             stm_sol = np.zeros((N,n,n))
 
         return x_sol.T, u_sol, stm_sol, prob.value
-    except:
+    except Exception as e:
+        print e.message
         return x_ref.T,u_ref,np.zeros((N,n,n)),None
 
 
@@ -190,7 +194,8 @@ def test():
 
     umax = 3
     tf = 5
-    mesh = Mesh(tf=tf,orders=[4]*5)
+    # mesh = Mesh(tf=tf,orders=[10]*1)
+    mesh = Mesh(tf=tf,orders=[6]*5)
     t = mesh.times
     x0 = [2,-2]
     P0 = np.eye(2)*0.01              # Initial covariance
@@ -215,7 +220,8 @@ def test():
 
     iters = 30                       # Maximum number of iterations
     P = np.linspace(1,0.1,iters)
-    trust_region = 4
+    # trust_region = 4
+    trust_region = np.array([4,4])
     # Main Loop
     for it in range(iters):
         print "Iteration {}".format(it)
@@ -260,7 +266,7 @@ def test():
                         if it%2 and False:
                             _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
                         else:
-                            refined = mesh.refine(x_approx.T, F, tol=1e-5, rho=1) # Dynamics based refinement for convergence check
+                            refined = mesh.refine(x_approx.T, F, tol=1e-3, rho=3) # Dynamics based refinement for convergence check
                         if mesh.times.size > 1000:
                             print "Terminating because maximum number of collocation points has been reached."
                             break
