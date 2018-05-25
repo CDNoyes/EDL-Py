@@ -10,7 +10,7 @@ class Planet:
             self.radius = float('nan')  # equatorial radius, m
             self.omega = float('nan')     # angular rate of planet rotation, rad/s
             self.mu = float('nan')      # gravitational parameter, m^3/s^2
-            print 'Planet model not yet implemented!'
+            print('Planet model not yet implemented!')
         elif self.name == 'Venus':
             self.radius = float('nan')
             self.omega = float('nan')
@@ -56,7 +56,7 @@ class Planet:
             self.mu = float('nan')
 
         else:
-            print 'Input planet name, '+ self.name +', is not valid'
+            print('Input planet name, '+ self.name +', is not valid')
 
 
     def __exp_model_mars(self, h):

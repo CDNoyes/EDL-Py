@@ -403,7 +403,7 @@ def CompareSaturation():
     plt.show()
 
 def CompareJacobian():
-    vel = True
+    vel = False
     model = Entry(Velocity=vel)
     from InitialState import InitialState
     x = InitialState(radius=3450e3, velocity=3500)
@@ -413,7 +413,7 @@ def CompareJacobian():
 
     if vel:
         ind = [0,4,6,7,3]
-        print model.dyn_model(x[ind[:-1]], x[ind[-1]], u=u).shape
+        print(model.dyn_model(x[ind[:-1]], x[ind[-1]], u=u).shape)
     else:
         ind = range(8)
     # print "state: {}".format(x)
@@ -423,24 +423,25 @@ def CompareJacobian():
     for _ in range(N):
         Jnum = model.jacobian(x[ind],u)
     tnum = time.time()-t0
-    t0 = time.time()
-    # Jda = model.jacobian_state(x,u)
-    tda = time.time()-t0
+
+    model.DA(True)
     t0 = time.time()
     for _ in range(N):
-        Jauto = model.jacobian_ad(x[ind],u)
-    tauto = time.time()-t0
-    print "Numerical differencing: {} s".format(tnum/N)
-    # print "Differential algebra  : {} s".format(tda)
-    print "Autograd package      : {} s".format(tauto/N)
-    err = np.abs(Jnum-Jauto)
-    print "Maximum error: {}".format(err.max())
-    print "Ratio of NumDiffTools to Autograd: {}".format(tnum/tauto)
+        Jda = model.jacobian_(x[ind],u)
+    tda = time.time()-t0
 
-    print Jnum.shape
+    # model.DA(False)
+    # t0 = time.time()
+    # for _ in range(N):
+    #     Jauto = model.jacobian_ad(x[ind],u)
+    # tauto = time.time()-t0
+    print("Numerical differencing: {:.5f} s".format(tnum/N))
+    print("Differential algebra  : {:.5f} s".format(tda/N))
+    # print("Autograd package      : {} s".format(tauto/N))
+    # err = np.abs(Jnum-Jauto)
+    # print("Maximum error: {}".format(err.max()))
+    print("PyAudi is approximately {:.1f}x faster than NumDiffTools".format(tnum/tda))
 
-    # print Jauto[0][:8]-Jda[0]
-    # print Jauto[3][:8]-Jda[1]
 
 if __name__ == "__main__":
     # CompareSaturation()

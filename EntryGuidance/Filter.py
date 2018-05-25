@@ -10,8 +10,8 @@ class EKF(object):
         import sys
         from os import path
         sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
-        from EntryEquations import EDL
-        self.model  = EDL()   # Nominal model
+        from EntryEquations import Entry
+        self.model  = Entry()   # Nominal model
 
         # Estimator telemetry
         self.state_history  =  []
@@ -27,11 +27,6 @@ class EKF(object):
         self.A      = None      # Linearized system model
         self.C      = None      # Linearized observation model
 
-    def set_model(self,sample):
-        """ Allows one to set a prediction model other than the default/nominal """
-        from EntryEquations import EDL
-        self.model = EDL(sample)
-
     def init(self,state,state_covariance):
         self.state = state
         self.cov = state_covariance
@@ -42,7 +37,8 @@ class EKF(object):
     def linearize(self, u, measured_drag):
         """ Updates the linearizations of the state and measurement equations """
 
-        J = self.model.jacobian_(self.state, u)[0] # Returns both jacobian and hessian
+        J = self.model.jacobian_ad(self.state, u)#[0] # Pyaudi version returns both jacobian and hessian
+        # print(J.shape)
         self.A = J[0:6,:][:,0:6] # Don't need the range to go or mass covariances
 
         self.C = np.array([ [-measured_drag/self.model.planet.scaleHeight],
@@ -106,22 +102,15 @@ class EKF(object):
         return
 
     def process(self):
-        """ Processes the state, gain, and covariance histories into ndarrays """
         self.state_history = np.vstack(self.state_history[:-1])
-        self.covariance_history = np.stack(self.covariance_history[:-1])
-        self.gain_history = np.stack(self.gain_history)
-
-
-    def estimate_trajectory(self,sim_output,add_noise=True):
-        """ Runs the EKF along pre-existing trajectory data """
-        pass
 
 
     def test(self):
         """ The methodology is to use an off-nominal simulation (open or closed loop)
             Initialize the filter with the mean initial condition and a nominal system model
             Pass (possibly noisy) measurements to the filter and estimate the true states
-            using only drag?
+            using only drag? Examine observability? Seems unlikely that flight path and heading
+            can be resolved accurately.
         """
         from Simulation import Simulation, Cycle, EntrySim
         from Triggers import SRPTrigger, AccelerationTrigger
@@ -141,11 +130,9 @@ class EKF(object):
 
         x0_nav = InitialState()
         x0 = x0_nav[:]
-        # x0 = Perturb(x0_nav,[10,0,0,1,0,0])  # initial state perturbations
-        print x0-x0_nav
-        # print x0
-        sample = [-.03,.01,.01,0.001]        # parametric perturbations
-        # sample = None
+        x0 = Perturb(x0_nav,[10,0,0,1,.001,0])  # initial state perturbations
+        # sample = [-.1,.1,.013,-.001]        # parametric perturbations
+        sample = None
         output_ref = reference_sim.run(x0,[bankProfile],StepsPerCycle=10,InputSample=sample)
 
         # ######################################################
@@ -153,54 +140,52 @@ class EKF(object):
         # ######################################################
         drag = reference_sim.df['drag'].values                          # Truth data
         bank = np.radians(reference_sim.df['bank'].values)
-        R = .01*(.05/3)**2                                                  # Variance, defined as a fraction of the true drag
+        R = 1*(.01/3)**2                                                  # Variance, defined as a fraction of the true drag
         measurement_noise = np.random.normal(0,R**0.5,drag.shape)       # Takes standard deviation so 0.01/3 yields a 1-percent deviation in 3-sigma
         measurement_bias = 0
         drag_measured = drag * (1+measurement_noise) + measurement_bias
         measurement_variance = drag**2 * R                              # This is the covariance matrix (scalar in this case) for the kalman filter
         process_noise = np.zeros((6,6))                                 # Assume no process noise
-        initial_covariance = np.diag([10**2,0.0001,0.0001,1,0.001,0.0001])*1
+        initial_covariance = np.diag([10**2,0.0001,0.0001,1,0.001,0.0001])
         # Initialize the estimator
         self.init(x0_nav,initial_covariance)
-        # self.set_model(sample) # Only for testing, in general this should not be used
+        initialized = False
         # Predict-update until the trajectory is complete
         dt = 1
         for i,group in enumerate(zip(drag_measured,bank,measurement_variance)):
             Dm,banki,Ri = group
             Ri = np.array([[Ri]])
             u = [banki,0,0]
+            print("Drag measurement variance = {}".format(Ri))
             self.update(dt,Dm,u,process_noise,Ri)
         self.process()
-        print self.state_history.shape
-        print self.covariance_history.shape
-        print self.gain_history.shape
 
         # Plot comparisons
         import matplotlib.pyplot as plt
-        e = reference_sim.df['time'].values
+        e = reference_sim.df['energy']
         df = reference_sim.df
         err = self.state_history-reference_sim.history
+        # for i in range(0,6):
+        #     plt.figure(i+1)
+        #
+        #     plt.plot(e,reference_sim.history[:,i],label='Truth')
+        #     plt.plot(e,self.state_history[:,i],label='EKF')
+        plt.figure(1)
+        plt.plot(err[:,3],err[:,0]/1000)
+        plt.xlabel('Velocity error (m/s)')
+        plt.ylabel('Altitude error (km)')
+        plt.figure(2)
+        plt.plot(np.degrees(err[:,1]),np.degrees(err[:,2]))
+        plt.xlabel('Longitude error (deg)')
+        plt.ylabel('Latitude error (deg)')
+        plt.figure(3)
+        plt.plot(np.degrees(err[:,4]),np.degrees(err[:,5]))
+        plt.xlabel('Flight Path error (deg)')
+        plt.ylabel('Azimuth error (deg)')
 
-        # plt.figure(1)
-        # plt.plot(err[:-1,3],err[:-1,0]/1000)
-        # plt.xlabel('Velocity error (m/s)')
-        # plt.ylabel('Altitude error (km)')
-        # plt.figure(2)
-        # plt.plot(np.degrees(err[:,1]),np.degrees(err[:,2]))
-        # plt.xlabel('Longitude error (deg)')
-        # plt.ylabel('Latitude error (deg)')
-        # plt.figure(3)
-        # plt.plot(np.degrees(err[:,4]),np.degrees(err[:,5]))
-        # plt.xlabel('Flight path error (deg)')
-        # plt.ylabel('Heading error (deg)')
-        label = ['Alt (km)','Lon','Lat','Vel (m/s)','FPA (deg)','Azi']
-        scale = [1000,np.pi/180,np.pi/180,1,np.pi/180,np.pi/180]
-        plt.figure()
-        for i in [0,3,4]:#range(0,6):
-            plt.plot(e[:-1],np.abs(err[:-1,i]/scale[i]),label=label[i])
-        plt.xlabel('Time (s)')
-        plt.ylabel('Estimation Error')
-        plt.legend()
+        plt.figure(4)
+        plt.plot(e,drag)
+        plt.plot(e,drag_measured)
 
         plt.show()
 

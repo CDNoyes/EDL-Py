@@ -173,7 +173,7 @@ def sign(x):
 #       c = (c[1:-1-k] - c[:-2-k])* k / dt => c = (c[1:-1-k] - c[:-2-k])*(k/dt)    # For some reason, the dual variables couldn't be divided by a float, but multiplying worked fine
 
 
-from memoize import memoize
+from .memoize import memoize
 
 @memoize
 def __getSplIdx(x,t):
