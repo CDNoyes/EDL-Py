@@ -2,3 +2,7 @@
 *.gif
 *.asv
 *.mat
+*.aux
+*.log
+*.gz
+*.pdf
