@@ -5,7 +5,7 @@ from Chebyshev import ChebyshevDiff, ChebyshevQuad
 class Mesh(object):
     """ Defines a mesh class for working with multiple intervals of collocation points """
 
-    def __init__(self, tf, orders=None, min_order=2, max_order=12, t0=0, default_order=6, increment=2):
+    def __init__(self, tf, orders=None, min_order=2, max_order=16, t0=0, default_order=6, increment=2):
         """ Initializes an instance of the Mesh class """
         self.min = min_order
         self.max = max_order
@@ -152,7 +152,7 @@ class Mesh(object):
             xi = interp1d(t, x, kind='cubic', assume_sorted=True, axis=0)(ti)
             fi = interp1d(t, f, kind='cubic', assume_sorted=True, axis=0)(ti)
 
-            R = np.abs(Di.dot(xi) - interval*fi)/scaling    # Residual matrix
+            R = np.abs(Di.dot(xi) - interval*fi)#/scaling    # Residual matrix
             ij = np.unravel_index(R.argmax(), R.shape)
             if len(ij)==2:
                 col = ij[1]
@@ -163,15 +163,15 @@ class Mesh(object):
             beta = r/r.mean()               # scaled midpoint residual vector
 
             if R[ij] > tol:
-                if verbose: print "Refining segment {}".format(segment)
+                if verbose: print("Refining segment {}".format(segment))
                 refined = True
 
                 if beta.max() <= rho and (self.orders[segment]+self.inc < self.max): # Uniform type error
-                    if verbose: print "Raising polynomial order..."
+                    if verbose: print("Raising polynomial order...")
                     self.update(segment, self.orders[segment]+self.inc)
 
                 else: # Isolated errors or max order reached
-                    if verbose: print "Splitting the segment..."
+                    if verbose: print("Splitting the segment...")
                     # Find the highest points (skipping adjacent errors )
                     if self.orders[segment]+self.inc<self.max:
                         # splits = np.where(beta>=rho)[0]
@@ -235,10 +235,10 @@ def test_quad():
 
     y = lambda x: (x**4 - 2 * x**3)*np.sin(x) + np.exp(0.1*x)*np.cos(x)*x
 
-    bound = -2 # Integration bounds
+    bound = 2 # Integration bounds
 
     I = quad(y, -bound, bound)[0]
-    M = Mesh(t0=-bound, tf=bound, orders=[12], max_order=30)
+    M = Mesh(t0=-bound, tf=bound, orders=[9,9,9], max_order=30)
     integral = 0
     for x,w in zip(M.tau2time(M._times, True), M.weights):
         integral += w.dot(y(x))
@@ -246,9 +246,9 @@ def test_quad():
 
 
     print("Integrating test function: \nf(x) = (x**4 - 2 * x**3)*sin(x) + exp(0.1*x)*cos(x)*x")
-    print("True value using scipy.integrate.quad = {}".format(I))
-    print("Value using mesh quad = {}".format(integral))
-
+    print("True value, scipy.integrate.quad = {:.6f}".format(I))
+    print("Estimated value using mesh quad  = {:.6f}".format(integral))
+    print("|Error| = {}".format(np.abs(I-integral)))
 
 if __name__ == "__main__":
     test_quad()
