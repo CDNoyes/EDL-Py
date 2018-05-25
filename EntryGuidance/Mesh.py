@@ -132,7 +132,7 @@ class Mesh(object):
         # X,F are the current solution and its derivative on the current mesh
 
         if scaling is None:
-            scaling = np.ones_like(X)
+            scaling = np.ones_like(X[0])
         if len(np.shape(scaling))==1:
             scaling = np.asarray(scaling)[None,:]
 
@@ -140,7 +140,7 @@ class Mesh(object):
         rho += 1.
 
         intervals = np.diff(self._times)/2.
-        Tc = self.points
+        Tc = self.points[:]
         Xc = self.chunk(X)
         Fc = self.chunk(F)
 
@@ -152,7 +152,7 @@ class Mesh(object):
             xi = interp1d(t, x, kind='cubic', assume_sorted=True, axis=0)(ti)
             fi = interp1d(t, f, kind='cubic', assume_sorted=True, axis=0)(ti)
 
-            R = np.abs(Di.dot(xi) - interval*fi)#/scaling    # Residual matrix
+            R = np.abs(Di.dot(xi) - interval*fi)/scaling    # Residual matrix
             ij = np.unravel_index(R.argmax(), R.shape)
             if len(ij)==2:
                 col = ij[1]
