@@ -2,8 +2,7 @@
 
 import numpy as np
 
-
-def ChebyshevQuad( N ):
+def ChebyshevQuad(N):
     """ Computes the points and weights associated with Curtis-Clenshaw quadrature of Nth degree
 
         This is used to discretize Langrangian cost functions when using a
@@ -13,26 +12,27 @@ def ChebyshevQuad( N ):
     assert(N > 1)
 
     K = np.arange(N+1)
-    points = -np.cos(np.pi*K/N)
+    theta = np.pi*K/N
+    points = -np.cos(theta)
     w = np.zeros((N+1,))
+    interior = np.arange(1,N)
+    v = np.ones((N-1,))
 
     if np.mod(N,2): # odd N
         w[0] = 1./(N**2)
         w[N] = w[0]
-        Nsum = (N-1)/2 + 1
+        for k in range(1, (N+1)//2):
+            v -= 2*np.cos(2*k*theta[interior])/(4*k**2 - 1)
 
     else: # even N
         w[0] = 1./(N**2 - 1)
         w[N] = w[0]
-        Nsum = N/2 + 1
+        for k in range(1, (N)//2):
+            v -= 2*np.cos(2*k*theta[interior])/(4*k**2 - 1)
+        v -= np.cos(N*theta[interior])/(N**2 - 1)
 
-    for s in range(1,Nsum):
-        j = np.arange(Nsum)
-        tempval = np.cos(2*np.pi*j*s/N)/(1-4*j**2)
-        tempval[0] = tempval[0]*0.5
-        tempval[-1] = tempval[-1]*0.5
-        w[s] = 4./N*sum(tempval)
-        w[N-s] = w[s]
+    w[interior] = 2*v/N
+
 
     return points, w
 
@@ -73,7 +73,6 @@ def ChebyshevDiff(n):
 
 def test_quad():
     """ Test of Chebyshev quadrature
-            Seems ChebQuad works best with even ordered polynomials
     """
     from scipy.integrate import quad
 
@@ -83,7 +82,7 @@ def test_quad():
 
     I = quad(y, -bound, bound)[0]
 
-    # A single 4th order integration is sufficient
+    # A single 4th order integration
     xi,wi = ChebyshevQuad(4)
     I4 = sum(y(xi*bound)*wi)*bound
 
@@ -91,9 +90,11 @@ def test_quad():
     xi,wi = ChebyshevQuad(2)
     I2 = sum(y(xi*bound)*wi)*bound
 
-    # Split the interval and use 2 order - works quite well even for non-polynomial functions
-    xi,wi = ChebyshevQuad(2)
-    intervals = 15
+    # Split the interval and use low order - works quite well even for non-polynomial functions
+    order = 5
+    xi,wi = ChebyshevQuad(order)
+    print("Sum(w) = {} (should be 2)".format(sum(wi)))
+    intervals = 10
     ti = np.linspace(-bound,bound,intervals+1)
     Isplit = 0
 
@@ -105,7 +106,7 @@ def test_quad():
     print("True value using scipy.integrate.quad = {}".format(I))
     print("Value using a single 2nd order poly   = {}".format(I2))
     print("Value using a single 4th order poly   = {}".format(I4))
-    print("Value using {} 2nd order poly         = {}".format(intervals, Isplit))
+    print("Value using {} poly of order {}         = {}".format(intervals, order, Isplit))
 
 if __name__ == "__main__":
     test_quad()
