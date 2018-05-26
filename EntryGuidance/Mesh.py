@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.interpolate import interp1d
-from Chebyshev import ChebyshevDiff, ChebyshevQuad
+from .Chebyshev import ChebyshevDiff, ChebyshevQuad
 
 class Mesh(object):
     """ Defines a mesh class for working with multiple intervals of collocation points """

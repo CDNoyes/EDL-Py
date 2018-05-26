@@ -13,10 +13,10 @@ from scipy.interpolate import interp1d
 from scipy.io import savemat, loadmat
 
 import logging
-from transitions import Machine, State, logger
-from EntryEquations import Entry, System
-from Planet import Planet
-from EntryVehicle import EntryVehicle
+from transitions import Machine, State
+from .EntryEquations import Entry, System
+from .Planet import Planet
+from .EntryVehicle import EntryVehicle
 
 # Graphing specific imports
 from transitions.extensions import GraphMachine as MGraph
@@ -53,7 +53,7 @@ class Simulation(Machine):
 
         if cycle is None:
             if output:
-                print "Simulation using default guidance cycle."
+                print("Simulation using default guidance cycle.")
             cycle = Cycle()
 
         self.__conditions = conditions
@@ -95,14 +95,14 @@ class Simulation(Machine):
         Machine.__init__(self, model='self', states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
 
-    def set_output(self,bool):
+    def set_output(self, bool):
         self.__output=bool
 
     def integrate(self):
 
         while not self.__conditions[self.index](da.const_dict(self.triggerInput)):
             if self.__output and not (len(self.history)-1*self.cycle.rate)%int(10*self.cycle.rate):
-                print "current simulation time = {} s".format(int(self.time)) # Should define a pretty print function and call that here
+                print("current simulation time = {} s".format(int(self.time))) # Should define a pretty print function and call that here
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
         return True
@@ -139,15 +139,15 @@ class Simulation(Machine):
         if self.fullEDL:
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
             if self.__output:
-                print "L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD)
-                print "BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7]))
+                print("L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD))
+                print ("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7])))
 
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self.__use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL))
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
             if self.__output:
-                print "L/D: {:.2f}".format(self.edlModel.vehicle.LoD)
-                print "BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7]))
+                print("L/D: {:.2f}".format(self.edlModel.vehicle.LoD))
+                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -158,7 +158,7 @@ class Simulation(Machine):
         self.control_history = np.vstack(self.control_history[1:])
         self.simulations += 1
         if not self.simulations%10:
-            print "{} simulations complete.".format(self.simulations)
+            print("{} simulations complete.".format(self.simulations))
         # print self.x[0]
         return self.postProcess()
 
@@ -188,7 +188,7 @@ class Simulation(Machine):
             print(self.__conditions[self.index].dump())
             for key,value in self.triggerInput.items():
                 if not key in ('vehicle','current_state'):
-                    print '{} : {}\n'.format(key,value)
+                    print('{} : {}\n'.format(key,value))
         self.index += 1
         self.ie.append(len(self.history)-1)
 
@@ -370,7 +370,7 @@ class Simulation(Machine):
             'run' has been used for data reporting in e.g. Monte Carlo simulations.
         """
         if self.__output:
-            print "Resetting simulation states.\n"
+            print("Resetting simulation states.\n")
         self.set_state(self.__states[0])
         self.time = 0.0
         self.times = []
@@ -507,7 +507,7 @@ class Simulation(Machine):
 
                 return
         if self.__output:
-            print "No better endpoint found"
+            print("No better endpoint found")
         return
 
     # def save(self): #Create a .mat file
@@ -720,7 +720,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
 
 def SRP():
     """ Defines states and conditions for a trajectory from Pre-Entry through SRP-based EDL """
-    from Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
+    from .Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
     states = ['PreEntry','Entry','SRP']
     def combo(inputs):
         return (AltitudeTrigger(2)(inputs) or MassTrigger(6400)(inputs))
@@ -733,14 +733,14 @@ def SRP():
 
 def EntrySim(Vf=500):
     ''' Defines conditions for a simple one phase guided entry '''
-    from Triggers import VelocityTrigger,AltitudeTrigger
+    from .Triggers import VelocityTrigger,AltitudeTrigger
     states = ['Entry']
     trigger = [VelocityTrigger(Vf)]
     # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
 
 def TimedSim(time=30):
-    from Triggers import TimeTrigger
+    from .Triggers import TimeTrigger
     states = ['Entry']
     trigger = [TimeTrigger(time)]
     return {'states':states, 'conditions':trigger}
@@ -758,7 +758,7 @@ def testSim():
     return sim
 
 def testFullSim():
-    from InitialState import InitialState
+    from .InitialState import InitialState
     sim = Simulation(cycle=Cycle(1),output=True,**EntrySim())
     f = lambda **d: 0
     f2 = lambda **d: (1,2.88)
@@ -836,7 +836,7 @@ def getSim():
     return sim
 
 
-def fsmGif(states = range(4) ):
+def fsmGif(states = range(4)):
     '''
         Creates a GIF out of individual images, named after their respective states.
 
