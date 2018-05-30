@@ -7,9 +7,8 @@ import time
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
-from Utils.RK4 import RK4, RK4_STM
+from Utils.RK4 import RK4
 from EntryGuidance.Mesh import Mesh
-from EntryGuidance import Unscented
 
 def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3):
 
@@ -113,14 +112,14 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
 
 
 class OCP:
-    """ Solves a nonlinear optimal control problem via successive convexification """
+    """ Defines an abstract class for solving nonlinear optimal control
+        problems via successive convexification
+    """
 
 
     def __init__(self):
         pass
 
-    def dynamics(self):
-        raise(NotImplementedError)
     def dyn(self):
         raise NotImplementedError
     def jac(self):
@@ -148,8 +147,8 @@ class OCP:
         # Initial "guess" used for linearization
         u = np.zeros_like(t)
         x = self.integrate(x0, u, t).T
-        f,g = self.dynamics(x)
-        F = f.T + g.T*u[:,None]
+        ufun = lambda t: 0
+        F = self.dyn(x,t,ufun).T
         A,B = self.jac(x)
 
         x_approx = x
@@ -179,8 +178,8 @@ class OCP:
             else:
                 x = self.integrate(x0, u, t).T
 
-                f,g = self.dynamics(x_approx)
-                F = f.T + g.T*u[:,None]
+                ufun = interp1d(t, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
+                F = self.dyn(x_approx, t, ufun).T
                 A,B = self.jac(x_approx)
 
                 X_cvx.append(x_approx)
@@ -213,10 +212,10 @@ class OCP:
                             t_u = t
                             print("Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders),t.size))
                             t = mesh.times
-                            u = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
+                            ufun = interp1d(t_u, u, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
+                            u = ufun(t)
                             x_approx = interp1d(t_u, x_approx, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                            f,g = self.dynamics(x_approx)
-                            F = f.T + g.T*u[:,None]
+                            F = self.dyn(x_approx,t,ufun).T
                             A,B = self.jac(x_approx)
 
 
@@ -279,7 +278,7 @@ class TestClass(OCP):
         # returns f,g evaluated at x (vectorized)
         return np.array([x[1],-x[0] + self.mu*(1-x[0]**2)*x[1]]),np.vstack((np.zeros_like(x[0]),np.ones_like(x[0]))).squeeze()
 
-    def dyn(self, x, t ,u): # integrable function
+    def dyn(self, x, t, u): # integrable function
         f,g = self.dynamics(x)
         return f + g*u(t)
 
