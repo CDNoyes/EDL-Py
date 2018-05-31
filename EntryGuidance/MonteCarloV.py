@@ -80,8 +80,9 @@ class MonteCarlo(object):
 
         # Define a new target at exactly 0 crossrange:
         xf = sim.history[-1,:7].copy()
-        # xf[1] *= 1.02
-        xf[2] = xf[2]*0.
+        # xf[2] = xf[2]*0. # Zero crossrange
+        # xf[2] = -xf[2]   # Opposite crossrange
+        xf[2] = 2*xf[2]   # Moar crossrange
         xf[6] = sim.control_history[-1,0]
         x_ref = np.concatenate((sim.history[:,:6], sim.control_history[:,:1]), axis=1)
         # Prepare a mesh
@@ -315,14 +316,14 @@ class MonteCarlo(object):
 
 
 def solve_ocp(dr=885., fpa_min=-45, azi_max=5.):
-    from Utils.gpops import gpops
+    from Utils.gpops import entry
     from scipy.interpolate import interp1d
     from math import pi
 
     def rad(num):
         return float(num)*pi/180.
     t0 = time.time()
-    traj = gpops([float(dr), rad(fpa_min), rad(azi_max)])
+    traj = entry([float(dr), rad(fpa_min), rad(azi_max)])
     print("Total OCP solution time {} s".format(time.time()-t0))
     sigma = np.squeeze(np.array(traj['state'])[:,-1])
 
