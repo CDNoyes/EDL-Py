@@ -66,7 +66,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region=0.5, P=0, xf=0, umax=3
     # Lagrange cost and ode constraints
     states = []
     for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,V): # Iteration over the segments of the mesh
-        L = np.array([cvx.abs(uii)**2 for uii in ui])               # Lagrange integrands for a single mesh
+        L = np.array([cvx.abs(uii) for uii in ui])               # Lagrange integrands for a single mesh
         cost = np.dot(w,L)                                                  # Clenshaw-Curtis quadrature
 
         # Estimated derivatives:
@@ -122,6 +122,7 @@ class OCP:
 
     def dyn(self):
         raise NotImplementedError
+        
     def jac(self):
         raise NotImplementedError
 
@@ -131,7 +132,7 @@ class OCP:
         X = odeint(self.dyn,x0,t,args=(ut,))
         return np.asarray(X)
 
-    def solve(self):
+    def solve(self, x0, tf):
         X = []
         X_cvx = []
         J_cvx = []
@@ -139,10 +140,10 @@ class OCP:
         T = []
 
         umax = 3
-        tf = 5
+        # tf = 5
         mesh = Mesh(tf=tf, orders=[4]*3)
         t = mesh.times
-        x0 = [2,-2]
+        # x0 = [2,-2]
 
         # Initial "guess" used for linearization
         u = np.zeros_like(t)
@@ -202,7 +203,7 @@ class OCP:
                             if it%2 and False:
                                 _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
                             else:
-                                refined = mesh.refine(x_approx.T, F, tol=1e-5, rho=3) # Dynamics based refinement for convergence check
+                                refined = mesh.refine(x_approx.T, F, tol=1e-3, rho=3) # Dynamics based refinement for convergence check
                             if mesh.times.size > 1000:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
@@ -298,4 +299,4 @@ class TestClass(OCP):
 
 if __name__ == "__main__":
     vdp = TestClass(mu=0.1)
-    vdp.solve()
+    vdp.solve(x0=[2,2], tf=8)
