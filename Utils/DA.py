@@ -2,6 +2,7 @@
 
 import numpy as np
 from pyaudi import gdual_double as gd
+from pyaudi import gdual_vdouble as gdv
 from pyaudi import abs
 
 def odeint(fun, x0, iv, args=(), min_order=4, max_order=40, tol=1e-3):
@@ -48,9 +49,13 @@ def evaluate(da_array, da_vars, pts):
     eval_pt = {da_var:0 for da_var in delta}    # Preallocate the evaluation dictionary
     new_pts = []
     for pt in pts:
+        try:
+            pt[0]
+        except IndexError: # pt is a scalar 
+            pt = [pt]
         # eval_pt = {da_var:element for da_var,element in zip(delta,pt)} # This is probably slow since we're constructing a new dict every time
         eval_pt.update(zip(delta,pt))
-        new_pt = [da.evaluate(eval_pt) if isinstance(da,gd) else da for da in da_array]
+        new_pt = [da.evaluate(eval_pt) if isinstance(da, (gd,gdv)) else da for da in da_array]
         new_pts.append(new_pt)
 
     return np.array(new_pts)
