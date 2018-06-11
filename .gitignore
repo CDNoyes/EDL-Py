@@ -6,3 +6,5 @@
 *.log
 *.gz
 *.pdf
+*.vscode
+*.ipynb_checkpoints
