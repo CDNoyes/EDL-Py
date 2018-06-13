@@ -21,13 +21,18 @@ def smooth_sat(y, b=5.522):
     except (IndexError, TypeError):
         return a/(1+pa.exp(-b*(y-c)))
 
-def symmetric_sat(x, bound, tuning_parameter=1e-3):
-    """ From Avvakumov et al
+
+def symmetric_sat(x, bound=1, tuning_parameter=1e-3):
+    """ From Avvakumov et al,
+        "Boundary value problem for ordinary differential equations
+        with applications to optimal control"
+
         The smaller the tuning parameter is, the more tightly this will
          approximate the saturation function from [-bound, bound].
     """
     return 0.5*bound*(pa.sqrt(tuning_parameter + (x/bound + 1)**2) -
                       pa.sqrt(tuning_parameter + (x/bound - 1)**2))
+
 
 def tanh_sat(y, k, y0):
     """
