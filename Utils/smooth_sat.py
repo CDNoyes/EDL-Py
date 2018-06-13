@@ -1,7 +1,8 @@
 import numpy as np
 from pyaudi import gdual_double as gd
 from pyaudi import gdual_vdouble as gdv
-import pyaudi as pa 
+import pyaudi as pa
+
 
 def smooth_sat(y, b=5.522):
     """
@@ -42,10 +43,6 @@ def tanh_sat(y, k, y0):
     return 0.5 + 0.5*np.tanh(k*(y-y0))
 
 
-def atan_sat(y, k, y0, c, a):
-    return c + a*(np.arctan(k*(y-y0)) - np.arctan(-k*(y-y0)))
-
-
 def erf_sat(y):
     """ This is appropriate for saturating to [-1,1] """
     if isinstance(y, (gd, gdv)):
@@ -76,8 +73,8 @@ def opt():
     y_log = smooth_sat(y_raw,*aopt[0])
     # y_tanh = tanh_sat(y_raw,*topt[0])
     # y_atan = atan_sat(y_raw, *copt[0])
-    plt.plot(y_raw,(y))
-    plt.plot(y_raw,(y_log),'--')
+    plt.plot(y_raw, (y))
+    plt.plot(y_raw, (y_log),'--')
     # plt.plot(y_raw,y_atan)
     # plt.plot(y_raw,(y_tanh),'*')
 

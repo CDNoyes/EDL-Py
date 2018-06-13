@@ -232,15 +232,15 @@ def __getSplIdx(x,t):
 def splev(x, spline):
     """ Implements De Boor's algorithm to evaluate a B-spline at points in x """
     if isinstance(spline, tuple):
-        t,c,n = spline
+        t, c, n = spline
     else:
-        t,c,n = spline.tck
+        t, c, n = spline.tck
 
     L = __getSplIdx(x, t)
     Ln = [Li-n for Li in L]
 
     B = []
-    for j, xj  in enumerate(x):
+    for j, xj in enumerate(x):
         d = np.array(c[Ln[j]:L[j]+1])
         dnext = np.zeros_like(d)
 
