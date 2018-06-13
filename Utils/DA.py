@@ -181,6 +181,24 @@ def sign(x):
         return xc/abs(xc)       # This will never be a DA variable so we can use the numerical value
 
 
+def clip(x, lower, upper):
+    """ Clips a DA variable between its upper and lower bounds.
+        Works for scalar gdual, vectorized gdual, but not currently iterables.
+        Also works for non-duals and in this simply wraps numpy.clip.
+    """
+
+    if isinstance(x, dual):
+        from Utils.smooth_sat import symmetric_sat
+        m = (lower+upper)*0.5
+        r = (upper-lower)*0.5
+        return m + symmetric_sat(x-m, r)
+    else:
+        try:
+            x[0]  # Iterable?
+            return np.clip(x, lower, upper)
+        except (TypeError, IndexError):
+            return np.clip([x], lower, upper)[0]
+
 # ################################################################
 #                        Special Functions                       #
 # ################################################################
