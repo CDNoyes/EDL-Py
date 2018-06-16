@@ -162,6 +162,18 @@ def make(values, names, orders, array=False, vectorized=False):
         return [cls(v, n, o) for v, n, o in zip(values, names, orders)]
 
 
+def compute_jacobian(function, expansion_point, args=()):
+    x = make(expansion_point, ["x{}".format(i) for i in range(len(expansion_point))], 1, True)
+    y = function(x, *args)
+    return jacobian(y, ["x{}".format(i) for i in range(len(expansion_point))])
+
+
+def compute_gradient(function, expansion_point, args=()):
+    x = make(expansion_point, ["x{}".format(i) for i in range(len(expansion_point))], 1, True)
+    y = function(x, *args)
+    return gradient(y, ["x{}".format(i) for i in range(len(expansion_point))])
+
+
 def radians(x):
     return x*np.pi/180.0
 
@@ -176,15 +188,15 @@ def sign(x):
     else:
         xc = x
     if abs(xc) < 1e-6:
-        return x-xc             # So its still a DA variable but with absolutely 0 part
+        return x-xc  # So its still a DA variable but with absolutely 0 part
     else:
-        return xc/abs(xc)       # This will never be a DA variable so we can use the numerical value
+        return xc/abs(xc)  # This will never be a DA variable so we can use the numerical value
 
 
 def clip(x, lower, upper):
     """ Clips a DA variable between its upper and lower bounds.
         Works for scalar gdual, vectorized gdual, but not currently iterables.
-        Also works for non-duals and in this simply wraps numpy.clip.
+        Also works for non-duals and in this case simply wraps numpy.clip.
     """
 
     if isinstance(x, dual):
