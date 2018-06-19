@@ -1,11 +1,10 @@
-# from autograd.numpy import sin, cos, tan
-# import autograd.numpy as np
-import numpy as np
+import autograd.numpy as np
+# import numpy as np
 from functools import partial
 
-from EntryVehicle import EntryVehicle
-from Planet import Planet
-from Filter import FadingMemory
+from .EntryVehicle import EntryVehicle
+from .Planet import Planet
+from .Filter import FadingMemory
 
 import sys
 from os import path
@@ -95,7 +94,9 @@ class Entry(object):
         if self._da:
             from pyaudi import sin, cos, tan
         else:
-            from numpy import sin, cos, tan
+            # from numpy import sin, cos, tan
+            from autograd.numpy import sin, cos, tan
+
 
 
         r,theta,phi,v,gamma,psi,s,m = x
@@ -388,19 +389,6 @@ def BankAngleDynamics(bank_state, command, kp=0.56, kd=1.3, min_bank=0, max_bank
 def Saturate(value, min_value, max_value):
     return np.max( (np.min( (value, max_value) ), min_value))
 
-def Erf(value, min_value, max_value):
-    from scipy.special import erf
-    input_value = (value-(max_value+min_value)*0.5)/((max_value-min_value)*0.5)
-    unscaled_output = erf(np.sqrt(np.pi)/1.75*input_value)
-    return unscaled_output*((max_value-min_value)*0.5) + (max_value+min_value)*0.5
-
-def CompareSaturation():
-    import matplotlib.pyplot as plt
-    x = np.linspace(-2,2)
-
-    plt.plot(x,Erf(x,-1.5,1))
-    plt.plot(x,[Saturate(xx,-1.5,1) for xx in x])
-    plt.show()
 
 def CompareJacobian():
     vel = False
@@ -430,19 +418,19 @@ def CompareJacobian():
         Jda = model.jacobian_(x[ind],u)
     tda = time.time()-t0
 
-    # model.DA(False)
-    # t0 = time.time()
-    # for _ in range(N):
-    #     Jauto = model.jacobian_ad(x[ind],u)
-    # tauto = time.time()-t0
+    model.DA(False)
+    t0 = time.time()
+    for _ in range(N):
+        Jauto = model.jacobian_ad(x[ind],u)
+    tauto = time.time()-t0
     print("Numerical differencing: {:.5f} s".format(tnum/N))
+    print("Autograd package      : {:.5f} s\n".format(tauto/N))
     print("Differential algebra  : {:.5f} s".format(tda/N))
-    # print("Autograd package      : {} s".format(tauto/N))
-    # err = np.abs(Jnum-Jauto)
-    # print("Maximum error: {}".format(err.max()))
-    print("PyAudi is approximately {:.1f}x faster than NumDiffTools".format(tnum/tda))
 
+    print("PyAudi is approximately {:.1f}x faster than NumDiffTools".format(tnum/tda))
+    print("PyAudi is approximately {:.1f}x faster than AutoGrad\n".format(tauto/tda))
+
+    print("Conclusion: Always use pyaudi when possible!\n")
 
 if __name__ == "__main__":
-    # CompareSaturation()
     CompareJacobian()
