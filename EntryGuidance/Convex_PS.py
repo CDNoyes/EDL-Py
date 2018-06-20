@@ -62,21 +62,21 @@ class OCP:
         # Interpolate the guess onto the initial mesh 
         u = interp1d(ti, u, axis=0)(t)
         x = interp1d(ti, x, axis=0)(t).T
-
         F = self.dynamics(x, t, interp1d(t, u, axis=0)).T
         # print("Dimensions going into jacobian = {}, {}".format(x.shape, u.T.shape))
         A, B = self.jac(x, u.T)
 
         x_approx = x
 
-        iters = 25                 # Maximum number of iterations
+        iters = 15                 # Maximum number of iterations
 
         # Main Loop
         for it in range(iters):
             print("Iteration {}".format(it))
             try:
                 x_approx, u, J_approx = self.LTV(A, B, F, x_approx.T, u, mesh)
-            except cvx.SolverError:
+            except cvx.SolverError as msg:
+                print(msg)
                 print("Failed iteration, aborting sequence.")
                 print(len(T))
                 print(len(X_cvx))
@@ -124,7 +124,7 @@ class OCP:
                                 _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
                             else:
                                 refined = mesh.refine(x_approx.T, F, tol=1e-9, rho=0.5, scaling=scaling) # Dynamics based refinement for convergence check
-                            if mesh.times.size > 500:
+                            if mesh.times.size > 400:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
                             if not refined:
@@ -199,7 +199,7 @@ class OCP:
 
         # Mayer Cost, including penalty for virtual control
         Phi = self.mayer(x[-1])
-        Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v), 'inf')))
+        Penalty = cvx.Problem(cvx.Minimize(1e4*cvx.norm(cvx.vstack(*v), 'inf')))
 
         # sums problem objectives and concatenates constraints.
         prob = sum(states) + Phi + Penalty
@@ -222,7 +222,7 @@ class OCP:
 
             return x_sol.T, u_sol, prob.value
         except Exception as e:
-            print(e.message)
+            print(e)
             return x_ref.T, u_ref, None
 
 
