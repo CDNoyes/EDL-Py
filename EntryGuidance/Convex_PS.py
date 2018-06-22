@@ -44,7 +44,7 @@ class OCP:
         X = odeint(self.dynamics, x0, t, args=(ut,))
         return np.asarray(X)
 
-    def solve(self, guess, scaling=None):
+    def solve(self, guess, scaling=None, max_size=500, max_iter=20):
         X = []
         X_cvx = []
         J_cvx = []
@@ -52,6 +52,7 @@ class OCP:
         T = []
 
         mesh = Mesh(t0=guess['time'][0], tf=guess['time'][-1], orders=guess['mesh'])
+        self.mesh = mesh 
         t = mesh.times
 
         # Initial "guess" used for linearization - this should be an input
@@ -68,7 +69,8 @@ class OCP:
 
         x_approx = x
 
-        iters = 15                 # Maximum number of iterations
+        iters = int(max_iter)                 # Maximum number of iterations
+        rel_diff = None
 
         # Main Loop
         for it in range(iters):
@@ -106,14 +108,11 @@ class OCP:
                 # X.append(x)
                 U.append(u)
                 T.append(t)
-                print(len(T))
-                print(len(X_cvx))
 
-                rel_diff = None
-                if len(J_cvx)>1:
-                    if J_cvx[-1] > 1e-3:
-                        rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/(J_cvx[-1])
-                        print("Relative change in cost function = {}%".format(rel_diff*100))
+                if len(J_cvx) > 1:
+                    if np.abs(J_cvx[-1]) > 1e-3:
+                        rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/np.abs(J_cvx[-1])
+                        print("Relative change in cost function = {:.2f}%".format(rel_diff*100))
                     else: # near zero cost so we use the absolute difference instead
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
                 if rel_diff is None or rel_diff < 0.1:  # check state convergence instead?
@@ -123,8 +122,8 @@ class OCP:
                             if it%2 and False:
                                 _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
                             else:
-                                refined = mesh.refine(x_approx.T, F, tol=1e-9, rho=0.5, scaling=scaling) # Dynamics based refinement for convergence check
-                            if mesh.times.size > 400:
+                                refined = mesh.refine(x_approx.T, F, tol=1e-5, rho=1.5, scaling=scaling, verbose=False) # Dynamics based refinement for convergence check
+                            if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
                             if not refined:
