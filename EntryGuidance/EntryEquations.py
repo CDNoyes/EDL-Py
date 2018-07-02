@@ -1,6 +1,5 @@
 import autograd.numpy as np
 # import numpy as np
-from functools import partial
 
 from .EntryVehicle import EntryVehicle
 from .Planet import Planet
@@ -10,10 +9,11 @@ import sys
 from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 
+
 class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
 
-    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Velocity=False, Altitude=False, DifferentialAlgebra=False, Scale=False):
+    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Altitude=False, DifferentialAlgebra=False, Scale=False):
 
         self.planet = PlanetModel
         self.vehicle = VehicleModel
@@ -30,13 +30,13 @@ class Entry(object):
         # Non-dimensionalizing the states
         if Scale:
             self.dist_scale = self.planet.radius
-            self.acc_scale = self.gravity(self.dist_scale)
+            self.acc_scale = self.planet.mu/(self.dist_scale**2)
             self.time_scale = np.sqrt(self.dist_scale/self.acc_scale)
             self.vel_scale = np.sqrt(self.dist_scale*self.acc_scale)
             self.mass_scale = 1
             self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, self.dist_scale, 1])
 
-        else: # No scaling
+        else:  # No scaling
             self.dist_scale = 1
             self.acc_scale = 1
             self.time_scale = 1
@@ -48,11 +48,6 @@ class Entry(object):
         else:
             self.dyn_model = self.__entry_3dof
 
-        self.use_velocity = Velocity
-        if self.use_velocity:
-            self.dyn_model = self.__vel_2dof
-            self.nx = 4
-
         self.use_energy = Energy
         if self.use_energy:
             self.dE = None
@@ -62,7 +57,6 @@ class Entry(object):
         self.use_altitude = Altitude
         if self.use_altitude:
             self.dE = None
-
 
     def update_ratios(self, LR, DR):
         self.drag_ratio = DR
@@ -79,7 +73,6 @@ class Entry(object):
         """ Ignites the engines to begin powered flight. """
         self.powered = True
 
-
     def dynamics(self, u):
         if self.powered:
             return lambda x,t: self.dyn_model(x, t, u)+self.__thrust_3dof(x, u)
@@ -89,7 +82,7 @@ class Entry(object):
 
     # Dynamic Models
 
-    #3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
+    # 3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
     def __entry_3dof(self, x, t, u):
         if self._da:
             from pyaudi import sin, cos, tan
@@ -97,18 +90,16 @@ class Entry(object):
             # from numpy import sin, cos, tan
             from autograd.numpy import sin, cos, tan
 
-
-
         r,theta,phi,v,gamma,psi,s,m = x
-        sigma,throttle,mu = u
+        sigma, throttle, mu = u
 
         h = r - self.planet.radius/self.dist_scale
 
-        g = (self.planet.mu/(r*self.dist_scale)**2)/self.acc_scale
+        g = self.gravity(r)   # (self.planet.mu/(r*self.dist_scale)**2)/self.acc_scale
 
-        rho,a = self.planet.atmosphere(h*self.dist_scale)
+        rho, a = self.planet.atmosphere(h*self.dist_scale)
         M = v*self.vel_scale/a
-        cD,cL = self.vehicle.aerodynamic_coefficients(M)
+        cD, cL = self.vehicle.aerodynamic_coefficients(M)
         f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
@@ -123,29 +114,33 @@ class Entry(object):
         dm = np.zeros_like(dh)
 
         if self.use_energy:
-            # self.dE = np.tile(-v*D,(8,1))
             self.dE = np.tile(-v*D, (8,))
-        if self.use_velocity:
-            self.dE = np.tile(dv, (8,))
         if self.use_altitude:
-            self.dE = np.tile(dh, (8,)) # trajectory length
+            self.dE = np.tile(dh, (8,))
+
         return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
-    #3DOF, Rotating Planet Model - Highest fidelity
+    # 3DOF, Rotating Planet Model - Highest fidelity
     def __entry_vinhs(self, x, t, u):
+        if self._da:
+            from pyaudi import sin, cos, tan
+        else:
+            # from numpy import sin, cos, tan
+            from autograd.numpy import sin, cos, tan
+
         r,theta,phi,v,gamma,psi,s,m = x
 
-        #Coriolis contributions to derivatives:
+        # Coriolis contributions to derivatives:
         dh = 0
         dtheta = 0
         dphi = 0
         dv = 0
         dgamma = 2*self.planet.omega*cos(psi)*cos(phi)
-        dpsi =  2*self.planet.omega(tan(gamma)*cos(phi)*sin(psi)-sin(phi))
+        dpsi = 2*self.planet.omega(tan(gamma)*cos(phi)*sin(psi)-sin(phi))
         ds = 0
         dm = 0
 
-        return self.__entry_3dof(x, t, control_fun) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi,ds,dm])/self.dE
+        return self.__entry_3dof(x, t, control_fun) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
 
     def __thrust_3dof(self, x, u):
@@ -229,10 +224,11 @@ class Entry(object):
     def unscale(self, state):
         """ Converts unitless states to states with units """
         shape = np.asarray(state).shape
-        if len(shape)==1 and shape[0]==self.nx:
+        if len(shape) == 1 and shape[0] == self.nx:
             return state*self._scale
         else:
-            return state*np.tile(self._scale, (shape[0],1))
+            return state*np.tile(self._scale, (shape[0], 1))
+
     def unscale_time(self, time):
         return time*self.time_scale
 
@@ -240,11 +236,11 @@ class Entry(object):
         ''' Returns the full jacobian of the entry dynamics model. The dimension will be [nx, nx+nu].'''
         if self.__jacobian is None:
             from numdifftools import Jacobian
-            self.__jacobian = Jacobian(self.__dynamics(), method='complex')            #
+            self.__jacobian = Jacobian(self.__dynamics(), method='complex')
 
-        state = np.concatenate((x,u))
+        state = np.concatenate((x, u))
         if self.use_velocity:
-            state = np.concatenate((x[:-1],u,x[-1,None]))
+            state = np.concatenate((x[:-1], u, x[-1, None]))
 
         return self.__jacobian(state)
 
@@ -252,7 +248,7 @@ class Entry(object):
         ''' The jacobian computed via pyaudi '''
         from Utils import DA as da
         vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
-        X = da.make(np.concatenate((x,u)), vars, 1+hessian, array=True)
+        X = da.make(np.concatenate((x, u)), vars, 1+hessian, array=True)
         f = self.__dynamics()(X)
         if hessian:
             return da.jacobian(f, vars), da.vhessian(f,vars)
@@ -291,7 +287,13 @@ class Entry(object):
         return L,D
 
     def gravity(self, r):
-        return self.planet.mu/r**2
+        """ Returns gravitational acceleration at a given planet radius based on quadratic model 
+        
+            For radius in meters, returns m/s**2
+            For non-dimensional radius, returns non-dimensional gravity 
+
+        """
+        return self.planet.mu/(r*self.dist_scale)**2/self.acc_scale
 
 
 

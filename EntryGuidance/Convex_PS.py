@@ -122,7 +122,7 @@ class OCP:
                             if it%2 and False:
                                 _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
                             else:
-                                refined = mesh.refine(x_approx.T, F, tol=1e-5, rho=1.5, scaling=scaling, verbose=False) # Dynamics based refinement for convergence check
+                                refined = mesh.refine(x_approx.T, F, tol=1e-7, rho=1.5, scaling=scaling, verbose=False) # Dynamics based refinement for convergence check
                             if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
@@ -198,7 +198,7 @@ class OCP:
 
         # Mayer Cost, including penalty for virtual control
         Phi = self.mayer(x[-1])
-        Penalty = cvx.Problem(cvx.Minimize(1e4*cvx.norm(cvx.vstack(*v), 'inf')))
+        Penalty = cvx.Problem(cvx.Minimize(1e3*cvx.norm(cvx.vstack(*v), 'inf')))
 
         # sums problem objectives and concatenates constraints.
         prob = sum(states) + Phi + Penalty
