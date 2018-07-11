@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 import cvxpy as cvx
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d
-
 sys.path.append('./')
-from Utils.RK4 import RK4
+# from Utils.RK4 import RK4
 from EntryGuidance.Mesh import Mesh
 from Utils.DA import compute_jacobian
+
 
 class OCP:
     """ Defines an abstract class for solving nonlinear optimal control
@@ -36,15 +36,20 @@ class OCP:
 
     def integrate(self, x0, u, t):
         # u[-1] = u[-2]
-        ut = interp1d(t, u,
-                      kind='cubic',
-                      assume_sorted=True,
-                      fill_value=u[-1],
-                      bounds_error=False)
-        X = odeint(self.dynamics, x0, t, args=(ut,))
+        # ut = interp1d(t, u,
+        #               kind='cubic',
+        #               assume_sorted=True,
+        #               fill_value=u[-1],
+        #               bounds_error=False)
+        X = odeint(self.dynamics, x0, t, args=(u,))
         return np.asarray(X)
 
-    def solve(self, guess, scaling=None, max_size=500, max_iter=20):
+    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=1e4):
+        """ 
+        guess
+        scaling - this is a vector scale factor used solely during mesh refinement to determine appropriate errors in each state 
+
+        """
         X = []
         X_cvx = []
         J_cvx = []
@@ -52,7 +57,7 @@ class OCP:
         T = []
 
         mesh = Mesh(t0=guess['time'][0], tf=guess['time'][-1], orders=guess['mesh'])
-        self.mesh = mesh 
+        self.mesh = mesh
         t = mesh.times
 
         # Initial "guess" used for linearization - this should be an input
@@ -60,10 +65,10 @@ class OCP:
         x = guess['state']
         ti = guess['time']
                 
-        # Interpolate the guess onto the initial mesh 
+        # Interpolate the guess onto the initial mesh
         u = interp1d(ti, u, axis=0)(t)
         x = interp1d(ti, x, axis=0)(t).T
-        F = self.dynamics(x, t, interp1d(t, u, axis=0)).T
+        F = self.dynamics(x, t, u).T
         # print("Dimensions going into jacobian = {}, {}".format(x.shape, u.T.shape))
         A, B = self.jac(x, u.T)
 
@@ -76,7 +81,7 @@ class OCP:
         for it in range(iters):
             print("Iteration {}".format(it))
             try:
-                x_approx, u, J_approx = self.LTV(A, B, F, x_approx.T, u, mesh)
+                x_approx, u, J_approx = self.LTV(A, B, F, x_approx.T, u, mesh, penalty)
             except cvx.SolverError as msg:
                 print(msg)
                 print("Failed iteration, aborting sequence.")
@@ -98,9 +103,9 @@ class OCP:
             else:
                 # x = self.integrate(self.x0, u, t).T
 
-                ufun = interp1d(t, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
+                # ufun = interp1d(t, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
 
-                F = self.dynamics(x_approx, t, ufun).T
+                F = self.dynamics(x_approx, t, u).T
                 A, B = self.jac(x_approx, u.T)
 
                 X_cvx.append(x_approx)
@@ -113,7 +118,7 @@ class OCP:
                     if np.abs(J_cvx[-1]) > 1e-3:
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/np.abs(J_cvx[-1])
                         print("Relative change in cost function = {:.2f}%".format(rel_diff*100))
-                    else: # near zero cost so we use the absolute difference instead
+                    else:  # near zero cost so we use the absolute difference instead
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
                 if rel_diff is None or rel_diff < 0.1:  # check state convergence instead?
                         # In contrast to NLP, we only refine after the solution converges on the current mesh
@@ -122,7 +127,7 @@ class OCP:
                             if it%2 and False:
                                 _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
                             else:
-                                refined = mesh.refine(x_approx.T, F, tol=1e-7, rho=1.5, scaling=scaling, verbose=False) # Dynamics based refinement for convergence check
+                                refined = mesh.refine(x_approx.T, F, tol=1e-4, rho=1.5, scaling=scaling, verbose=False) # Dynamics based refinement for convergence check
                             if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
@@ -135,7 +140,7 @@ class OCP:
                             ufun = interp1d(t_u, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
                             u = ufun(t)
                             x_approx = interp1d(t_u, x_approx, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
-                            F = self.dynamics(x_approx, t, ufun).T
+                            F = self.dynamics(x_approx, t, u).T
                             A, B = self.jac(x_approx, u.T)
 
         # x = self.integrate(self.x0, u, t)
@@ -145,7 +150,7 @@ class OCP:
 
         self.plot(T, U, X_cvx, J_cvx, mesh._times)
 
-    def LTV(self, A, B, f_ref, x_ref, u_ref, mesh):
+    def LTV(self, A, B, f_ref, x_ref, u_ref, mesh, penalty):
         """ Solves a convex LTV subproblem
 
             A - state linearization around x_ref
@@ -167,7 +172,7 @@ class OCP:
         N = mesh.n_points
         T = range(N)
 
-        x = np.array([cvx.Variable(n) for _ in range(N)])  # This has to be done to "chunk" it later
+        x = np.array([cvx.Variable(n) for i in range(N)])  # This has to be done to "chunk" it later
         u = np.array([cvx.Variable(m) for _ in range(N)])
         v = np.array([cvx.Variable(n) for _ in range(N)])  # Virtual controls
 
@@ -185,7 +190,7 @@ class OCP:
         states = []
         # Iteration over the segments of the mesh
         for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs, X,F,A,B,Xr,Ur,U, mesh.weights, V):
-            L = self.lagrange(0, xi, ui)
+            L = self.lagrange(0, xi, ui, xr, ur)
             cost = np.dot(w, L)                # Clenshaw-Curtis quadrature
 
             # Estimated derivatives:
@@ -198,11 +203,11 @@ class OCP:
 
         # Mayer Cost, including penalty for virtual control
         Phi = self.mayer(x[-1])
-        Penalty = cvx.Problem(cvx.Minimize(1e3*cvx.norm(cvx.vstack(*v), 'inf')))
+        Penalty = cvx.Problem(cvx.Minimize(penalty*cvx.norm(cvx.vstack(*v), 'inf')))
 
         # sums problem objectives and concatenates constraints.
         prob = sum(states) + Phi + Penalty
-        prob.constraints += self.constraints(T, x, u, x_ref, u_ref)
+        prob.constraints.extend(self.constraints(T, x, u, x_ref, u_ref))
 
         t1 = time.time()
         prob.solve(solver='ECOS')
@@ -240,7 +245,7 @@ class TestClass(OCP):
 
     def dynamics(self, x, t, u):  # integrable function
         f, g = self.dyn(x)
-        return f + g*u(t)
+        return f + g*u
 
     def jac(self, x, *args):
         x1, x2 = x
@@ -256,7 +261,7 @@ class TestClass(OCP):
 
         return np.moveaxis(A, -1, 0), np.moveaxis(B, -1, 0)
 
-    def lagrange(self, t, x, u):
+    def lagrange(self, t, x, u, *args):
         return np.array([cvx.abs(ui) for ui in u])
 
     def mayer(self, *args, **kwargs):
@@ -269,13 +274,9 @@ class TestClass(OCP):
             control constraints
             trust regions
         """
-        # Relaxed final conditions - we can make P a variable (or vector) and penalize it heavily in the cost function like v
-        # bc = [x[0] == x0, x[-1] <= xf+P*1, x[-1] >= xf-P*1]
         bc = [x[-1] == self.xf, x[0] == x_ref[0]]
         trust_region = 4
         umax = 3
-        # bc = [x[0] == x0]   # Initial condition only
-        # bc = [x[-1] == xf]  # Final condition only   
 
         constr = []
         for ti, xr in zip(t, x_ref):
@@ -285,7 +286,7 @@ class TestClass(OCP):
             constr += [cvx.abs(u[ti]) <= umax]  # Control constraints
         return constr + bc
 
-    def plot(self, T, U, X, J, ti):
+    def plot(self, T, U, X, J,ti):
         for i, xux in enumerate(zip(T, U, X)):
 
             t, u, xc = xux
@@ -293,6 +294,7 @@ class TestClass(OCP):
             # plt.figure(1)
             # plt.plot(x[0], x[1], label=str(i))
             # plt.title('State Iterations (Integration)')
+
             plt.figure(5)
             plt.plot(xc[0], xc[1], label=str(i))
             plt.title('State Iterations (Discretization)')
@@ -300,39 +302,40 @@ class TestClass(OCP):
             plt.plot(t, u, label=str(i))
             plt.title('Control Iterations')
 
-            plt.figure(3)
-            xcvx = interp1d(T[-1], X[-1].T, kind='linear', axis=0, assume_sorted=True)(ti).T
-            plt.plot(X[-1][0], X[-1][1], '*-', label='Chebyshev Nodes')
-            plt.plot(xcvx[0], xcvx[1], 'ko', label='Mesh Points')
-            # plt.plot(X[-1][0], X[-1][1], label='Integration')
-            plt.title('Optimal Trajectory')
+        plt.figure(3)
+        xcvx = interp1d(T[-1], X[-1].T, kind='linear', axis=0, assume_sorted=True)(ti).T
+        plt.plot(X[-1][0], X[-1][1], '*-', label='Chebyshev Nodes')
+        plt.plot(xcvx[0], xcvx[1], 'ko', label='Mesh Points')
+        # plt.plot(X[-1][0], X[-1][1], label='Integration')
+        plt.title('Optimal Trajectory')
+        plt.legend()
+
+        plt.figure(4)
+        plt.plot(T[-1], U[-1])
+        plt.title('Optimal control')
+
+        plt.figure(7)
+        plt.semilogy(J, 'o-')
+        plt.ylabel('Objective Function')
+        plt.xlabel('Iteration')
+
+        self.mesh.plot(show=False)
+        for fig in [2,3,5]:
+            plt.figure(fig)
             plt.legend()
-
-            plt.figure(4)
-            plt.plot(T[-1], U[-1])
-            plt.title('Optimal control')
-
-            plt.figure(7)
-            plt.semilogy(J, 'o-')
-            plt.ylabel('Objective Function')
-            plt.xlabel('Iteration')
-
-            mesh.plot(show=False)
-            for fig in [2,3,5]:
-                plt.figure(fig)
-                plt.legend()
-            plt.show()
+        plt.show()
 
 if __name__ == "__main__":
     vdp = TestClass(mu=0.5, x0=[2, 2], xf=[0, 0], tf=8)
 
     guess = {}
     
-    t = np.linspace(0,8,20)
+    t = np.linspace(0,3,20)
     u = np.zeros_like(t)
-    x = vdp.integrate(vdp.x0, u, t)
+    # x = np.array([np.linspace(vdp.x0[i],0,20) for i in [0,1]]).T #
+    x = vdp.integrate(vdp.x0, 0, t)
     guess['state'] = x
     guess['control'] = u 
     guess['time'] = t 
     guess['mesh'] = [4]*3
-    vdp.solve(guess)
+    vdp.solve(guess, max_iter=10)

@@ -114,7 +114,10 @@ class Entry(object):
         dm = np.zeros_like(dh)
 
         if self.use_energy:
-            self.dE = np.tile(-v*D, (8,))
+            if np.ndim(v) <= 1:
+                self.dE = -v*D
+            else:
+                self.dE = (-v*D)[:, None].T
         if self.use_altitude:
             self.dE = np.tile(dh, (8,))
 
@@ -142,7 +145,6 @@ class Entry(object):
 
         return self.__entry_3dof(x, t, control_fun) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
-
     def __thrust_3dof(self, x, u):
         if self._da:
             from pyaudi import sin, cos, tan
@@ -152,15 +154,6 @@ class Entry(object):
         sigma,throttle,thrustAngle = u
 
         return np.array([0,0,0,self.vehicle.ThrustApplied*throttle*cos(sigma)*cos(thrustAngle-gamma)/m, self.vehicle.ThrustApplied*throttle*sin(thrustAngle-gamma)/(m*v), self.vehicle.ThrustApplied*throttle*cos(thrustAngle-gamma)*sin(sigma)/(cos(gamma)*m*v**2), 0, self.vehicle.mdot(throttle)])/self.dE
-
-    def __vel_2dof(self, x, v, u):
-        """ Longitudinal EoM with respect to velocity """
-        r,gamma,s,m = x
-        z = np.zeros_like(r)
-        x3 = np.array([r,z,z,v,gamma,z,s,m])
-        dx3 = self.__entry_3dof(x3, 0, u)
-
-        return dx3[[0,4,6,7]]
 
     def _bank(self, x):
         """ Internal function used for jacobian of bank rate """
@@ -232,8 +225,14 @@ class Entry(object):
     def unscale_time(self, time):
         return time*self.time_scale
 
-    def jacobian(self, x, u):
-        ''' Returns the full jacobian of the entry dynamics model. The dimension will be [nx, nx+nu].'''
+    def jacobian(self, x, u, hessian=False, vectorized=True):
+        """ Returns the full jacobian of the entry dynamics model. 
+            The dimension will be [nx, nx+nu].
+        """
+        return self._jacobian_pyaudi(x, u, hessian, vectorized)
+
+    def _jacobian_ndt(self, x, u):
+        ''' Jacobian computed via numdifftools '''
         if self.__jacobian is None:
             from numdifftools import Jacobian
             self.__jacobian = Jacobian(self.__dynamics(), method='complex')
@@ -244,18 +243,32 @@ class Entry(object):
 
         return self.__jacobian(state)
 
-    def jacobian_(self, x, u, hessian=False):
-        ''' The jacobian computed via pyaudi '''
+    def _jacobian_pyaudi(self, x, u, hessian=False, vectorized=False):
+        ''' Jacobian computed via pyaudi '''
+
+        da_setting = self.DA()
+        self.DA(True)
+
         from Utils import DA as da
         vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
-        X = da.make(np.concatenate((x, u)), vars, 1+hessian, array=True)
+        if vectorized:
+            xu = np.concatenate((x.T, u.T))
+        else:
+            xu = np.concatenate((x, u))
+
+        X = da.make(xu, vars, 1+hessian, array=True, vectorized=vectorized)
         f = self.__dynamics()(X)
         if hessian:
-            return da.jacobian(f, vars), da.vhessian(f,vars)
+            J = da.jacobian(f, vars)
+            H = da.vhessian(f, vars)
+            self.DA(da_setting)
+            return J, H
         else:
-            return da.jacobian(f, vars)
+            J = da.jacobian(f, vars)
+            self.DA(da_setting)
+            return J
 
-    def jacobian_ad(self, x, u):
+    def _jacobian_ad(self, x, u):
         """ Jacobian computed via autograd """
         from autograd import jacobian
         grad = jacobian(self.__dynamics(), argnum=0)
@@ -393,8 +406,7 @@ def Saturate(value, min_value, max_value):
 
 
 def CompareJacobian():
-    vel = False
-    model = Entry(Velocity=vel)
+    model = Entry()
     from InitialState import InitialState
     x = InitialState(radius=3450e3, velocity=3500)
     u = [0.3, 0, 0]
