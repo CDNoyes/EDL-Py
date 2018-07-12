@@ -2,19 +2,25 @@ from itertools import product
 import numpy as np
 
 
-def boxgrid(bounds, N, interior=False, chebyshev=False):
+def boxgrid(bounds, N, interior=False, chebyshev=False, surface=False):
     """ n-dimensional box grid, either just the exterior, or with interior points as well.
     Inputs:
         bounds is an n-length list/tuple with each element being the (min,max) along that dimension
         N is the number of samples per dimension, either a scalar or n-length list of integers
         interior indicates whether or not only surface points are kept
         chebyshev uses Chebyshev nodes instead of equal spacing 
+        surface keeps points along the surface, otherwise only edge points are kept.
 
-    Setting N=2 and interior=False will return just the vertices of the hyper-rectangle.
+    surface=True is only meaningful for n>2 and interior=False
+    Setting N=2 and interior=False, surface=False will return just the vertices of the hyper-rectangle.
 
     """
     if isinstance(N, int):
         N = [N for _ in bounds]
+    if surface:
+        subfactor = 1
+    else:
+        subfactor = len(bounds) - 1
 
     n = len(bounds)
     if chebyshev:
@@ -29,7 +35,8 @@ def boxgrid(bounds, N, interior=False, chebyshev=False):
         ikeep = []
         for i, pt in enumerate(grid_points):
             # In n-dimensions, >=(n-1) points must be extremal to constitute an edge
-            if np.count_nonzero(np.logical_or(pt-bmin == 0, pt-bmax == 0)) >= (len(bounds)-1):  # Count is faster than sum for some reason
+            # Only 1 pt must be extremal required to be a surface point ?
+            if np.count_nonzero(np.logical_or(pt-bmin == 0, pt-bmax == 0)) >= subfactor:  # Count is faster than sum for some reason
                 ikeep.append(i)
         grid_points = grid_points[ikeep]
     return grid_points

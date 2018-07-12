@@ -17,7 +17,7 @@ def entry(inputs):
 
     try:
         engine = matlab.engine.connect_matlab()
-        print("Connected to existing (shared) Matlab instance.")
+        # print("Connected to existing (shared) Matlab instance.")
     except:
         print("No shared Matlab instance found, creating a new instance...")
         engine = matlab.engine.start_matlab()
@@ -38,7 +38,7 @@ def srp(inputs):
 
     try:
         engine = matlab.engine.connect_matlab()
-        print("Connected to existing (shared) Matlab instance.")
+        # print("Connected to existing (shared) Matlab instance.")
     except:
         print("No shared Matlab instance found, creating a new instance...")
         engine = matlab.engine.start_matlab()
