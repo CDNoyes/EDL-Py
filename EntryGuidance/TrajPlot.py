@@ -8,15 +8,15 @@ def TrajPlot(x,y,z, V=None, T=None, ground=True, show=False, figNum=None, lineSp
     else:
         fig = plt.figure(figNum)
         
-    ax = fig.gca(projection = '3d')
+    ax = fig.gca(projection='3d')
 
     if lineSpec is not None:
-        ax.plot(x,y,z,lineSpec,label=label)
+        ax.plot(x, y, z, lineSpec, label=label)
     else:
-        ax.plot(x,y,z,'o-', label=label)
+        ax.plot(x, y, z, 'o-', label=label)
         
     if ground:
-        ax.plot(x,y,np.zeros_like(z),'k--')
+        ax.plot(x, y, np.zeros_like(z), 'k--')
         
         
     if V is not None:
