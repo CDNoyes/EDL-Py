@@ -50,16 +50,16 @@ if __name__ == "__main__":
         mean = Wm.dot(X)
         E = X.T-mean[:,None]
         cov = E.dot((Wc*E).T)
-        print "----------------"
-        print mean
-        print cov
-        print " "
+        print("----------------")
+        print(mean)
+        print(cov)
+        print(" ")
         # plt.title('$\mu=${}, P={}'.format(mean,cov))
         plt.plot(X.T[0],X.T[1],'x',label="k={}".format(k))
     S = f(S)
-    print "----------------"
-    print "Truth, estimated from {} samples".format(S[0].size)
-    print S.mean(axis=1)
-    print np.cov(S)
+    print("----------------")
+    print("Truth, estimated from {} samples".format(S[0].size))
+    print(S.mean(axis=1))
+    print( np.cov(S))
     plt.scatter(S[0],S[1],10)
     plt.show()

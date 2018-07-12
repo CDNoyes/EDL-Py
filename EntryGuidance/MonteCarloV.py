@@ -3,17 +3,18 @@
 import os
 import time
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
 from scipy.io import savemat, loadmat
 
 from .EntryEquations import EDL
 from .InitialState import InitialState
-from .Uncertainty import getUncertainty
+# from .Uncertainty import getUncertainty
 from .Convex_Entry import LTV
 from Utils.RK4 import RK4
 from . import Parachute
+
 
 class MonteCarlo(object):
     """ Monte carlo class """
@@ -41,8 +42,8 @@ class MonteCarlo(object):
         from scipy.interpolate import interp1d
 
         x0 = InitialState()
-        sim =  Simulation(cycle=Cycle(0.2), output=False, **EntrySim(Vf=Vf))
-        res = sim.run(x0,[ref_profile])
+        sim = Simulation(cycle=Cycle(0.2), output=False, **EntrySim(Vf=Vf))
+        res = sim.run(x0, [ref_profile])
         self.ref_sim = sim
         # s0 = sim.history[0,6]-sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
         # sim.plot(compare=False)
@@ -66,14 +67,14 @@ class MonteCarlo(object):
         sim.edlModel.use_energy = energy
         sim.edlModel.DA(True)
         F = np.array([sim.edlModel.dynamics(control)(state, 0)[0:7] for state,control in zip(sim.history, sim.control_history)])
-        J = np.array([submatrix(sim.edlModel.jacobian_(state, control), rows, cols) for state,control in zip(sim.history, sim.control_history)])
+        J = np.array([submatrix(sim.edlModel.jacobian(state, control), rows, cols) for state,control in zip(sim.history, sim.control_history)])
         J2 = np.array([sim.edlModel.bank_jacobian(state, control, sdot) for state,control,sdot in zip(sim.history, sim.control_history, sigma_dot)])
         B = np.zeros((sim.history.shape[0], 7, 1))
         B[:,-1,0] = J2[:,0,-1]
 
-        J2 = J2[:,:,cols] # Get rid of the extra terms we dont care about
+        J2 = J2[:,:,cols]  # Get rid of the extra terms we dont care about
         A = np.concatenate((J,J2), axis=1)
-        F[:,6] = sigma_dot*B[:,-1,0]# Add the bank angle dynamics
+        F[:,6] = sigma_dot*B[:,-1,0]  # Add the bank angle dynamics
 
         # Define a hypercube trust region around the reference traj
         TR = np.array([500, np.radians(0.03), np.radians(0.03), 10, np.radians(0.05), np.radians(0.05), np.radians(5)])*1
@@ -137,7 +138,7 @@ class MonteCarlo(object):
                     U = interp1d(ti, U, axis=0, kind='cubic')(tnew)
 
                     sim.edlModel.DA(True)
-                    sim.edlModel.use_energy=energy
+                    sim.edlModel.use_energy = energy
                     F = np.array([sim.edlModel.dynamics(control)(state, 0)[0:7] for state,control in zip(states, controls)])
                     J = np.array([submatrix(sim.edlModel.jacobian_(state, control), rows, cols) for state,control in zip(states, controls)])
                     J2 = np.array([sim.edlModel.bank_jacobian(state, control, sdot) for state,control,sdot in zip(states, controls, U)])
