@@ -93,7 +93,7 @@ class DAMC(object):
             # control = bankProfile # Open loop, time
             control = bankProfileEnergy # Open loop
         else:
-            nmpc = NMPC(Ef=Ef,fbl_ref=fbl_ref,update_type=0,dt=dt,Q=Q)
+            nmpc = NMPC(fbl_ref=fbl_ref,dt=dt,Q=Q)
             control = nmpc.controller
 
         # Run
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         cr = data['states'][:,-1,11]#[data['states'][i,-1,11] for i in range(2000)]
 
 
-    damc = DAMC(order=2).reference()
+    damc = DAMC(order=1).reference()
     # print Cost([0.1,2,2.5], damc, samples)
     # print Cost([7.1,0.03,4.25], damc, samples) # First optimization run
     damc.integrate(dt = 4.25, Q = np.array([[7.1,0],[0,0.03]]))
