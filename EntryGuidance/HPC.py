@@ -1,76 +1,77 @@
 """ Differential algebra based replanning using the parametrized planning method.
-    aka hybrid predictor corrector 
+    aka hybrid predictor corrector
 """
 from Simulation import Simulation, Cycle, EntrySim, TimedSim
 from Triggers import SRPTrigger, AccelerationTrigger
 from InitialState import InitialState
-from Uncertainty import getUncertainty 
-import Apollo 
+from Uncertainty import getUncertainty
+from ParametrizedPlanner import profile,profile2
+import Apollo
 
-from pyaudi import gdual_double as gd 
+from pyaudi import gdual_double as gd
 from pyaudi import abs, sqrt
-import numpy as np 
-import matplotlib.pyplot as plt 
-from functools import partial 
-from scipy.interpolate import interp1d 
+import numpy as np
+import matplotlib.pyplot as plt
+from functools import partial
+from scipy.interpolate import interp1d
 
 import sys
-from os import path 
+from os import path
 sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 from Utils.RK4 import RK4
-from Utils import DA as da 
+from Utils import DA as da
 
-fs = 14 # Global fontsize for plotting 
+fs = 14 # Global fontsize for plotting
 
 class controllerState(object):
     def __init__(self):
-        self.tReplan = 0 
-        self.nReplan = 0 
-        
+        self.tReplan = 0
+        self.nReplan = 0
+
     def reset(self):
-        self.tReplan = 0 
-        self.nReplan = 0 
+        self.tReplan = 0
+        self.nReplan = 0
 
 def controller(time, current_state, switch, bank0, reference, lon_target, lat_target, **kwargs):
-    if not hasattr(controller, 'bank'): #or time < tReplan (we've gone back in time so its a new sim) # Perform a number of initializations 
+    if not hasattr(controller, 'bank'): #or time < tReplan (we've gone back in time so its a new sim) # Perform a number of initializations
         print "Initializing HPC controller."
         controller.bankvars = ['bank{}'.format(i) for i,b in enumerate(bank0)]
         controller.bank = np.array([gd(val,var,2) for val,var in zip(bank0,controller.bankvars)])
-        controller.ref = reference # Also need to update the reference each time we replan 
+        controller.ref = reference # Also need to update the reference each time we replan
         states = ['RangeControl']
         conditions = [SRPTrigger(0.0,700,100)]
         input = { 'states' : states,
               'conditions' : conditions }
-        # controller.sim = Simulation(cycle=Cycle(1), output=True, use_da=True, **EntrySim()) # So that the simulation doesn't get rebuilt unnecessarily 
-        controller.sim = Simulation(cycle=Cycle(1), output=False, use_da=True, **input) # So that the simulation doesn't get rebuilt unnecessarily 
-        controller.nReplan = 0 
-        controller.tReplan = 0 
-        
-    r,theta,phi,v,gamma,psi,s,m=current_state     
+        # controller.sim = Simulation(cycle=Cycle(1), output=True, use_da=True, **EntrySim()) # So that the simulation doesn't get rebuilt unnecessarily
+        controller.sim = Simulation(cycle=Cycle(1), output=False, use_da=True, **input) # So that the simulation doesn't get rebuilt unnecessarily
+        controller.nReplan = 0
+        controller.tReplan = 0
+
+    r,theta,phi,v,gamma,psi,s,m=current_state
     # Determine if a replanning is needed
     nReplanMax = 5
-    tReplanMin = 30 # Minimum time between replannings 
+    tReplanMin = 30 # Minimum time between replannings
     # print "In HPC controller: Range Error {} km".format(np.abs(s-controller.ref(v))/1000)
     if v < 5300 and np.abs(s-controller.ref(v)) > 4e3 and controller.nReplan < nReplanMax and (time-controller.tReplan) > tReplanMin:
-    # Don't check until velocity is monotonic, less than max replans, hasn't passed the last switch 
+    # Don't check until velocity is monotonic, less than max replans, hasn't passed the last switch
         print "Replanning triggered"
         controller.nReplan += 1
-        controller.tReplan = time 
+        controller.tReplan = time
         # One option is just to compare estimated range to go with the reference value at the same (velocity/energy/time)
-        # Another option is to track using Apollo between plannings, and use the predicted range to go as the replanning tool 
-        # However, we should also be taking into account crossrange objective, so maybe a single quick integration to check sometimes? 
-        traj = predict(controller.sim, current_state, bankProfile = lambda **d: profile(d['time'], [sw-time for sw in switch], controller.bank), AR=kwargs['aero_ratios']) # Need to pass DA bank variables 
+        # Another option is to track using Apollo between plannings, and use the predicted range to go as the replanning tool
+        # However, we should also be taking into account crossrange objective, so maybe a single quick integration to check sometimes?
+        traj = predict(controller.sim, current_state, bankProfile = lambda **d: profile(d['time'], [sw-time for sw in switch], controller.bank), AR=kwargs['aero_ratios']) # Need to pass DA bank variables
         nInactive = np.sum(np.asarray(switch)<time) # The number of switches already passed (and therefore removed from optimization), but never remove the last element
         dbank = optimize(traj, lon_target, lat_target, controller.bankvars, nInactive)
         controller.bank += dbank
-        
-        # Need to evaluate traj at dbank, then use those states to update the reference 
+
+        # Need to evaluate traj at dbank, then use those states to update the reference
         vel = da.evaluate(traj[:,7], controller.bankvars, [dbank]).flatten()
         vel = np.flipud(vel) # Flipped to be increasing for interp1d limitation
         range = da.const(traj[:,10],array=True)
         range = da.evaluate(traj[:,10], controller.bankvars, [dbank]).flatten()
         rtg = np.flipud(range[-1]*1e3-range*1e3) # Range to go
-        
+
         # plt.figure()
         # plt.plot(vel,controller.ref(vel))
         try:
@@ -82,132 +83,47 @@ def controller(time, current_state, switch, bank0, reference, lon_target, lat_ta
         # plt.plot(v,s,'r*')
         # plt.plot(vel, controller.ref(vel),'k--')
         # plt.show()
-        
-    # If not, or if replanning is done:
-    # Simply evaluate profile 
-    bank = profile(time, switch, da.const(controller.bank),order=1)
-    
-    return bank 
 
-def predict(sim, x0, bankProfile, AR):    
+    # If not, or if replanning is done:
+    # Simply evaluate profile
+    bank = profile(time, switch, da.const(controller.bank),order=1)
+
+    return bank
+
+def predict(sim, x0, bankProfile, AR):
 
     output = sim.run(x0,[bankProfile],StepsPerCycle=10,AeroRatios=AR)
     return output
-    
-def optimize(DA_traj, longitude_target, latitude_target, bankvars, nInactive):    
-    # NOTICE: targets must be given in degrees!! 
+
+def optimize(DA_traj, longitude_target, latitude_target, bankvars, nInactive):
+    # NOTICE: targets must be given in degrees!!
     xf = DA_traj[-1]
     print "Predicted final state: {}".format(da.const(xf)[4:10])
-    # Test some basic optimization: 
-    f = (xf[5]-longitude_target)**2 + (xf[6]-latitude_target)**2  # Lat/lon target  - works well 
+    # Test some basic optimization:
+    f = (xf[5]-longitude_target)**2 + (xf[6]-latitude_target)**2  # Lat/lon target  - works well
     # f = ((xf[3]-6.4)**2 + (1/10000.)*(xf[7]-800.0)**2)    # Alt/vel target - combination doesn't work well
-    # f = (xf[3]-6.9)**2     # Alt target - works well 
-    # f = (xf[7]-840.0)**2    # Vel target - works well 
-    # f = -xf[3] # Maximizing altitude 
-    
+    # f = (xf[3]-6.9)**2     # Alt target - works well
+    # f = (xf[7]-840.0)**2    # Vel target - works well
+    # f = -xf[3] # Maximizing altitude
+
     # Relaxed Newton Method:
     dopt = newton_step(f, bankvars, nInactive)
-    dopt *= 15*np.pi/180/np.max(np.abs(dopt)) # Restricts the largest step size 
+    dopt *= 15*np.pi/180/np.max(np.abs(dopt)) # Restricts the largest step size
     dopt = line_search(f, dopt, bankvars)       # Estimates the best step size along dopt
-    print "delta Bank: {}".format(dopt*180/np.pi)    
-    
-    xf_opt = da.evaluate(xf,bankvars,[dopt])[0]    
+    print "delta Bank: {}".format(dopt*180/np.pi)
+
+    xf_opt = da.evaluate(xf,bankvars,[dopt])[0]
     print "New final state: {}".format(xf_opt[4:10])
     return np.asarray(dopt)
-    
-def profile(T, switch, bank, order=1):
-    # There should be one more angle in bank than there are switches in switch 
-    if (len(switch)+1) != len(bank):
-        print "Improper inputs to bank profile"
-        return 0 
-        
-    # DO THIS ONLY IF USING LINEAR PROFILE
-    if order == 1:
-        maxRate=np.radians(20)
-        newswitch = []
-        newbank = [bank[0]]
-        cbank = da.const(bank)
-        for i,s in enumerate(switch): 
-            newswitch.extend( [s, s + abs(cbank[i+1]-cbank[i])/maxRate] ) # Can use bank instead of cbank to get dependence on bank inputs but we cannot use it in a comparison against time
-            newbank.extend([bank[i+1],bank[i+1]])
-        bank=newbank 
-        switch=newswitch
-    # #########################################
-    # cswitch = da.const(switch) # Constant portion for comparing with time 
-    
-    n = len(bank)
-    bank_out = []
-    try:
-        T[0]
-        isScalar = False
-    except:
-        T = [T]
-        isScalar = True
-        
-    for t in T:    
-        if t <= switch[0]:
-            bank_out.append(bank[0])
-        else:
-            for i,s in enumerate(switch[::-1]):
-                if t>s:
-                    tswitch = s #switch[n-2-i]
-                    bankcur = bank[n-2-i]
-                    banknew = bank[n-1-i]
-                    break
-            if order == 2:
-                bank_out.append(maneuver(t,tswitch,bankcur,banknew))                      # Use this for smooth maneuvers. Doesn't work properly with DA variables for some reason.
-            elif order == 1:    
-                bank_out.append(bankcur + (t-tswitch)*maxRate*da.sign(banknew-bankcur))     # Results in piecewise linear, continous maneuvers
-            elif order == 0:
-                bank_out.append(banknew)                                                  # Results in discontinuous maneuvers
-            
-    if isScalar:
-        return bank_out[0]
-    else:
-        return bank_out
-        
-def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=np.radians(5)):
-    """ Optimal maneuver from one bank angle to another subject to constraint on rate and acceleration. """
-    
-    dt = maxRate/maxAcc                                         # Amount of time to go from 0 bank rate to max or vice versa
-    tm = sqrt(abs(bank_current-bank_desired)/maxAcc)            # Amount of time to reach the midpoint of the maneuver assuming max acc the whole time
-    
-    if tm <= dt:                                                # No max rate because the angles are too close together
-        t1a = t0 + tm
-        t1v = t1a                                               # Never enter the middle phase 
-        t1d = t1a + tm
-        dbank = abs(bank_current-bank_desired)/2
-        maxRate = maxAcc*tm                                     # The maximum rate achieved during the maneuver
-    else:
-        dbank = 0.5*(maxRate**2)/maxAcc                         # Angle traversed during max accel for dt seconds
-        
-        t1a = t0 + dt
-        t1v = t0 + abs(bank_current-bank_desired)/maxRate
-        t1d = t1v + dt
-    
-    # s = np.sign(bank_desired-bank_current)
-    s = (bank_desired-bank_current)/abs(bank_desired-bank_current)
 
-    if t >= t0 and t <= t1a:                                                # Max acceleration phase
-        bank = (bank_current + 0.5*s*maxAcc*(t-t0)**2)
-        
-    elif t > t1a and t <= t1v:                                              # Max velocity phase ( if present )
-        bank = (bank_current + s*dbank + s*maxRate*(t-t1a))
-        
-    elif t > t1v and t <= t1d:
-        bank = (bank_current + s*dbank + s*maxRate*(t-t1a) - s*0.5*maxAcc*(t-t1v)**2 ) # Max deceleration
-        
-    elif t > t1d:
-        bank = (bank_desired)                                               # Post-arrival
-    
-    return bank
+
 def newton_step(f, vars, nInactive):
     """ Returns the step direction based on gradient and hessian info """
     g = da.gradient(f, vars)
     H = da.hessian(f, vars)
     nu = len(g)
-    #TODO watch out for non-invertible hessians 
-    res = [0]*nInactive # Pad with zeros for the inactive segments 
+    #TODO watch out for non-invertible hessians
+    res = [0]*nInactive # Pad with zeros for the inactive segments
     d = -np.dot(np.linalg.inv(H[nInactive:nu,nInactive:nu]),g[nInactive:nu])
     res.extend(d)
     return np.array(res)
@@ -223,61 +139,83 @@ def line_search(f, dir, vars):
     return dir*np.linspace(0,1,2000)[i]
 
 def grid_search(f,vars):
-    from scipy.optimize import differential_evolution as DE 
+    from scipy.optimize import differential_evolution as DE
     # dopt = DE(__grid_search_fun, args=(f,vars), popsize=500, bounds=((0,np.pi/4),(-np.pi/4,0),(-np.pi/4,np.pi/18)),disp=True,tol=1e-5) # True reasonable bounds
     dopt = DE(__grid_search_fun, args=(f,vars), popsize=100, bounds=((-np.pi/18,np.pi/4.5),(-np.pi/4.5,np.pi/18),(-np.pi/4,np.pi/18)),disp=False,tol=1e-2) # Bigger bounds
-    return dopt.x 
-    
+    return dopt.x
+
 def __grid_search_fun(x, f, vars):
-    return da.evaluate([f], vars, [x])[0,0]        
-    
-# def optimize_profile():    
-    
+    return da.evaluate([f], vars, [x])[0,0]
+
+# def optimize_profile():
+
 # #################################################
 # ################ Test Functions #################
 # #################################################
-        
+
 def test_profile():
     """ Tests the bank profile for various numbers of switches using standard python variables. """
-    lw = 2 
+    lw = 2
     t = np.linspace(0,220,5000)
     label = ['Discontinuous','Continuous','Once Differentiable']
     for order in range(3):
         bank = profile(t, [70,115,150],[-np.pi/2, np.pi/2,-np.pi/9,np.pi/9],order=order)
         plt.plot(t,np.array(bank)*180/np.pi,label=label[order],lineWidth=lw)
-        
+
     plt.xlabel('Time (s)',fontsize=fs)
     plt.ylabel('Bank angle (deg)',fontsize=fs)
     plt.legend()
     plt.axis([0,220,-95,95])
     plt.show()
-    
-    
+
+def test_da_profile2():
+    """ Performs the same tests but utilizing DA variables with profile2 """
+
+    t = np.linspace(0,200,500)
+    order = 1
+    bank_inp = [gd(val,'bank{}'.format(i),order) for i,val in enumerate([-np.pi/2, np.pi/2,-np.pi/9,np.pi/9])]
+    switch = [-10,70,115,] + [gd(val,'s{}'.format(i),order) for i,val in enumerate([150])] + [250]
+    bank = np.array([profile2(ti, switch, bank_inp) for ti in t ])
+
+    plt.plot(t, da.const(bank, array=True)*180/np.pi,'k--')
+
+    dbank = (-1+2*np.random.random([5,len(bank_inp)]))*np.pi/9
+    dswitch =  (-1+2*np.random.random([5,len(bank_inp)-3]))*10.
+    eval_pt = np.concatenate((dbank,dswitch),axis=1)
+    vars = ['bank{}'.format(i) for i in range(4)] + ['s{}'.format(i) for i in range(1)]
+    bank_new = da.evaluate(bank,vars,eval_pt)
+
+    for bn in bank_new:
+        plt.plot(t,bn*180/np.pi)
+
+    plt.show()
+
+
 def test_da_profile():
     """ Performs the same tests but utilizing DA variables """
     t = np.linspace(0,200,500)
     bank_inp = [gd(val,'bank{}'.format(i),2) for i,val in enumerate([-np.pi/2, np.pi/2,-np.pi/9,np.pi/9])]
 
     bank = profile(t, [70,115,150], bank_inp)
-        
+
     plt.plot(t, da.const(bank, array=True)*180/np.pi,'k--')
-    
+
     dbank = (-1+2*np.random.random([5,len(bank_inp)]))*np.pi/9
     bank_new = da.evaluate(bank,['bank{}'.format(i) for i,b in enumerate(bank_inp)],dbank)
 
-    for bn in bank_new:    
+    for bn in bank_new:
         plt.plot(t,bn*180/np.pi)
-    
+
     plt.show()
 
 def test_expansion():
     ''' Integrates a trajectory with nominal bank angle
         Then expands around different bank angles
-        Then integrates true trajectories using those bank angles 
+        Then integrates true trajectories using those bank angles
         And compares
     '''
     import time
-    
+
     tf = 220
     reference_sim = Simulation(cycle=Cycle(1),output=False,**TimedSim(tf))
     da_sim = Simulation(cycle=Cycle(1), output=True, use_da=True, **TimedSim(tf))
@@ -285,36 +223,36 @@ def test_expansion():
     bankvars = ['bank{}'.format(i) for i,b in enumerate(banks)]
     bank_inp = [gd(val,'bank{}'.format(i),1) for i,val in enumerate(banks)]
     bankProfile = lambda **d: profile(d['time'],[89.3607, 136.276], bank_inp)
-    
-                                                
+
+
     x0 = InitialState()
     t0 = time.time()
     output = da_sim.run(x0,[bankProfile],StepsPerCycle=10)
-    tda = time.time() 
+    tda = time.time()
     print "DA integration time {}".format(tda-t0)
-    
+
     xf = output[-1]
-    
-    # Test some basic optimization: 
-    # f = (xf[5]+71.5)**2 + (xf[6]+41.4)**2  # Lat/lon target  - works well 
+
+    # Test some basic optimization:
+    # f = (xf[5]+71.5)**2 + (xf[6]+41.4)**2  # Lat/lon target  - works well
     # f = ((xf[3]-6.4)**2 + (1/10000.)*(xf[7]-800.0)**2)    # Alt/vel target - combination doesn't work well
-    # f = (xf[3]-6.9)**2     # Alt target - works well 
-    # f = (xf[7]-840.0)**2    # Vel target - works well 
-    f = -xf[3] # Maximizing altitude 
+    # f = (xf[3]-6.9)**2     # Alt target - works well
+    # f = (xf[7]-840.0)**2    # Vel target - works well
+    f = -xf[3] # Maximizing altitude
     # Relaxed Newton Method:
     # dopt = newton_step(f, bankvars)
-    # dopt *= 15*np.pi/180/np.max(np.abs(dopt)) # Restricts the largest step size 
+    # dopt *= 15*np.pi/180/np.max(np.abs(dopt)) # Restricts the largest step size
     # dopt = line_search(f, dopt, bankvars)       # Estimates the best step size along dopt
     # print "delta Bank from single newton step: {}".format(dopt*180/np.pi)
     dopt = np.zeros_like(banks)
-    
+
     # dopt = grid_search(f, bankvars) # Brute force, could work well since evaluating is so fast
     # print "delta Bank from DE: {}".format(dopt*180/np.pi)
-    
-    
+
+
     xf_opt = da.evaluate(xf,bankvars,[dopt])[0]
-    
-    dbank = (-1+2*np.random.random([1000,len(bank_inp)]))*np.pi/9
+
+    dbank = (-1+2*np.random.random([500,len(bank_inp)]))*np.pi/9
     xf_new = da.evaluate(xf,bankvars,dbank)
     teval = time.time()
     print "DA evaluation time {}".format(teval-tda)
@@ -322,27 +260,27 @@ def test_expansion():
     plt.figure(1)
     plt.plot(xf[7].constant_cf,xf[3].constant_cf,'kx')
     # plt.plot(xf_opt[7],xf_opt[3],'k^')
-    
+
     for xfn in xf_new:
         plt.plot(xfn[7],xfn[3],'o',fillstyle='none')
-        
+
     plt.figure(2)
     plt.plot(xf[5].constant_cf,xf[6].constant_cf,'kx')
     # plt.plot(xf_opt[5],xf_opt[6],'k^')
-    
+
     for xfn in xf_new:
-        plt.plot(xfn[5],xfn[6],'o',fillstyle='none')   
+        plt.plot(xfn[5],xfn[6],'o',fillstyle='none')
 
     plt.figure(3)
     plt.plot(xf[8].constant_cf,xf[9].constant_cf,'kx')
     # plt.plot(xf_opt[8],xf_opt[9],'k^')
-    
+
     for xfn in xf_new:
-        plt.plot(xfn[8],xfn[9],'o',fillstyle='none')          
-        
-    if True:    
+        plt.plot(xfn[8],xfn[9],'o',fillstyle='none')
+
+    if True:
         xf_new_true = []
-        t0 = time.time()    
+        t0 = time.time()
         for delta in dbank:
             bankProfile_double = lambda **d: profile(d['time'],[89.3607, 136.276], [a+b for a,b in zip(delta,banks)])
             output = reference_sim.run(x0,[bankProfile_double])
@@ -365,8 +303,8 @@ def test_expansion():
             plt.plot(dbanknorm*180/np.pi,err[:,i+4],'ko')
             plt.xlabel('Norm of Bank Deviations (deg)',fontsize=fs)
             plt.ylabel(label[i],fontsize=fs)
-    
-    # Add labels to each plot 
+
+    # Add labels to each plot
     plt.figure(1)
     plt.ylabel('Altitude (km)')
     plt.xlabel('Velocity (m/s)')
@@ -379,36 +317,36 @@ def test_expansion():
     plt.show()
 
 def test_controller():
-    import MPC as mpc 
+    import MPC as mpc
      # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
     switch = [129, 190]
     bank = [-np.radians(80), np.radians(80), -np.radians(30)]
     bankProfile = lambda **d: profile(d['time'],switch=switch, bank=bank,order=2)
-                                                
+
     x0 = InitialState()
     output = reference_sim.run(x0,[bankProfile])
 
     references = reference_sim.getRef()
     drag_ref = references['drag']
-    
+
     # Create the simulation model:
 
     states = ['PreEntry','RangeControl']
-    conditions = [AccelerationTrigger('drag',2), SRPTrigger(0,700,10)] # TODO: The final trigger should be an input 
+    conditions = [AccelerationTrigger('drag',2), SRPTrigger(0,700,10)] # TODO: The final trigger should be an input
     input = { 'states' : states,
               'conditions' : conditions }
-              
+
     sim = Simulation(cycle=Cycle(1), output=True, **input)
 
     # Create guidance laws
     pre = partial(mpc.constant, value=bankProfile(time=0))
     hpc = partial(controller, switch=switch, bank0=bank, reference=references['rangeToGo'], lon_target=output[-1,5], lat_target=output[-1,6])
     controls = [pre, hpc]
-    
+
     # Run the off-nominal simulation
     perturb = getUncertainty()['parametric']
-    sample = None 
+    sample = None
     # sample = perturb.sample()
     # print sample
     # sample = [.1,-.1,-.05,0]
@@ -422,10 +360,10 @@ def test_controller():
     output = sim.run(x0_full, controls, sample, FullEDL=True)
     sim.plot(compare=False)
     sim.show()
-    
-    
+
+
 if __name__ == "__main__":
-    # test_profile()
     # test_da_profile()
+    test_da_profile2()
     # test_expansion()
-    test_controller()
+    # test_controller()
