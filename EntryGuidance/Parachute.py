@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from Planet import Planet
+from .Planet import Planet
 
 def Draw(figure=None, show=False):
 
@@ -37,7 +37,7 @@ def Draw(figure=None, show=False):
         plt.figure()
     else:
         plt.figure(figure)
-    plt.plot(Vmax,h/1000,Vmin,h/1000,x,y)
+    plt.plot(Vmax,h/1000,'k',Vmin,h/1000,'k',x,y,'k')
     plt.xlabel('Velocity (m/s)')
     plt.ylabel('Altitude (km)')
 
