@@ -83,10 +83,10 @@ def Perturb(x0,initial=None,knowledge=None):
 
 
 def demo():
-    print "Default state:"
-    print InitialState(False)
-    print "Setting mass and range to go:"
-    print InitialState(False, mass=-1000,range=-666)
+    print("Default state:")
+    print(InitialState(False))
+    print("Setting mass and range to go:")
+    print(InitialState(False, mass=-1000,range=-666))
 
 if __name__ == "__main__":
     demo()
