@@ -62,7 +62,7 @@ def evaluate(da_array, da_vars, pts):
             pt = [pt]
         # eval_pt = {da_var:element for da_var,element in zip(delta,pt)} # This is probably slow since we're constructing a new dict every time
         eval_pt.update(zip(delta, pt))
-        new_pt = [da.evaluate(eval_pt) if isinstance(da, (gd,gdv)) else da for da in da_array]
+        new_pt = [da.evaluate(eval_pt) if isinstance(da, dual) else da for da in da_array]
         new_pts.append(new_pt)
 
     return np.array(new_pts)
@@ -85,7 +85,7 @@ def gradient(da, da_vars):
             da_vars is 1-d list/array with string names in the order the gradient should be given
     """
     g = np.zeros(len(da_vars))
-    if isinstance(da, gd): # It may be the case that the DA was differentiated and became a constant
+    if isinstance(da, dual):  # It may be the case that the DA was differentiated and became a constant
         for var in da.symbol_set:
             ind = da_vars.index(var)
             g[ind] = da.partial(var).constant_cf
