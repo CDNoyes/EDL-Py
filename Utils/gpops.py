@@ -6,6 +6,7 @@ import matlab.engine
 doc_path = "E:\Documents"
 gpops_path = "E:\Documents\GPOPS-II"
 
+
 def entry(inputs):
     """ Calls GPOPS-II with the given input structure (dict in python)
 
@@ -26,6 +27,7 @@ def entry(inputs):
 
     traj = engine.optimize_entry(*inputs)
     return traj
+
 
 def srp(inputs):
     """ Calls GPOPS-II to solve planetary landing problem
@@ -50,4 +52,4 @@ def srp(inputs):
 
 
 if __name__ == "__main__":
-    gpops(0)
+    pass

@@ -95,12 +95,12 @@ class Entry(object):
 
         h = r - self.planet.radius/self.dist_scale
 
-        g = self.gravity(r)   # (self.planet.mu/(r*self.dist_scale)**2)/self.acc_scale
+        g = self.gravity(r)   
 
         rho, a = self.planet.atmosphere(h*self.dist_scale)
         M = v*self.vel_scale/a
         cD, cL = self.vehicle.aerodynamic_coefficients(M)
-        f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale
+        f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale  # vel_scale**2/acc_scale = dist_scale 
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
 
@@ -158,15 +158,15 @@ class Entry(object):
     def _bank(self, x):
         """ Internal function used for jacobian of bank rate """
 
-        r,theta,phi,v,gamma,psi,s,m,sigma,T,mu,sigma_dot = x
+        r, theta, phi, v, gamma, psi, s, m, sigma, T, mu, sigma_dot = x
 
         if self.use_energy:
             h = r - self.planet.radius/self.dist_scale
-            g = self.planet.mu/r**2 /self.acc_scale
+            g = self.gravity(r)
             rho,a = self.planet.atmosphere(h*self.dist_scale)
             M = v*self.vel_scale/a
             cD,cL = self.vehicle.aerodynamic_coefficients(M)
-            f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)/self.acc_scale
+            f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale
             D = f*cD*self.drag_ratio
             return sigma_dot/(-v*D)
         else:

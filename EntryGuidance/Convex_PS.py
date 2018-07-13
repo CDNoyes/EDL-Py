@@ -96,13 +96,12 @@ class OCP:
                 mesh.bisect()
                 t_u = t
                 t = mesh.times
-                u = interp1d(t_u, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
+                u = interp1d(t_u, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=False)(t)
                 x = self.integrate(self.x0, u, t).T
                 x_approx = x
 
             else:
                 # x = self.integrate(self.x0, u, t).T
-
                 # ufun = interp1d(t, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
 
                 F = self.dynamics(x_approx, t, u).T
@@ -136,10 +135,19 @@ class OCP:
                                 break
                             t_u = t
                             print("Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders),t.size))
+                            if 0:
+                                mesh.plot(show=True)  # for debugging 
                             t = mesh.times
-                            ufun = interp1d(t_u, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
+                            if t[0] < t[-1]:  # Increasing IV
+                                fill = (u[0], u[-1])
+                                fillx = (x[:,0], x[:,-1])
+                            else:
+                                fill = (u[-1], u[0])
+                                fillx = (x[:,-1], x[:,0])
+
+                            ufun = interp1d(t_u, u, kind='linear', axis=0, copy=True, bounds_error=False, fill_value=fill, assume_sorted=False)
                             u = ufun(t)
-                            x_approx = interp1d(t_u, x_approx, kind='linear', axis=-1, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)(t)
+                            x_approx = interp1d(t_u, x_approx, kind='linear', axis=-1, copy=True, bounds_error=False, fill_value=fillx, assume_sorted=False)(t)
                             F = self.dynamics(x_approx, t, u).T
                             A, B = self.jac(x_approx, u.T)
 
@@ -172,7 +180,7 @@ class OCP:
         N = mesh.n_points
         T = range(N)
 
-        x = np.array([cvx.Variable(n) for i in range(N)])  # This has to be done to "chunk" it later
+        x = np.array([cvx.Variable(n) for _ in range(N)])  # This has to be done to "chunk" it later
         u = np.array([cvx.Variable(m) for _ in range(N)])
         v = np.array([cvx.Variable(n) for _ in range(N)])  # Virtual controls
 
@@ -191,7 +199,7 @@ class OCP:
         # Iteration over the segments of the mesh
         for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs, X,F,A,B,Xr,Ur,U, mesh.weights, V):
             L = self.lagrange(0, xi, ui, xr, ur)
-            cost = np.dot(w, L)                # Clenshaw-Curtis quadrature
+            cost = np.dot(np.abs(w), L)                # Clenshaw-Curtis quadrature
 
             # Estimated derivatives:
             dx = d.dot(xi)

@@ -133,7 +133,7 @@ class Mesh(object):
 
         if scaling is None:
             scaling = np.ones_like(X[0])
-        if len(np.shape(scaling))==1:
+        if len(np.shape(scaling)) == 1:
             scaling = np.asarray(scaling)[None,:]
 
         refined = False
@@ -166,7 +166,7 @@ class Mesh(object):
                 if verbose: print("Refining segment {}".format(segment))
                 refined = True
 
-                if beta.max() <= rho and (self.orders[segment]+self.inc < self.max): # Uniform type error
+                if beta.max() <= rho and (self.orders[segment]+self.inc < self.max):  # Uniform type error
                     if verbose: print("Raising polynomial order...")
                     self.update(segment, self.orders[segment]+self.inc)
 
@@ -176,27 +176,28 @@ class Mesh(object):
                     if self.orders[segment]+self.inc<self.max:
                         # splits = np.where(beta>=rho)[0]
                         # ds = np.diff(splits)
-                        splits = [np.argmax(beta)] # for now, just split at the highest error point
+                        splits = [np.argmax(beta)]  # for now, just split at the highest error point
                     else: # Resulting mesh order would be too high, so we split at the highest error point instead
                         splits = [np.argmax(beta)]
 
                     for isplit in splits:
-                        tsplit = (ti[isplit]*interval + self._times[segment] +self._times[segment+1])/2. # convert to real time
-                        self.split(segment, t=tsplit) # have to add another increment each time a split is done
-                        segment +=1
-            segment+= 1
+                        tsplit = (ti[isplit]*interval + self._times[segment] + self._times[segment+1])/2.  # convert to real time
+                        self.split(segment, t=tsplit)  # have to add another increment each time a split is done
+                        segment += 1
+            segment += 1
         self.history.append(self._times[:])
         return refined
 
-    def plot(self,show=True):
+    def plot(self, show=True):
         """ Plots the mesh history """
         import matplotlib.pyplot as plt
 
         plt.figure()
-        for i,t in enumerate(self.history):
-            plt.plot(t,np.ones_like(t)*i,'x')
+        for i, t in enumerate(self.history):
+            plt.plot(t, np.ones_like(t)*i, 'x')
         plt.xlabel('Grid points')
         plt.ylabel('Refinements')
+        plt.yticks(list(range(len(self.history))))
 
         plt.figure()
         plt.hist(self.orders)
@@ -204,6 +205,7 @@ class Mesh(object):
 
         if show:
             plt.show()
+
 
 def colloc(x):
     """
@@ -229,6 +231,7 @@ def colloc(x):
     D = -D.T
     return D
 
+
 def test_quad():
     """ A test of numerical quadrature using a mesh with Chebyshev polynomials"""
     from scipy.integrate import quad
@@ -243,12 +246,11 @@ def test_quad():
     for x,w in zip(M.tau2time(M._times, True), M.weights):
         integral += w.dot(y(x))
 
-
-
     print("Integrating test function: \nf(x) = (x**4 - 2 * x**3)*sin(x) + exp(0.1*x)*cos(x)*x")
     print("True value, scipy.integrate.quad = {:.6f}".format(I))
     print("Estimated value using mesh quad  = {:.6f}".format(integral))
     print("|Error| = {}".format(np.abs(I-integral)))
+
 
 if __name__ == "__main__":
     test_quad()
