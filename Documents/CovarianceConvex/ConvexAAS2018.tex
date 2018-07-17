@@ -1,0 +1,122 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[latin1]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+
+\author{Connor D. Noyes and Kenneth D. Mease}
+\title{A Convex Optimization Approach to Mars Entry Trajectory Updating}
+\begin{document}
+	\maketitle
+
+	\section*{}
+	Entry, descent, and landing (EDL) capsules traveling through the Martian atmosphere are subject to significant uncertainty in the vehicle?s aerodynamics, environmental conditions, mass properties, and more that may make tracking a reference trajectory difficult or even infeasible. In addition, delivery errors upon entering the atmosphere mean that tracking a fixed reference trajectory may not deliver the vehicle to the desired target even under nominal conditions. Performance in both scenarios can be improved by using a simple updating strategy to replan the reference trajectory online.
+	
+	Convex optimization approaches to solving nonconvex problems have seen immense interest in recent years, cf. Refs.~\cite{SeqConProg,SuccConvex1,SuccConvex2}, and have been successfully applied in a number of aerospace problems including interplanetary trajectories, powered ascent \cite{PS_Convex_ascent} and descent \cite{Convex_descent} trajectories, as well as atmospheric entry guidance \cite{WangConvexTraj}. 
+	
+	The dynamics of an atmospheric entry vehicle are inherently nonconvex. Treating the vehicle's bank angle as the control variable results in a nonaffine, nonconvex optimization problem. The dynamics are transformed into a convex form by linearization around a reference trajectory. The problem is then fully converted to convex form by treating the bank angle as a system state and using bank angle rate as the control variable as in Ref.~\cite{WangConvexTraj}. Additionally, although some free final time optimal control problems are solvable by convex optimization (specifically minimum final time problems), the formulation here requires a fixed final time. However, the trajectory duration is not in general known apriori and the duration may necessarily change during replanning. To remedy this issue, specific energy is used as the independent variable. Energy is a function of the vehicle?s velocity and altitude and a suitable final energy level can be obtained by, e.g., consideration of parachute deployment conditions. The convex optimal control problem is transcribed into a finite-dimensional using Chebyshev pseudospectral collocation \cite{ChebyPS} to create a smaller, sparser problem than typical discretization methods. The resulting second order cone problem (SOCP) is solved via an efficient interior-point method \cite{BoydConvexBook}.
+	
+	The approach is only intended to make corrections to an existing trajectory as needed. As a result it requires an initial trajectory that at least loosely satisfies the constraints. A trust region approach is utilized which means the updated trajectory cannot deviate largely from the original. One benefit of the local nature of the update is that feedback gains do not generally need to be recomputed. However, reversals can happen at different energy levels and with different rate to produce a new trajectory. The approach also benefits from the fact that all state variables are replanned rather than separating the longitudinal and lateral channels as is commonly done. Additionally, only a single convex optimization problem needs to be solved, rather than a series of successive linearizations around the previous solution unlike Refs.~\cite{SeqConProg,SuccConvex1,SuccConvex2,WangConvexTraj}. This makes the algorithm amenable to real-time implementation. 
+	
+	The algorithm can also be used for repeated planning and can be seen in the same spirit as the numerical predictor-corrector methods. In this case feedback is achieved by repeated planning from the current vehicle state rather than using numerical prediction to trigger an update to the trajectory. However, in contrast to these methods, the profile has the advantage of being more general since the bank angle profile is not constrained by a simple parametrization. This allows for near optimal performance. Nevertheless, the reliance on an initial reference trajectory does ultimately make it less flexible than other predictor-corrector methods. 
+	The cost function in the optimization problem is the sum of a quadratic function of the miss distance from the target and a small control deviation penalty in the Lagrange cost to reduce chattering: 
+	\begin{equation}
+	J = \frac{1}{2}(\theta(E_f)-\theta_{T})^2 + \frac{1}{2}(\phi(E_f)-\phi_{T})^2 + w\int_{E_0}^{E_f}(\Delta u)^2dE
+	\end{equation}
+	where $\theta,\,\phi$ are the vehicle's longitude and latitude, respectively, \textit{w} is an appropriate weighting term, and $\Delta u$ is the update to the control resulting from the optimization procedure. To ensure the final altitude of the vehicle remains sufficiently high during replanning,  it may be treated as a constraint ($h(E_f)>=h_{min}$), or an altitude maximization term may be appended to the cost function. The approach requires a single numerical integration at each guidance cycle to predict the final state under the current plan. This trajectory is then used as the linearization point to convexify the dynamics. Once the replanning is complete, the new trajectory may be tracked via feedback control, or flown open-loop until the next replanning. 
+
+	
+	\begin{thebibliography}{1}
+%		\bibitem{brockett2012}
+%		R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.
+%		Coron, editors, Control of Partial Differential Equations, pages 101-129. Springer,
+%			Berlin-Heidelberg, 2012.
+		
+%		\bibitem{UncertainOptimalControl}
+%		C. Phelps, J.O. Royset, and Q. Gong, ``Optimal Control of Uncertain Systems Using Sample Average Approximations," SIAM Journal on Control and Optimization, 2016.
+		\bibitem{SeqConProg}
+		Q.T. Dinh, and M. Diehl, ``Local Convergence of Sequential Convex Programming for Nonconvex Optimization"
+		
+		\bibitem{SuccConvex1}
+		Y. Mao, M. Szmuk, and B. Acikmese, ``Successive Convexification of Non-Convex Optimal Control Problems and Its Convergence Properties," 2017.
+		
+		\bibitem{SuccConvex2}
+		Y. Mao, D. Dueri, M. Szmuk, and B. Acikmese, ``Successive Convexification of Non-Convex Optimal Control Problems with State Constraints," 2017.
+		
+		\bibitem{PS_Convex_ascent}
+		Cheng, X., Li, H., and Zhang, R. ``Efficient ascent trajectory optimization using convex models based on the newton-kantorovich/pseudospectral approach". Aerospace Science and Technology, 2017.
+		
+		\bibitem{Convex_descent}
+		Acikmese, Behcet, and Scott R. Ploen. "Convex programming approach to powered descent guidance for mars landing." Journal of Guidance, Control, and Dynamics 30.5 (2007): 1353-1366.
+				
+		\bibitem{WangConvexTraj}
+		Wang, Zhenbo, and Michael J. Grant. "Constrained trajectory optimization for planetary entry via sequential convex programming." Journal of Guidance, Control, and Dynamics (2017): 1-13.
+		
+%		\bibitem{PCE_OCP_Bhattacharya}
+%		J. Fisher, R. Bhattacharya, ``Optimal Trajectory Generation with Probabilistic System Uncertainty Using Polynomial Chaos," ASME Journal of Dynamic Systems Measurement and Control, 2011.
+%		
+%		\bibitem{OpenLoopUncertain}
+%		Darlington, John, et al. ``Decreasing the sensitivity of open-loop optimal solutions in decision making under uncertainty." European Journal of Operational Research 121.2 (2000): 343-362.
+%		
+%		\bibitem{Desensitized}
+%		Seywald, Hans, and Renjith R. Kumar. ``Desensitized optimal trajectories." Spaceflight mechanics 1996 (1996): 103-115.
+%		
+%		\bibitem{RSOptimalControl}
+%				I.M. Ross, R.J. Proulx, M. Karpenko, and Q. Gong, ``Riemann-Stieltjes Optimal Control Problems for Uncertain Dynamic Systems," AIAA Journal of Guidance Control and Dynamics, 2015.
+				\bibitem{ChebyPS}
+				Fahroo, Fariba, and I. Michael Ross. ``Direct trajectory optimization by a Chebyshev pseudospectral method." Journal of Guidance, Control, and Dynamics 25.1 (2002): 160-166.
+		\bibitem{BoydConvexBook}
+		Boyd, S., and L. Vandenberghe, ``Convex optimization," Cambridge university press, 2004.
+		
+%		\bibitem{Boyd}
+%		S. Boyd, C. Crusius, and A. Hansson, ``Control Applications of Nonlinear Convex Programming"
+		
+		
+%		\bibitem{UT}
+%		Julier, S.J., and Uhlmann, J.K., ``A General Method for Approximating Nonlinear Transformations of Probability Distributions" 1996.
+%
+%		\bibitem{UKF1}
+%		Julier, S.J., and Uhlmann, J.K., ``A New Extension of the Kalman Filter for Nonlinear Systems" In Int. symp. aerospace/defense sensing, simul. and controls (Vol. 3, No. 26, pp. 182-193), 1997.
+%		
+%		\bibitem{UKF2}
+%		Julier, S.J., and Uhlmann, J.K., ``Unscented filtering and nonlinear estimation." Proceedings of the IEEE, 92(3), 401-422. 2004.
+%		
+%		\bibitem{UT_simplex}
+%		Julier, S.J., and Uhlmann, J.K., ``Reduced Sigma Point Filters for the Propagation of Means and Covariances Through Nonlinear Transformation"
+				
+
+		
+%		\bibitem{LegendrePS}
+%		Elnagar, Gamal, Mohammad A. Kazemi, and Mohsen Razzaghi. ``The pseudospectral Legendre method for discretizing optimal control problems." IEEE transactions on Automatic Control 40.10 (1995): 1793-1796.
+%		
+%		\bibitem{RadauPS}
+%		Garg, Divya, et al. ``Direct trajectory optimization and costate estimation of finite-horizon and infinite-horizon optimal control problems using a Radau pseudospectral method." Computational Optimization and Applications 49.2 (2011): 335-358.
+%		
+%		\bibitem{GPOPS}		
+%		Rao, Anil V., et al. ``Algorithm 902: Gpops, a matlab software for solving multiple-phase optimal control problems using the gauss pseudospectral method." ACM Transactions on Mathematical Software (TOMS) 37.2 (2010): 22.				
+				
+%		\bibitem{PS_Convex}
+%		M. Sagliano, ``Pseudospectral Convex Optimization for Powered Descent and Landing," Journal of Guidance, Control, and Dynamics, 2017.
+		
+
+		
+%		\bibitem{hp_adapt}
+%		Darby, Christopher L., William W. Hager, and Anil V. Rao. ``An hp-adaptive pseudospectral method for solving optimal control problems." Optimal Control Applications and Methods 32.4 (2011): 476-502.
+		
+
+		
+%		\bibitem{CCQuad}
+%		W.M. Gentleman, ``Algorithm 424: Clenshaw-Curtis quadrature [D1]"
+%		
+%		\bibitem{HPAdapt_origin}
+%		Devloo, P.R.B. ``H-p adaptive finite-element method for steady compressible flow," Univ. of Texas,Austin, TX, United States. 1987.
+%		
+%		\bibitem{CCQuadCompare}
+%		``Is Gauss Quadrature Better Than Clenshaw-Curtis?"
+		
+%		\bibitem{Polynomials}
+%		Boyd, John P., and Rolfe Petschek. ``The relationships between Chebyshev, Legendre and Jacobi polynomials: the generic superiority of Chebyshev polynomials and three important exceptions." Journal of Scientific Computing 59.1 (2014): 1-27.
+		
+	\end{thebibliography}
+\end{document}
