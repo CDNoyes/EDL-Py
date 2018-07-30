@@ -4,7 +4,7 @@ class Planet:
     def __init__(self, name='Mars', rho0=0, scaleHeight=0, model='exp', da=False):
 
         self.name = name.capitalize()
-        self._da = da # Differential algebraic inputs
+        self._da = da  # Differential algebraic inputs
 
         if self.name == 'Mercury':
             self.radius = float('nan')  # equatorial radius, m
@@ -57,7 +57,6 @@ class Planet:
 
         else:
             print('Input planet name, '+ self.name +', is not valid')
-
 
     def __exp_model_mars(self, h):
         ''' Defines an exponential model of the atmospheric density and local speed of sound as a function of altitude. '''
@@ -121,9 +120,9 @@ class Planet:
         if km:
             return DR/1000., CR/1000.
         else:
-            return DR,CR
+            return DR, CR
 
-    def coord(self,lon0,lat0,heading0,dr,cr):
+    def coord(self, lon0, lat0, heading0, dr, cr):
         '''Computes the coords of a target a given downrange and crossrange from an initial location and heading.'''
         from numpy import arccos, arcsin, sin, cos, pi
         from pyaudi import sin, cos
@@ -134,20 +133,22 @@ class Planet:
         zeta = arcsin(sin(CR/self.radius)/sin(LF))
         lat = arcsin(cos(zeta-heading0+pi/2.)*cos(lat0)*sin(LF)+sin(lat0)*cos(LF))
         lon = lon0 + arcsin(sin(zeta-heading0+pi/2)*sin(LF)/cos(lat))
-        return lon,lat
+        return lon, lat
+
 
 def getDifference(rho0, scaleHeight):
     import numpy as np
 
     nominal = Planet()
-    dispersed = Planet(rho0=rho0,scaleHeight=scaleHeight)
+    dispersed = Planet(rho0=rho0, scaleHeight=scaleHeight)
 
-    h = np.linspace(0,127e3,1000) # meters
+    h = np.linspace(0, 127e3, 1000) # meters
     rho_nom = [nominal.atmosphere(H)[0] for H in h]
     rho_dis = [dispersed.atmosphere(H)[0] for H in h]
     diff = np.array(rho_dis)-np.array(rho_nom)
     perdiff = 100*diff/np.array(rho_nom)
     return perdiff
+
 
 def compare():
     from itertools import product
@@ -166,6 +167,7 @@ def compare():
     plt.xlabel('Altitude (km)')
     plt.ylabel('Density variation (%)')
     plt.show()
+
 
 if __name__ == "__main__":
     compare()

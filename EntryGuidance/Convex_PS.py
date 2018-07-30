@@ -66,8 +66,8 @@ class OCP:
         ti = guess['time']
                 
         # Interpolate the guess onto the initial mesh
-        u = interp1d(ti, u, axis=0)(t)
-        x = interp1d(ti, x, axis=0)(t).T
+        u = interp1d(ti, u, axis=0, bounds_error=False, fill_value='extrapolate', kind='cubic')(t)
+        x = interp1d(ti, x, axis=0, bounds_error=False, fill_value='extrapolate', kind='cubic')(t).T
         F = self.dynamics(x, t, u).T
         # print("Dimensions going into jacobian = {}, {}".format(x.shape, u.T.shape))
         A, B = self.jac(x, u.T)

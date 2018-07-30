@@ -99,7 +99,7 @@ def test_quad():
     Isplit = 0
 
     for ta,tb in zip(ti,ti[1:]):
-        tau = 0.5*((tb-ta)*xi + ta + tb) #map the collocation points to the true time interval
+        tau = 0.5*((tb-ta)*xi + ta + tb)  # map the collocation points to the true time interval
         Isplit += sum(y(tau)*wi)*(0.5*(tb-ta))
 
     print("Integrating test function: \nf(x) = (x**4 - 2 * x**3)*sin(x) + exp(0.1*x)*cos(x)*x")
