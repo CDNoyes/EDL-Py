@@ -310,11 +310,11 @@ class Entry(object):
 
 
 
-def EDL(InputSample=np.zeros(4),**kwargs):
+def EDL(InputSample=np.zeros(4), **kwargs):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
 
     CD,CL,rho0,sh = InputSample
-    return Entry(PlanetModel=Planet(rho0=rho0,scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD,CL=CL), **kwargs)
+    return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD ,CL=CL), **kwargs)
 
 
 
