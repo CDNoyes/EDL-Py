@@ -11,7 +11,6 @@ from scipy.io import savemat, loadmat
 from .EntryEquations import EDL
 from .InitialState import InitialState
 # from .Uncertainty import getUncertainty
-from .Convex_Entry import LTV
 from Utils.RK4 import RK4
 from . import Parachute
 
@@ -70,7 +69,7 @@ class MonteCarlo(object):
 
     def sample(self, N, sample_type='S', parametric=True, initial=False, knowledge=False):
         """ Generates samples for use in Monte Carlo simulations """
-        from Uncertainty import getUncertainty
+        from .Uncertainty import getUncertainty
         uncertainty = getUncertainty(parametric=parametric, initial=initial, knowledge=knowledge)
 
         self.samples = uncertainty['parametric'].sample(N-1, sample_type)
@@ -201,11 +200,11 @@ class MonteCarlo(object):
         hor_err = np.sqrt((lon - xf[1])**2 + xf[2]**2)*3397
         
         plt.figure(5, figsize=figsize)
-        plt.hist(hor_err, density=True, cumulative=True, histtype='step', bins='auto', linewidth=4)
+        plt.hist(hor_err, cumulative=True, histtype='step', bins='auto', linewidth=4, normed=True)
         plt.xlabel("Horizontal Error (km)")
 
         plt.figure(6, figsize=figsize)
-        plt.hist((r-self.model.planet.radius)/1000., density=True, cumulative=True, histtype='step', bins='auto', linewidth=4)
+        plt.hist((r-self.model.planet.radius)/1000., cumulative=True, histtype='step', bins='auto', linewidth=4, normed=True)
         plt.xlabel("Final Altitude (km)")
 
 def solve_ocp(dr=885., fpa_min=-45, azi_max=5.):
