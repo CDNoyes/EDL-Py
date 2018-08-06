@@ -1,5 +1,3 @@
-
-
 class Planet:
     def __init__(self, name='Mars', rho0=0, scaleHeight=0, model='exp', da=False):
 
@@ -160,9 +158,9 @@ def compare():
     sh = np.linspace(-0.025,0.01,n)
     h = np.linspace(0,127,1000) # kmeters
     plt.figure()
-    for rho,s in product(rho0,sh):
-        perDiff = getDifference(rho,s)
-        plt.plot(h,perDiff,label="\rho={}, \hs={}".format(rho,s))
+    for rho, s in product(rho0, sh):
+        perDiff = getDifference(rho, s)
+        plt.plot(h, perDiff, label="\rho={}, \hs={}".format(rho, s))
     plt.legend(loc='best')
     plt.xlabel('Altitude (km)')
     plt.ylabel('Density variation (%)')

@@ -1,9 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from Planet import Planet
+from .Planet import Planet
 
 
-def Draw(figure=None, show=False, label=False):
+def Draw(figure=None, show=False, label=False, figsize=None, fontsize=16):
+    plt.rc('font', family='serif')
 
     Mars = Planet(name='Mars', rho0=0, scaleHeight=0, model='exp')
 
@@ -35,20 +36,29 @@ def Draw(figure=None, show=False, label=False):
     Vmax = Vmax[:i]
     Vmin = Vmin[:i]
     if plt.figure is None:
-        plt.figure()
+        plt.figure(figsize=figsize)
     else:
-        plt.figure(figure)
-    if label:
-        plt.plot(Vmax, h/1000, 'k', Vmin, h/1000, 'k', x, y, 'k')
+        plt.figure(figure, figsize=figsize)
 
-    else:
-        plt.plot(Vmax, h/1000, 'k', Vmin, h/1000, 'k', x, y, 'k')
-    plt.xlabel('Velocity (m/s)')
-    plt.ylabel('Altitude (km)')
+    plt.plot(Vmax, h/1000, 'k', Vmin, h/1000, 'k', x, y, 'k')
+    plt.xlabel('Velocity (m/s)', fontsize=fontsize)
+    plt.ylabel('Altitude (km)', fontsize=fontsize)
+    plt.xticks(fontsize=fontsize)
+    plt.yticks(fontsize=fontsize)
+
+    if label:
+        # plt.rc('text', usetex=True)
+        ax = plt.gca()
+        ax.annotate('h > {}'.format(h_min/1000), xy=(370, 0.25 + h_min/1000), fontsize=fontsize)
+
+        ax.annotate('M > {}'.format(M1), xy=(313, 1.2+h_min/1000), fontsize=fontsize)
+        ax.annotate('M < {}'.format(M2), xy=(445, 5 + h_min/1000), fontsize=fontsize)
+        ax.annotate('q < {}'.format(q2), xy=(440, 1.5 + h_min/1000), fontsize=fontsize)
+        ax.annotate('q > {}'.format(q1), xy=(370, 11.5), fontsize=fontsize)
 
     if show:
         plt.show()
 
 
 if __name__ == "__main__":
-    Draw(show=True)
+    Draw(show=True, label=True)

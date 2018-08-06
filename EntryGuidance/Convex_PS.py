@@ -44,7 +44,7 @@ class OCP:
         X = odeint(self.dynamics, x0, t, args=(u,))
         return np.asarray(X)
 
-    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=1e4):
+    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=1e4, plot=False):
         """ 
         guess
         scaling - this is a vector scale factor used solely during mesh refinement to determine appropriate errors in each state 
@@ -55,6 +55,7 @@ class OCP:
         J_cvx = []
         U = []
         T = []
+        Tsol = []
 
         mesh = Mesh(t0=guess['time'][0], tf=guess['time'][-1], orders=guess['mesh'])
         self.mesh = mesh
@@ -81,7 +82,7 @@ class OCP:
         for it in range(iters):
             print("Iteration {}".format(it))
             try:
-                x_approx, u, J_approx = self.LTV(A, B, F, x_approx.T, u, mesh, penalty)
+                x_approx, u, J_approx, penalty, tsolve = self.LTV(A, B, F, x_approx.T, u, mesh, penalty)
             except cvx.SolverError as msg:
                 print(msg)
                 print("Failed iteration, aborting sequence.")
@@ -90,15 +91,7 @@ class OCP:
                 break
 
             if J_approx is None:  # Failed iteration
-                trust_region *= 0.8
-                print("New trust region = {}".format(trust_region))
-
-                mesh.bisect()
-                t_u = t
-                t = mesh.times
-                u = interp1d(t_u, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=False)(t)
-                x = self.integrate(self.x0, u, t).T
-                x_approx = x
+                break 
 
             else:
                 # x = self.integrate(self.x0, u, t).T
@@ -112,6 +105,7 @@ class OCP:
                 # X.append(x)
                 U.append(u)
                 T.append(t)
+                Tsol.append(tsolve)
 
                 if len(J_cvx) > 1:
                     if np.abs(J_cvx[-1]) > 1e-3:
@@ -130,11 +124,11 @@ class OCP:
                             if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
-                            if not refined:
+                            if not refined or (penalty <= 1e-6 and rel_diff < 0.02):
                                 print('Terminating with optimal solution.')
                                 break
                             t_u = t
-                            print("Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders),t.size))
+                            print("Mesh refinement resulted in {} segments with {} collocation points\n".format(len(mesh.orders), t.size))
                             if 0:
                                 mesh.plot(show=True)  # for debugging 
                             t = mesh.times
@@ -155,8 +149,9 @@ class OCP:
         # X.append(x.T)
         # T.append(t)
         # U.append(u)
-
-        self.plot(T, U, X_cvx, J_cvx, mesh._times)
+        self.sol = {'state' : X_cvx, 'sol_time' : Tsol, 'cost':J_cvx}
+        if plot:
+            self.plot(T, U, X_cvx, J_cvx, mesh._times, Tsol)
 
     def LTV(self, A, B, f_ref, x_ref, u_ref, mesh, penalty):
         """ Solves a convex LTV subproblem
@@ -230,12 +225,13 @@ class OCP:
             x_sol = np.array([xi.value.A for xi in x]).squeeze()
             u_sol = np.array([ui.value for ui in u]).squeeze()
             v_sol = np.array([xi.value.A for xi in v]).squeeze()
-            print("penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(), np.inf)))
+            penalty = np.linalg.norm(v_sol.flatten(), np.inf)
+            print("penalty value:  {}\n".format(penalty))
 
-            return x_sol.T, u_sol, prob.value
+            return x_sol.T, u_sol, prob.value, penalty, t2-t1
         except Exception as e:
             print(e)
-            return x_ref.T, u_ref, None
+            return x_ref.T, u_ref, None, 0, 0
 
 
 class TestClass(OCP):
@@ -294,7 +290,7 @@ class TestClass(OCP):
             constr += [cvx.abs(u[ti]) <= umax]  # Control constraints
         return constr + bc
 
-    def plot(self, T, U, X, J,ti):
+    def plot(self, T, U, X, J, ti, tcvx):
         for i, xux in enumerate(zip(T, U, X)):
 
             t, u, xc = xux

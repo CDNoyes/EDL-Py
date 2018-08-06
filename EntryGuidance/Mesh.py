@@ -23,7 +23,7 @@ class Mesh(object):
         if orders is None:
             self.orders = [self.default]*10                 # default initial mesh orders
         else:
-            self.orders = orders
+            self.orders = orders[:]
 
         self._times = np.linspace(t0,tf,len(self.orders)+1).tolist() # The times representing the mesh end points [t0, t1, t2, ..., tf]
         self.points = [self.tau(N) for N in self.orders] # list over array because they may be different lengths
