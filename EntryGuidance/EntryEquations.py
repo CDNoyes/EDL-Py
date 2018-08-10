@@ -95,7 +95,7 @@ class Entry(object):
 
         h = r - self.planet.radius/self.dist_scale
 
-        g = self.gravity(r)   
+        g = self.gravity(r)
 
         rho, a = self.planet.atmosphere(h*self.dist_scale)
         M = v*self.vel_scale/a

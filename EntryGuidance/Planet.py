@@ -100,14 +100,15 @@ class Planet:
         # from numpy import arccos, arcsin, sin, cos, pi, nan_to_num, zeros_like
         from numpy import pi, nan_to_num, zeros_like, real
         import numpy as np
-        # from numpy import sin,cos,arcsin,arccos
-        from pyaudi import sin, cos, gdual_double as gd
-        from pyaudi import asin as arcsin
-        from pyaudi import acos as arccos
+        from numpy import sin,cos,arcsin,arccos
+        # from pyaudi import sin, cos,
+        from pyaudi import gdual_double as gd
+        # from pyaudi import asin as arcsin
+        # from pyaudi import acos as arccos
 
         d13 = arccos(sin(latc)*sin(lat0)+cos(latc)*cos(lat0)*cos(lonc-lon0))
-        if not isinstance(d13,gd) and np.abs(d13) < 1e-4:
-            return 0,0
+        # if not isinstance(d13, gd) and np.abs(d13) < 1e-4:
+        #     return 0,0
         psi12 = heading0
         PHI = np.sign(lonc-lon0)*arccos( (sin(latc) - sin(lat0)*cos(d13))/(cos(lat0)*sin(d13)) )
         psi13 = pi/2 - PHI
@@ -123,12 +124,12 @@ class Planet:
     def coord(self, lon0, lat0, heading0, dr, cr):
         '''Computes the coords of a target a given downrange and crossrange from an initial location and heading.'''
         from numpy import arccos, arcsin, sin, cos, pi
-        from pyaudi import sin, cos
-        from pyaudi import asin as arcsin
-        from pyaudi import acos as arccos
+        # from pyaudi import sin, cos
+        # from pyaudi import asin as arcsin
+        # from pyaudi import acos as arccos
 
         LF = arccos(cos(dr/self.radius)*cos(cr/self.radius))
-        zeta = arcsin(sin(CR/self.radius)/sin(LF))
+        zeta = arcsin(sin(cr/self.radius)/sin(LF))
         lat = arcsin(cos(zeta-heading0+pi/2.)*cos(lat0)*sin(LF)+sin(lat0)*cos(LF))
         lon = lon0 + arcsin(sin(zeta-heading0+pi/2)*sin(LF)/cos(lat))
         return lon, lat

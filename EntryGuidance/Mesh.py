@@ -5,7 +5,7 @@ from .Chebyshev import ChebyshevDiff, ChebyshevQuad
 class Mesh(object):
     """ Defines a mesh class for working with multiple intervals of collocation points """
 
-    def __init__(self, tf, orders=None, min_order=2, max_order=16, t0=0, default_order=6, increment=2):
+    def __init__(self, tf, orders=None, min_order=2, max_order=16, t0=0, default_order=3, increment=2):
         """ Initializes an instance of the Mesh class """
         self.min = min_order
         self.max = max_order

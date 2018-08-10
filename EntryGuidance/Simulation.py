@@ -46,7 +46,7 @@ class Simulation(Machine):
 
     '''
 
-    def __init__(self, states, conditions, cycle=None, output=True, find_transitions=True, use_da=False):
+    def __init__(self, states, conditions, cycle=None, output=True, find_transitions=True, use_da=False, final_state="Complete"):
 
         if len(states) != len(conditions):
             raise ValueError("Number of fsm states must equal number of transition conditions.")
@@ -77,7 +77,7 @@ class Simulation(Machine):
         self.triggerInput = None    # An input to triggers and controllers
         self.simulations = 0        # The number of simulations run
 
-        states.append('Complete')
+        states.append(final_state)
         transitions = [{'trigger':'advance', 'source':states[i-1], 'dest':states[i], 'conditions':'integrate'} for i in range(1,len(states))]
         try:
             iPre = states.index('PreEntry')

@@ -119,7 +119,7 @@ class MonteCarlo(object):
 
         savemat(fullfilename, {'xf':self.xf, 'states':self.mc, 'samples':self.samples, 'pdf':self.psamples})
 
-    def _run(self, x, Ef):
+    def _run(self, x, Ef, stepsize=1):
         edl = EDL(self.samples, Energy=True)
         self.model = edl
         optSize = self.samples.shape[1]
@@ -141,7 +141,7 @@ class MonteCarlo(object):
             # Shape the control
             u.shape = (1, optSize)
             u = np.vstack((u,np.zeros((2, optSize))))
-            de = -np.mean(drag)*np.mean(Xc[3])
+            de = -np.mean(drag)*np.mean(Xc[3]) * stepsize
             if (energy + de) <  energyf:
                 de = energyf - energy
             eom = edl.dynamics(u)

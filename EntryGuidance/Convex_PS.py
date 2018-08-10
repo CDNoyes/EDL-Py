@@ -38,19 +38,20 @@ class OCP:
         # u[-1] = u[-2]
         # ut = interp1d(t, u,
         #               kind='cubic',
-        #               assume_sorted=True,
+        #               assume_sorted=True, 
         #               fill_value=u[-1],
         #               bounds_error=False)
         X = odeint(self.dynamics, x0, t, args=(u,))
         return np.asarray(X)
 
-    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=1e4, plot=False):
+    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=lambda it: 1e4, plot=False, solver='ECOS', linesearch=0.1, refine=True):
         """ 
         guess
         scaling - this is a vector scale factor used solely during mesh refinement to determine appropriate errors in each state 
-
+        penalty - value used in virtual control penalty term. Set to None for no virtual control 
+        linesearch - numeric value, or False, for a linesearch 
+        refine - whether or not to perform mesh adaptation. Currently, linesearch and refine cannot be used together. 
         """
-        X = []
         X_cvx = []
         J_cvx = []
         U = []
@@ -75,6 +76,10 @@ class OCP:
 
         x_approx = x
 
+        X_cvx.append(x_approx)
+        U.append(u)
+        T.append(t)
+
         iters = int(max_iter)                 # Maximum number of iterations
         rel_diff = None
 
@@ -82,38 +87,56 @@ class OCP:
         for it in range(iters):
             print("Iteration {}".format(it))
             try:
-                x_approx, u, J_approx, penalty, tsolve = self.LTV(A, B, F, x_approx.T, u, mesh, penalty)
+                x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV(A, B, F, x_approx.T, u, mesh, penalty(it), solver)
+
+                if linesearch: # set to 1 to begin without a linesearch,  or 0 or False for no linesearch at all 
+                    x_approx = linesearch * x_sol + (1-linesearch) * X_cvx[-1]
+                    u = linesearch * u_sol + (1-linesearch) * U[-1]
+                else:
+                    x_approx = x_sol
+                    u = u_sol
+
             except cvx.SolverError as msg:
                 print(msg)
-                print("Failed iteration, aborting sequence.")
-                print(len(T))
-                print(len(X_cvx))
-                break
 
-            if J_approx is None:  # Failed iteration
+                if linesearch:
+                    print("Failed Iteration, updating current solution using a smaller linesearch.")
+                    x_approx = 0.5 * X_cvx[-2] + 0.5 * X_cvx[-1]
+                    u = 0.5 * U[-2] + 0.5 * U[-1]
+
+                    F = self.dynamics(x_approx, t, u).T
+                    A, B = self.jac(x_approx, u.T)
+
+                    X_cvx[-1] = x_approx
+                    U[-1] = u
+
+                    continue
+
+                else:
+                    print("Failed iteration and no linesearch enabled, aborting sequence.")
+                    break
+
+            if J_approx is None:  # Failed iteration, can this happen? Isnt it caught above?
                 break 
 
             else:
-                # x = self.integrate(self.x0, u, t).T
-                # ufun = interp1d(t, u, kind='linear', axis=0, copy=True, bounds_error=None, fill_value=np.nan, assume_sorted=True)
 
                 F = self.dynamics(x_approx, t, u).T
                 A, B = self.jac(x_approx, u.T)
 
                 X_cvx.append(x_approx)
                 J_cvx.append(J_approx)
-                # X.append(x)
                 U.append(u)
                 T.append(t)
                 Tsol.append(tsolve)
 
-                if len(J_cvx) > 1:
+                if len(J_cvx) > 2:
                     if np.abs(J_cvx[-1]) > 1e-3:
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/np.abs(J_cvx[-1])
                         print("Relative change in cost function = {:.2f}%".format(rel_diff*100))
                     else:  # near zero cost so we use the absolute difference instead
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
-                if rel_diff is None or rel_diff < 0.1:  # check state convergence instead?
+                if refine and(rel_diff is None or rel_diff < 0.1) :  # check state convergence instead?
                         # In contrast to NLP, we only refine after the solution converges on the current mesh
                         if it < iters-1:
                             current_size = mesh.times.size
@@ -124,7 +147,7 @@ class OCP:
                             if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
-                            if not refined or (penalty <= 1e-6 and rel_diff < 0.02):
+                            if not refined : # or (v_sol <= 1e-6 and rel_diff < 0.02)
                                 print('Terminating with optimal solution.')
                                 break
                             t_u = t
@@ -145,15 +168,13 @@ class OCP:
                             F = self.dynamics(x_approx, t, u).T
                             A, B = self.jac(x_approx, u.T)
 
-        # x = self.integrate(self.x0, u, t)
-        # X.append(x.T)
-        # T.append(t)
-        # U.append(u)
-        self.sol = {'state' : X_cvx, 'sol_time' : Tsol, 'cost':J_cvx}
+        self.sol = {'state' : X_cvx[-1], 'control': U[-1], 'time':T[-1]}
+        self.sol_history = {'state' : X_cvx, 'sol_time' : Tsol, 'cost':J_cvx, 'control': U, 'time':T}
         if plot:
             self.plot(T, U, X_cvx, J_cvx, mesh._times, Tsol)
+        return self.sol.copy()
 
-    def LTV(self, A, B, f_ref, x_ref, u_ref, mesh, penalty):
+    def LTV(self, A, B, f_ref, x_ref, u_ref, mesh, penalty, solver):
         """ Solves a convex LTV subproblem
 
             A - state linearization around x_ref
@@ -177,7 +198,10 @@ class OCP:
 
         x = np.array([cvx.Variable(n) for _ in range(N)])  # This has to be done to "chunk" it later
         u = np.array([cvx.Variable(m) for _ in range(N)])
-        v = np.array([cvx.Variable(n) for _ in range(N)])  # Virtual controls
+        if penalty is None:
+            v = np.zeros_like(x_ref)
+        else:
+            v = np.array([cvx.Variable(n) for _ in range(N)])  # Virtual controls
 
         # Alternatively, we could create meshes of variables directly
         X = mesh.chunk(x)
@@ -193,7 +217,7 @@ class OCP:
         states = []
         # Iteration over the segments of the mesh
         for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs, X,F,A,B,Xr,Ur,U, mesh.weights, V):
-            L = self.lagrange(0, xi, ui, xr, ur)
+            L = self.lagrange(0, xi, ui, xr, ur, vi)
             cost = np.dot(np.abs(w), L)                # Clenshaw-Curtis quadrature
 
             # Estimated derivatives:
@@ -206,14 +230,17 @@ class OCP:
 
         # Mayer Cost, including penalty for virtual control
         Phi = self.mayer(x[-1])
-        Penalty = cvx.Problem(cvx.Minimize(penalty*cvx.norm(cvx.vstack(*v), 'inf')))
+        if penalty is None:
+            Penalty = 0
+        else:
+            Penalty = cvx.Problem(cvx.Minimize(penalty*cvx.norm(cvx.vstack(*v), 'inf')))
 
         # sums problem objectives and concatenates constraints.
         prob = sum(states) + Phi + Penalty
-        prob.constraints.extend(self.constraints(T, x, u, x_ref, u_ref))
+        prob.constraints.extend(self.constraints(mesh.times, x, u, x_ref, u_ref))
 
         t1 = time.time()
-        prob.solve(solver='ECOS')
+        prob.solve(solver=solver)
         t2 = time.time()
 
         print("status:        {}".format(prob.status))
@@ -225,8 +252,11 @@ class OCP:
             x_sol = np.array([xi.value.A for xi in x]).squeeze()
             u_sol = np.array([ui.value for ui in u]).squeeze()
             v_sol = np.array([xi.value.A for xi in v]).squeeze()
-            penalty = np.linalg.norm(v_sol.flatten(), np.inf)
-            print("penalty value:  {}\n".format(penalty))
+            if penalty is not None:
+                penalty = np.linalg.norm(v_sol.flatten(), np.inf)
+                print("penalty value:  {}\n".format(penalty))
+            else:
+                penalty = 0
 
             return x_sol.T, u_sol, prob.value, penalty, t2-t1
         except Exception as e:
@@ -283,7 +313,7 @@ class TestClass(OCP):
         umax = 3
 
         constr = []
-        for ti, xr in zip(t, x_ref):
+        for ti, xr in enumerate(x_ref):
             # constr += [cvx.norm((x[t]-xr)) <= trust_region]   
             # constr += [cvx.quad_form(x[ti], np.eye(2)/trust_region**2) < 1]
             constr += [cvx.norm(x[ti]-xr) < trust_region]  # Documentation recommends norms over quadratic forms
@@ -341,5 +371,5 @@ if __name__ == "__main__":
     guess['state'] = x
     guess['control'] = u 
     guess['time'] = t 
-    guess['mesh'] = [4]*3
-    vdp.solve(guess, max_iter=10)
+    guess['mesh'] = [3]*4
+    vdp.solve(guess, max_iter=20, linesearch=False, plot=True)
