@@ -167,6 +167,7 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
 
     alpha = 1.
     k = 1.e2
+    fail_list = []
     for it in range(max_iter):
         x = [gd(val, var, order) for val,var in zip(guess, vars)]
 
@@ -222,8 +223,15 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
         feval = np.array(feval)
         try:
             idx = np.argmin(feval[feasible])
+            fail_list = [] # resets the failure orders 
+
         except ValueError: # no feasible point found, bad situation 
-            order = int(np.random.choice(range(2,5))) # randomly change the order and try again 
+            fail_list.append(order)
+            rng = list(range(2,8))
+            for idx in fail_list: # This prevents trying an order that has already failed, until a successful iteration occurs 
+                rng.pop(rng.index(idx))
+            print(rng)
+            order = int(np.random.choice(rng)) # randomly change the order and try again 
             print("Loss of feasibility - changing order to {}.".format(order))
             continue
         guess_new = guess + steps[feasible][idx]*dxy
