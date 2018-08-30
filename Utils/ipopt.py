@@ -19,7 +19,7 @@ class Solver:
     def Equation(self, eq):
         self.model.Equation(eq)
 
-    def StateSpace(self, A, X, B, U, D):
+    def StateSpace(self, A, X, B, U, D, V=None):
         """ Adds the equations for linear dynamics at an array of time steps 
             
             The inputs should have the following dimensions:
@@ -32,6 +32,8 @@ class Solver:
         
         """
         DX = D.dot(X)
+
+    
 
         for a, x, b, u, dx in zip(A, X, B, U, DX):
             Eqs = a.dot(x) + b.dot(u) - dx

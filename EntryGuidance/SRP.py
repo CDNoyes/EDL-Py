@@ -64,10 +64,10 @@ class SRP_Riccati(object):
 
         pos = np.linalg.norm(xf[0:3]-self.xf[0:3])
         vel = np.linalg.norm(xf[3:6]-self.xf[3:6])
-        print "Final position constraint violation: {} m".format(pos)
-        print "Final velocity constraint violation: {} m/s".format(vel)   
+        print( "Final position constraint violation: {} m".format(pos))
+        print( "Final velocity constraint violation: {} m/s".format(vel))   
         if np.any(x[:,2] < 0):
-            print "Subsurface flight detected"
+            print ("Subsurface flight detected")
             pos *= 1000        
         return pos, vel 
 
@@ -114,7 +114,7 @@ class SRP_Riccati(object):
             # except:
                 # pass 
             
-        print "Best final time found: {}".format(tbest)    
+        print( "Best final time found: {}".format(tbest)  )  
         
         try:
             t = np.linspace(0,tbest,N)
@@ -177,7 +177,7 @@ class SRP_DDP(object):
         tf = 13.
         self.dt = float(tf)/(self.N-1) 
         self.t = np.linspace(0,tf,self.N)
-        print "dt: {} s".format(self.dt)
+        print( "dt: {} s".format(self.dt))
         
         
     def debug(self, state, control, L=None):
@@ -219,7 +219,7 @@ class SRP_DDP(object):
         
         #iterate 
         for iter in range(self.maxIter):
-            print "Iteration: {}".format(iter+1)
+            print( "Iteration: {}".format(iter+1))
             u = np.array([da.const(uu,array=False) for uu in u])
             x = self.propagate(u)
             x = np.array([da.const(xx,array=False) for xx in x])
@@ -330,8 +330,8 @@ class SRP_DDP(object):
         step = 1  # Linesearch parameter 
         J = self.evalCost(x,u)
         Jnew = J+1
-        print J 
-        print J+1 
+        # print J 
+        # print J+1 
         while Jnew > J: # should put a max iteration limit as well 
             xnew = [self.x0]
             unew = []

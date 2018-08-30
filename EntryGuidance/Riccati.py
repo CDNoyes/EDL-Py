@@ -48,7 +48,7 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
     
     for iter, t in zip(range(n_points), T):
         if not (iter)%np.ceil(n_points/10.):
-            print "Step {}".format(iter)
+            print( "Step {}".format(iter))
             
         a = A(x)
         b = B(x)
@@ -163,7 +163,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
     K = []
     for iter, t in zip(range(n_points), T):
         if not (iter)%np.ceil(n_points/10.):
-            print "Step {}".format(iter)
+            print( "Step {}".format(iter))
         
         # Get current system approximation 
         a = A(x)
@@ -191,7 +191,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
         X.append(x)
         
     J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
-    print "Cost: {}".format(J)
+    print( "Cost: {}".format(J))
     
     return np.array(X), np.array(U), np.array(K)   
 
@@ -265,7 +265,7 @@ def asre_Pdynamics(P, t, V, B, R, n):
     
 def asre_integrateP(dt, V, B, R, x, u, n):
     P = [np.zeros((n,n)).flatten()]
-    for xi,ui,Vi,dti in zip(x,u,V,dt)[::-1]:
+    for xi,ui,Vi,dti in list(zip(x,u,V,dt))[::-1]:
         # P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(xi),n))[-1])
         P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(ui),n))[-1]) # R AS FUNCTION OF CONTROL
     return np.array([p.reshape((n,n)) for p in P])
@@ -311,15 +311,15 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, maxU=None, minU=Non
     
     converge = tol + 1
     Jold = -1e16
-    print "Approximating Sequence of Riccati Equations"
+    print( "Approximating Sequence of Riccati Equations")
     start_iter = 0 
     if guess is not None:
         start_iter = 1 
         x = guess['state']
         u = guess['control'] 
         
-    for iter in range(start_iter,max_iter):
-        print "Current iteration: {}".format(iter+1)
+    for iter in range(start_iter, max_iter):
+        print( "Current iteration: {}".format(iter+1))
         
         if not iter: # LTI iteration
             u = [np.zeros((m))]*n_discretize
@@ -344,10 +344,10 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, maxU=None, minU=Non
         Jold = J 
         u = u[1:]
         u.append(np.zeros((m)))
-        print "Current cost: {}".format(J)
+        print( "Current cost: {}".format(J))
         
         if converge <= tol:
-            print "Convergence achieved. "
+            print( "Convergence achieved. ")
             break
     u[-1] = u[-2]
     return np.array(x), np.array(u), np.array(K)     
@@ -368,8 +368,8 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250, g
     tb = t[::-1]                            # For integrating backward in time
     
     converge = tol + 1
-    print "Approximating Sequence of Riccati Equations"
-    print "Max iterations: {}".format(max_iter)
+    print( "Approximating Sequence of Riccati Equations")
+    print( "Max iterations: {}".format(max_iter))
     start_iter = 0 
     if guess is not None:
         start_iter = 1 
@@ -380,7 +380,7 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250, g
         u = np.interp(t, timeGuess,controlGuess)
     
     for iter in range(start_iter, max_iter):
-        print "Current iteration: {}".format(iter+1)
+        print( "Current iteration: {}".format(iter+1))
         
         if not iter: # LTI iteration
             
@@ -422,9 +422,9 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, max_iter=10, tol=0.01, n_discretize=250, g
             J = compute_cost(t, x, u, C, Q, R, F, z)
             converge = np.abs(J-Jold)/J
         
-        print "Current cost: {}".format(J)
+        print( "Current cost: {}".format(J))
         if converge <= tol:
-            print "Convergence achieved. "
+            print( "Convergence achieved. ")
             break
             
         # Reshape Pv and output    
@@ -461,12 +461,12 @@ def dP(p, t, A, B, C, Q, R, X, U):
     q = Q(x)
     # r = R(x)
     r = R(t)
-    if 0:
-        print r.shape
-        print b.shape
-        print c.shape
-        print p.shape
-        print a.shape
+    # if 0:
+        # print r.shape
+        # print b.shape
+        # print c.shape
+        # print p.shape
+        # print a.shape
     s = dot(b,matrix_solve(r,b.T))
 
     return (-dot(c.T,dot(q,c)) - dot(p,a) - dot(a.T,p) + dot(p,dot(s,p))).flatten()
@@ -553,12 +553,12 @@ def SRP(N=20):
     for solver,label in zip(solvers,labels):
         t0 = time.time()
         x,u,K = solver(x0)
-        print "{} solution time: {} s".format(label,time.time()-t0)
+        print( "{} solution time: {} s".format(label,time.time()-t0))
         
         t = np.linspace(0,tf,x.shape[0])
         T = np.linalg.norm(u,axis=1)
         m = m0*np.exp(-cumtrapz(T/(9.81*290),t,initial=0))
-        print "Prop used: {} kg".format(m0-m[-1])
+        print( "Prop used: {} kg".format(m0-m[-1]))
         
         
         # from scipy.interpolate import splrep, splev, splder, BSpline
@@ -651,7 +651,7 @@ def SRP_alt():
     t = cumtrapz(1/x[:,4],z,initial=0)  
     T = np.linalg.norm(u,axis=1)
     m = m0*np.exp(-cumtrapz(T/(9.81*280),t,initial=0))
-    print "Prop used: {} kg".format(m0-m[-1])  
+    print( "Prop used: {} kg".format(m0-m[-1])  )
     
     # plt.figure(2)
     # plt.plot(z,"o")
@@ -730,8 +730,8 @@ def test_IP():
     x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=75,h=0.1)      # Time-varying R
     t_sdre = -t_init + time.time()
 
-    print "ASRE: {} s".format(t_asre)
-    print "SDRE: {} s".format(t_sdre)
+    print( "ASRE: {} s".format(t_asre))
+    print( "SDRE: {} s".format(t_sdre))
     
     t = np.linspace(0,tf,u.size)
     plt.figure(1)

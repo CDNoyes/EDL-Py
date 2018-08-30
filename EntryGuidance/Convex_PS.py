@@ -136,7 +136,7 @@ class OCP:
                 if len(J_cvx) > 2:
                     if np.abs(J_cvx[-1]) > 1e-3:
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/np.abs(J_cvx[-1])
-                        print("Relative change in cost function = {:.2f}%".format(rel_diff*100))
+                        print("Relative change in cost function = {:.2f}%\n".format(rel_diff*100))
                     else:  # near zero cost so we use the absolute difference instead
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
                 if refine and(rel_diff is None or rel_diff < 0.1) :  # check state convergence instead?
