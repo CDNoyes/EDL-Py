@@ -87,7 +87,10 @@ class OCP:
         for it in range(iters):
             print("Iteration {}".format(it))
             try:
-                x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV(A, B, F, x_approx.T, u, mesh, penalty(it), solver)
+                if solver.lower() == "ipopt":
+                    x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV_I(A, B, F, x_approx.T, u, mesh, penalty(it))
+                else:
+                    x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV(A, B, F, x_approx.T, u, mesh, penalty(it), solver)
 
                 if linesearch: # set to 1 to begin without a linesearch,  or 0 or False for no linesearch at all 
                     x_approx = linesearch * x_sol + (1-linesearch) * X_cvx[-1]
@@ -133,7 +136,7 @@ class OCP:
                 if len(J_cvx) > 2:
                     if np.abs(J_cvx[-1]) > 1e-3:
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])/np.abs(J_cvx[-1])
-                        print("Relative change in cost function = {:.2f}%".format(rel_diff*100))
+                        print("Relative change in cost function = {:.2f}%\n".format(rel_diff*100))
                     else:  # near zero cost so we use the absolute difference instead
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
                 if refine and(rel_diff is None or rel_diff < 0.1) :  # check state convergence instead?
@@ -262,6 +265,71 @@ class OCP:
         except Exception as e:
             print(e)
             return x_ref.T, u_ref, None, 0, 0
+
+    def LTV_I(self, A, B, f_ref, x_ref, u_ref, mesh, penalty, *args):
+        """ Solves a convex subproblem with IPOPT """
+
+        from Utils import ipopt 
+
+        solver = ipopt.Solver()
+
+        t0 = time.time()
+
+        n = A[0].shape[0]
+        try:
+            m = B[0].shape[1]
+        except IndexError:
+            m = 1
+
+        N = mesh.n_points
+        T = range(N)
+
+        guess = np.zeros((N,n))
+        guess_u = np.zeros((N,m)).squeeze()
+
+        X0 = solver.create_vars(guess)
+        U0 = solver.create_vars(guess_u)
+
+        X = mesh.chunk(X0)
+        U = mesh.chunk(U0)
+        A = mesh.chunk(A)
+        B = mesh.chunk(B)
+        XR = mesh.chunk(x_ref)
+        UR = mesh.chunk(u_ref)
+
+        # Constraints
+        self.solver = solver 
+        self.constraints(mesh.times, X0, U0, x_ref, u_ref)
+
+        L = []
+        for a, x, b, u, d, w, xr, ur in zip(A,X,B,U, mesh.diffs, mesh.weights, XR, UR): # Iterate over mesh segments 
+            solver.StateSpace(a, x, b, u, d) # linear dynamic constraints 
+            
+            # Running cost computation 
+            vi = 0 # not virtual control implementation 
+            lagrange = self.lagrange(0, x, u, xr, ur, vi)
+            la_var = solver.model.Var(0.)
+            solver.Equation(la_var == w.dot(lagrange)) # The use of these intermediate variables allows the obj to be written as a small sum. This avoids the 15k character limit. 
+            L.append(la_var)
+
+
+        Phi = self.mayer(X0[-1], x_ref[-1])
+        solver.Obj(sum(L) + Phi)  # Overall objective is sum of endpoint and running costs 
+
+        t_prep = time.time()
+
+        solver.solve(verbose=False)  # For now, always print 
+
+        t_solve = time.time()
+        if True:
+            print("Pre-processing time: {:.3f} s".format(t_prep - t0))
+            print("Solver time:         {:.3f} s".format(t_solve - t_prep))
+            print("Total time:          {:.3f} s".format(t_solve - t0))
+
+        x_sol = solver.get_values(X0)
+        u_sol = solver.get_values(U0)
+
+        return x_sol.T, u_sol, solver.model.options.OBJFCNVAL, 0, t_solve-t_prep
 
 
 class TestClass(OCP):

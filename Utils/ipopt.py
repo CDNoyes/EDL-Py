@@ -2,7 +2,7 @@
 
 from gekko import GEKKO
 import numpy as np 
-
+import time 
 
 class Solver:
 
@@ -19,7 +19,7 @@ class Solver:
     def Equation(self, eq):
         self.model.Equation(eq)
 
-    def StateSpace(self, A, X, B, U, D):
+    def StateSpace(self, A, X, B, U, D, V=None):
         """ Adds the equations for linear dynamics at an array of time steps 
             
             The inputs should have the following dimensions:
@@ -33,13 +33,15 @@ class Solver:
         """
         DX = D.dot(X)
 
+    
+
         for a, x, b, u, dx in zip(A, X, B, U, DX):
             Eqs = a.dot(x) + b.dot(u) - dx
             for Eq in Eqs:
                 self.model.Equation(Eq == 0)
 
-    def Quadrature(self, V, W):
-        return W.dot(V)
+    # def Quadrature(self, V, W):
+    #     return W.dot(V)
 
     def create_vars(self, x, lb=None, ub=None):
         if np.ndim(x) == 1:
@@ -48,7 +50,6 @@ class Solver:
         elif np.ndim(x) == 2:
             return np.array([[self.model.Var(value) for value in row] for row in x])
 
-
     def get_values(self, X):
         if np.ndim(X) == 1:
             return np.array([value.value[0] for value in X])
@@ -56,8 +57,7 @@ class Solver:
         elif np.ndim(X) == 2:
             return np.array([[value.value[0] for value in row] for row in X])
         
-
-
+       
 
 def test():
     solver = Solver()
@@ -84,5 +84,4 @@ def test():
 
     
 if __name__ == "__main__":
-    # test()   
-    test_optimal_control()    
+    test()   

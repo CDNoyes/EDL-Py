@@ -265,7 +265,7 @@ def asre_Pdynamics(P, t, V, B, R, n):
 
 def asre_integrateP(dt, V, B, R, x, u, n):
     P = [np.zeros((n,n)).flatten()]
-    for xi,ui,Vi,dti in zip(x,u,V,dt)[::-1]:
+    for xi,ui,Vi,dti in list(zip(x,u,V,dt))[::-1]:
         # P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(xi),n))[-1])
         P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(xi,ui),R(ui),n))[-1]) # R AS FUNCTION OF CONTROL
     return np.array([p.reshape((n,n)) for p in P])
@@ -317,10 +317,10 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, max_iter=50, tol=0.01, maxU=None, minU=Non
         start_iter = 1
         x = guess['state']
         u = guess['control']
-
-    for iter in range(start_iter,max_iter):
+        
+    for iter in range(start_iter, max_iter):
         print("Current iteration: {}".format(iter+1))
-
+        
         if not iter: # LTI iteration
             u = [np.zeros((m))]*n_discretize
             x = [x0]*n_discretize  # This is the standard approach, but it seems like it would be far superior to actually integrate the system using the initial control

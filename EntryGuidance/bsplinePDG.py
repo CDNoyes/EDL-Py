@@ -27,20 +27,20 @@ def optimize():
     tf = 14.5
     # tf = 20
     srp = SRP_Riccati()
-    x,_ = srp.solve(tf, N, max_iter=1) # Warm start turns out to be essential for convergence in some cases
-    order = 3 #cubic splines
-    t = np.linspace(0, 1, N) # Normalized time
+    x,_ = srp.solve(tf, N, max_iter=1)  # Warm start turns out to be essential for convergence in some cases
+    order = 3  # cubic splines
+    t = np.linspace(0, 1, N)  # Normalized time
 
     spl = [splrep(t,x[:,i]) for i in range(3)]
 
     tknots = spl[0][0]
     c = [sp[1][1:-(order+2)] for sp in spl]#  Remove x0 and xf from constraints by removing the initial and final coefficients from the optimization problem.
     c = np.concatenate(c, axis=0)
-    c = np.append(c,[tf])
+    c = np.append(c, [tf])
     t0 = time.time()
-    result = minimize(cost, c, args=(tknots,x0,xf), method='SLSQP', constraints=constraint_dict(args=(tknots,x0,xf)), options={'disp':True,'maxiter':1000})
-    print "NLP time: {} s".format(time.time()-t0)
-
+    result = minimize(cost, c, args=(tknots,x0,xf), method='SLSQP', constraints=constraint_dict(args=(tknots,x0,xf)), options={'disp':True,'maxiter':1000})    
+    print ("NLP time: {} s".format(time.time()-t0))
+    
     tfine = np.linspace(0,1,50)
     splines = coeff2spl(result.x,tknots,x0,xf)
     P,V,A,T,mu,eta = getStates(splines, tfine, result.x[-1])
@@ -49,7 +49,7 @@ def optimize():
         # P,V,A,T,mu,eta = getStates(splines, tfine, tf)
     tfine *= result.x[-1]
     m = np.exp(np.log(m0) + cumtrapz(-T/ve,tfine,initial=0))
-    print "Prop used: {} kg".format(m0-m[-1])
+    print ("Prop used: {} kg".format(m0-m[-1]))
     plt.figure()
     plt.plot(tfine,m)
     plt.xlabel('Time (s)')
@@ -183,9 +183,7 @@ def testBsplineDA():
     dy = 3*t**2
     k = 3
     spl = splrep(t,y,k=k)
-
-    print spl
-
+    
     tstar = [np.sum(spl[0][i+1:i+k-1])/(k-1) for i in range(len(spl[0]))]
 
     da_names = ['c{}'.format(i) for i in range(len(spl[1]))]
@@ -198,9 +196,9 @@ def testBsplineDA():
     # print daSpline.derivative().tck # Small changes to scipy allow this to work as well
 
     tfine = np.linspace(0,0.98,7)
-    B = da.splev(tfine,daSpline) # The final piece is evaluating the daSplines - wrote my own method for this
-    print "My eval w/ expansion = {}".format(B)
-    print "My eval = {}".format(da.const(B))
+    B = da.splev(tfine,daSpline) # The final piece is evaluating the daSplines - wrote my own method for this 
+    print("My eval w/ expansion = {}".format(B))
+    print("My eval = {}".format(da.const(B)))
 
 
     # spl = splder(spl)
@@ -214,8 +212,8 @@ def testBsplineDA():
 
 
     # print daSpline([0.1, 0.5]) # No luck evaluating, which is crucial
-    print "True eval = {}".format(splev(tfine,spl))
-
+    print ("True eval = {}".format(splev(tfine,spl)))
+    
     tfine = np.linspace(0,1,150)
     yfine = splev(tfine,spl)
     # dyfine = splev(tfine,spl,1) # First deriative
@@ -247,16 +245,16 @@ def testOptSpline():
     knots = np.linspace(0,2*np.pi,10) # Only internal knots - need to transform to full knot set
     c = np.ones((len(knots)+order+1,)) # Initial guess
     cexact = splrep(knots,np.clip(np.sin(knots),-0.7,0.6),k=order)
-    print cexact[0]
-    print cexact[1]
-
+    print (cexact[0])
+    print (cexact[1])
+    
     def cost(c,knots,order,t,f):
         fc = splev(t, (knots,c,order))
         return trapz((fc-f)**2, t)
 
     # cost(cexact[1],cexact[0],3,t,f)
     copt = minimize(cost, c, args=(cexact[0],order,t,f),method='BFGS')
-    print copt.x
+    print(copt.x )
     fc = splev(t, (cexact[0],copt.x,order))
     fe = splev(t, cexact)
     plt.plot(t,f,t,fc,'--',cexact[0],copt.x,'o')
