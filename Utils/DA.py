@@ -5,7 +5,10 @@ from pyaudi import gdual_double as gd
 from pyaudi import gdual_vdouble as gdv
 from pyaudi import abs
 
-from .memoize import memoize
+try:
+    from .memoize import memoize
+except:
+    from memoize import memoize 
 
 dual = (gd, gdv)
 
