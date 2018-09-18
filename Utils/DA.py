@@ -68,16 +68,17 @@ def evaluate(da_array, da_vars, pts):
         new_pt = [da.evaluate(eval_pt) if isinstance(da, dual) else da for da in da_array]
         new_pts.append(new_pt)
 
-    return np.array(new_pts)
+    return np.array(new_pts).squeeze()
 
 
 def differentiate(da, da_vars):
     """Differentiates a generalized dual variable wrt da_vars"""
-    g = np.zeros(len(da_vars), dtype=gd)
-    if isinstance(da, gd):
-        for var in da.symbol_set:
-            ind = da_vars.index(var)
+    if isinstance(da, dual):
+        g = np.zeros(len(da_vars), dtype=type(da))
+        for ind, var in enumerate(da_vars):
             g[ind] = da.partial(var)
+    else:
+        g = np.zeros_like(da_vars)
     return g
 
 
@@ -87,12 +88,14 @@ def gradient(da, da_vars):
             da is a generalized dual variable
             da_vars is 1-d list/array with string names in the order the gradient should be given
     """
-    g = np.zeros(len(da_vars))
+    g = [0]*len(da_vars)
     if isinstance(da, dual):  # It may be the case that the DA was differentiated and became a constant
-        for var in da.symbol_set:
-            ind = da_vars.index(var)
-            g[ind] = da.partial(var).constant_cf
-    return g
+        g = [da.partial(var).constant_cf for var in da_vars]
+    
+    try:
+        return np.array(g).squeeze()
+    except ValueError:
+        return g 
 
 
 def jacobian(da_array, da_vars):
@@ -165,6 +168,40 @@ def make(values, names, orders, array=False, vectorized=False):
         return [cls(v, n, o) for v, n, o in zip(values, names, orders)]
 
 
+def coeff(da, da_vars, index):
+    # from itertools import permutations, product 
+
+    n = len(da_vars)
+
+    assert len(da.symbol_set) == n, "Incorrect number of variables specified"
+    if not index: # 0
+        return da.constant_cf
+
+    shape = [n]*index
+    C = np.zeros(shape)
+    print(C.shape)
+    x = np.array([da])
+    for iteration in range(index):
+        x = np.array([differentiate(xda, da_vars) for xda in x.flat])
+
+    x = const(x, array=True).reshape(shape)
+    return x
+
+    # Using the find_cf interface - hard 
+    # P = list(permutations(range(index+1), n))
+    # U = list(product([0, index], repeat=n))
+    # print(U)   
+
+    # K = [p for p in P+U if sum(p)==index]
+    # print(K)
+
+    # for idx in K:
+    #     matrix_idx = # Need to map multi-index to array index and that isnt trivial...
+    #     C[matrix_idx] = da.find_cf(idx)
+
+    # # TODO: If da.symbol_set is ordered differently than da_vars, the matrix indices needs to be permuted
+    # return C
+
 def compute_jacobian(function, expansion_point, args=()):
     x = make(expansion_point, ["x{}".format(i) for i in range(len(expansion_point))], 1, True)
     y = function(x, *args)
@@ -213,6 +250,51 @@ def clip(x, lower, upper):
             return np.clip(x, lower, upper)
         except (TypeError, IndexError):
             return np.clip([x], lower, upper)[0]
+
+
+def relax(f, x):
+    """ Returns second-order over- and under-approximations of f """
+    try:
+        from Regularize import Split, AbsRegularize
+    except:
+        from . import Regularize
+        Split = Regularize.Split
+        AbsRegularize = Regularize.AbsRegularize
+
+    scalar = np.ndim(np.squeeze(x)) == 0
+    vectorized = np.ndim(np.squeeze(x)) == 2
+    print("Scalar: {}".format(scalar))
+    print("Vectorized: {}".format(vectorized))
+
+    if scalar:
+        x = [x]
+
+    names = ["x{}".format(i) for i, _ in enumerate(x)]
+    x = make(x, names, 2, True, vectorized=vectorized)
+    z = make(np.zeros_like(x), names, 2, True, vectorized=vectorized)
+
+    if scalar:
+        x = x[0]
+
+    F = f(x)
+    G = gradient(F, names)
+    H = hessian(F, names)
+
+    if scalar:
+        # P = max(0., H[0])
+        # N = min(0., H[0])
+        P = abs(H[0])
+        N = -P 
+    else:
+        # P, N = Split(H)
+        P = AbsRegularize(H)
+        N = -P 
+
+    Fcvx = F.constant_cf + G.dot(z) + 0.5*z.dot(P).dot(z)
+    Fccv = F.constant_cf + G.dot(z) + 0.5*z.dot(N).dot(z)
+    return Fcvx, Fccv, names
+
+
 
 # ################################################################
 #                        Special Functions                       #
@@ -268,3 +350,136 @@ def splev(x, spline):
         B.append(d[-1])
 
     return np.array(B)
+
+
+################ Tests #######################################
+
+def test_differentiation_scalar():
+
+    n = 50                                        # Input size
+    names = ["x{}".format(i) for i in range(n)]
+    A = np.random.random((n,))
+    B = np.random.random((n, n))
+    B = 0.5*(B+B.T)
+
+    x = make(np.zeros((n,)), names, 2, True, False)
+    print(x.nbytes)
+    print(B.nbytes)
+    F = A.dot(x) + 0.5*x.T.dot(B).dot(x)
+
+    g = gradient(F, names)
+    h = hessian(F, names)
+
+    assert np.allclose(A, g), "Scalar gradient computation failed."
+    assert np.allclose(B, h), "Scalar Hessian computation failed."
+    print("Scalar differentiation test passed.\n")
+
+
+def test_differentiation_vector():
+    
+    
+    n = 2          # Input size
+    m = 3         #  Vectorization size
+
+    names = ["x{}".format(i) for i in range(n)]
+
+    A = np.random.random((m, n))
+    B = np.random.random((m, n, n))
+    B = 0.5*(B+np.transpose(B, (0, 2, 1)))
+
+    x0 = np.random.random((n, m))
+    x = make(x0, names, 2, True, True)
+
+    print(x.shape)
+    F = A.dot(x) #+ 0.5*x.dot(B).dot(x)
+
+    print(const(0.5*x.dot(B).dot(x), True))
+    quad = np.array([0.5*x.dot(Bi).dot(x) for Bi in B])
+    print(quad[0])
+    print(const(quad, True))
+
+    print(np.array([0.5*xi.dot(Bi).dot(xi) for xi, Bi in zip(x0.T, B)]))
+    # print(A[0])
+    # print(gradient(F[0], names))
+
+    # g = jacobian(F, names)
+    # print(g)
+    # h = vhessian(F, names)
+    # print(g.shape)
+    # print(h.shape)
+    # print(B[0])
+    # print(F[0])
+    # print(hessian(F[0], names))
+    # print(h)
+    # assert np.allclose(A, g), "Vectorized gradient computation failed."
+    # assert np.allclose(B, h), "Vectorized Hessian computation failed."
+
+    # print("Vectorized differentiation test passed.\n")
+
+
+def test_scalar_relax():
+    import pyaudi as pa
+    import matplotlib.pyplot as plt 
+
+    def fun(x):
+        return pa.sin(5*x) + pa.exp(pa.abs(x))
+        # return -x**2 + x**3 + 1
+
+    x0 = 0.5
+    fcvx, fccv, da_vars = relax(fun, 0.5)
+
+    print(fcvx)
+    print(fccv)
+
+    dx = np.linspace(-0.25, 0.25, 50)/10
+
+    F = np.array([fun(xi) for xi in x0+dx])
+    
+    U = evaluate(fcvx, da_vars, dx)
+    L = evaluate(fccv, da_vars, dx)
+
+    x = x0 + dx
+
+    plt.plot(x, F, label="True")
+    plt.plot(x, U, label="Cvx")
+    plt.plot(x, L, label="Ccv")
+    plt.legend()
+    plt.show()
+
+
+def test_coeff():
+    import pyaudi as pa 
+
+    x = make(range(3), 'xyz', 5)
+
+    def fun(x, y, z):
+        return pa.sin(z*y) + 1*y*z + z**2*y**2 + x + x**2
+    
+    f = fun(*x)
+    assert np.allclose(coeff(f, 'xyz', 2), hessian(f, 'xyz')), "2nd order coeff do not match Hessian"
+    print(f)
+    print(coeff(f, 'xyz', 0))
+    print(coeff(f, 'xyz', 1))
+    print(coeff(f, 'xyz', 2))
+    print(coeff(f, 'xyz', 3))
+    return
+
+
+def test():
+    import time 
+    t = []
+    t.append(time.time())
+    test_differentiation_scalar()
+    # t.append(time.time())
+    # test_differentiation_vector()
+    # t.append(time.time())
+    # test_scalar_relax()
+    # t.append(time.time())
+    test_coeff()
+    t.append(time.time())
+
+
+if __name__ == "__main__":
+    # test()
+    test_coeff()
+
