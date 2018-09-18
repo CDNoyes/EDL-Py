@@ -37,25 +37,28 @@ def mcfilter(B, NB, input_names=None, ks_threshold=0, p_threshold=1e-3, plot=Fal
 
     for i in range(B.shape[0]):
         ks, p = kstest2(B[i,:], NB[i,:])
-        ks_values.append(ks)
-        p_values.append(p)
         if ks >= ks_threshold and p <= p_threshold:
+            ks_values.append(ks)
+            p_values.append(p)
             inputs.append(i)
 
     # Sort and print
-    ks_values_sorted, p_values_sorted, inputs_sorted = zip(*sorted(zip(ks_values, p_values, inputs), reverse=True))
-    print("\n{}   KS      P".format('Input'.ljust(max_len)))
-    print("-"*(max_len+15))
-    for i in inputs_sorted:
-        print("{name: {fill}}  {ks:.2f}   {p:.3f}".format(name=input_names[i], ks=ks_values[i], p=p_values[i], fill=max_str))
-    print('\n')
-
-    # Display
-    if plot:
-        import matplotlib.pyplot as plt
+    if ks_values:
+        ks_values_sorted, p_values_sorted, inputs_sorted = zip(*sorted(zip(ks_values, p_values, inputs), reverse=True))
+        print("\n{}   KS      P".format('Input'.ljust(max_len)))
+        print("-"*(max_len+15))
         for i in inputs_sorted:
-            _ecdf(B[i,:], NB[i,:], input_names[i], fontsize=fontsize)
-        plt.show()
+            print("{name: {fill}}  {ks:.2f}   {p:.3f}".format(name=input_names[i], ks=ks_values[i], p=p_values[i], fill=max_str))
+        print('\n')
+
+        # Display
+        if plot:
+            import matplotlib.pyplot as plt
+            for i in inputs_sorted:
+                _ecdf(B[i,:], NB[i,:], input_names[i], fontsize=fontsize)
+            plt.show()
+    else:
+        print("No significant inputs found.")
 
 
 def mcsplit(inputs, outputs, criteria):
