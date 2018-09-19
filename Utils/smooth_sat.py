@@ -59,11 +59,49 @@ def test():
     plt.legend()
     plt.show()
 
-def compare():
-    # See which version of saturation is more accurately represented by DA variables
 
-    
+def compare():
+    from matplotlib import pyplot as plt 
+    import DA as da 
+
+    # See which version of saturation is more accurately represented by DA variables
+    x_exp = np.linspace(-1.5, 1.5, 20)
+    names = ['x']*x_exp.size
+
+    for order in [2,3,7,9]:
+        z = da.make(x_exp, names, order)
+
+
+        # Each is a list of DA's.
+        y1 = [symmetric_sat(xi, 1, 1e-3) for xi in z]
+        y2 = [another_sat(xi, 1, 20) for xi in z]
+
+        #  Now we sample each one in a neighborhood and compute the error 
+        x_eval = np.linspace(-0.1, 0.1, 101)
+
+        s1 = da.evaluate(y1, ['x'],  x_eval)
+        s2 = da.evaluate(y2, ['x'], x_eval)
+
+        true = np.array([np.clip(xi+x_eval, -1, 1) for xi in x_exp]).T
+        e1 = np.abs(s1-true)
+        e2 = np.abs(s2-true)
+
+        E1 = np.mean(e1, axis=0)
+        E2 = np.mean(e2, axis=0)
+        plt.figure(1)
+        plt.semilogy(x_exp, E1, label="sqrt sat, O={}".format(order))
+        plt.figure(2)
+        plt.semilogy(x_exp, E2, label="cosh sat, O={}".format(order))
+
+    for i in range(1,3):
+        plt.figure(i)    
+        plt.xlabel("Expansion Points")
+        plt.ylabel("Average Error in a Neighborhood of Width = {}".format(x_eval[-1]-x_eval[0]))
+        plt.legend()
+    plt.show()
+
 
 if __name__ == "__main__":
     # opt()
-    test()
+    # test()
+    compare()
