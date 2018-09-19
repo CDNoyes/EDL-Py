@@ -34,58 +34,36 @@ def symmetric_sat(x, bound=1, tuning_parameter=1e-3):
     return 0.5*bound*(pa.sqrt(tuning_parameter + (x/bound + 1)**2) -
                       pa.sqrt(tuning_parameter + (x/bound - 1)**2))
 
-
-def tanh_sat(y, k, y0):
+def another_sat(x, bound=1, tuning=10):
+    """Another saturation function, from 
+    Saturated Robust Adaptive Control for Uncertain Nonlinear Systems using a new approximate model
+    
     """
-    The logistic function and hyberbolic tangent are related and can produce identical results.
-    Optimal = [2.65,0.5]
-    """
-    return 0.5 + 0.5*np.tanh(k*(y-y0))
+
+    return 0.5/tuning*pa.log(pa.cosh(tuning*(x+bound))/pa.cosh(tuning*(x-bound)))
+    # return 0.5/tuning*np.log(np.cosh(tuning*(x+bound))/np.cosh(tuning*(x-bound)))
 
 
-def erf_sat(y):
-    """ This is appropriate for saturating to [-1,1] """
-    if isinstance(y, (gd, gdv)):
-        return pa.erf(pa.sqrt(np.pi)*0.5*y)
-    else:
-        from scipy.special import erf
-        return erf(np.sqrt(np.pi)*0.5*y)
+def test():
+    from matplotlib import pyplot as plt 
+    x = np.linspace(-1.2,1.2,500)
+    y = np.clip(x,-1,1)
 
+    y1 = [symmetric_sat(xi, 1, 1e-3) for xi in x]
+    y2 = [another_sat(xi, 1, 20) for xi in x]
+    # y2 = another_sat(x, 1, 20)
 
-def opt():
-    from scipy.optimize import curve_fit
-    import matplotlib.pyplot as plt
-
-    y_raw = np.linspace(-2.5,3.5,500)
-    y = np.clip(y_raw,-1,1)
-    # y = np.clip(y_raw,0,0.96)
-
-    aopt = curve_fit(smooth_sat, y_raw, y,bounds=(0,10))
-    print("(Logistic) Optimal values = {}".format(aopt[0]))
-
-    # topt = curve_fit(tanh_sat, y_raw, y)
-    # print "(Tanh) Optimal values = {}".format(topt[0])
-    #
-    # copt = curve_fit(atan_sat, y_raw, y)
-    # print "(Tan inv) Optimal values = {}".format(copt[0])
-
-
-    y_log = smooth_sat(y_raw,*aopt[0])
-    # y_tanh = tanh_sat(y_raw,*topt[0])
-    # y_atan = atan_sat(y_raw, *copt[0])
-    plt.plot(y_raw, (y))
-    plt.plot(y_raw, (y_log),'--')
-    # plt.plot(y_raw,y_atan)
-    # plt.plot(y_raw,(y_tanh),'*')
-
-
-    # err = (np.arccos(y) - np.arccos(y_approx))*180/np.pi
-    # plt.figure()
-    # plt.plot(y_raw,err)
-    # plt.ylabel("Error between sat - smooth_sat (deg)")
+    plt.plot(x, y, label="Saturation")
+    plt.plot(x, y1, label="Symmetric")
+    plt.plot(x, y2, label="Another")
+    plt.legend()
     plt.show()
 
-    return aopt[0]
+def compare():
+    # See which version of saturation is more accurately represented by DA variables
+
+    
 
 if __name__ == "__main__":
-    opt()
+    # opt()
+    test()
