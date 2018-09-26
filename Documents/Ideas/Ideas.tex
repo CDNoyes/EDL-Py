@@ -111,11 +111,29 @@
 	
 	\subsection{Control Convexification}
 	To reiterate, Ref.~\cite{SOCP Lu} relies on a convex relaxation of the controls that is not suitable to our application (due to the assumption of an inactive trust region). They suggest that instantaneous bank reversals are an inherent part of solutions to some optimal control problems in atmospheric entry trajectories. Clearly, however, these instantaneous reversals are not flyable by a real system, and thus another benefit of treating the bank rate as the control is that all planned profiles we more easily tracked/flown. Treating the bank angle rate as the control as a form of convexification appears to have first appeared in Ref.~\cite{SOCP WangGrant} and is the approach adopted in our work, although we note that past research has suggested doing so in order to make the dynamics affine in the control.
+
 	
 	
 %	This can be utilized to find the choice of independent variable (time, energy, altitude, etc.) that allows for the largest updates to the current solution.
 
-%
+\section{Probabilistic Bounds}
+
+\textbf{Chebyshev's inequality} provides an upper bound on the probability that a univariate random variable $X$ with standard deviation $\sigma$ deviates more than $k$-deviations from the mean $\mu$. In other words, the inequality guarantees ``no more than a certain fraction of values can be more than a certain distance from the mean." (Wikipedia) Formally, the inequality is
+\begin{align}
+\mathbb{P}[|X-\mu|\ge k\sigma] \le \frac{1}{k^2} \\
+\mathbb{P}[|X-\mu|\ge k] \le \frac{\sigma^2}{k^2} 
+\end{align}
+It should be noted that these bounds are not generally tight and are often quite conservative. 
+
+\textbf{Markov's inequality} states that ``If $ X $ is a nonnegative random variable and $a > 0$, then the probability that $ X $ is no less than $ a $ is no greater than the expectation of $ X $ divided by $ a $" (Wikipedia)
+\begin{align}
+\mathbb{P}[X\ge a] \le \frac{\mathbb{E}[X]}{a}
+\end{align}
+Reference~\cite{OptimalIneq} shows that for a convex set $S$, the following provides a \textit{tight} upper bound on multivariate random variables 
+\begin{align}
+\sup_{X\sim (\mu,\Sigma)}\mathbb{P}[X\in S] = \frac{1}{1+d^2} \\
+d^2 = \inf_{X\in S} (X-\mu)^T\Sigma^{-1}(X-\mu)
+\end{align}
 %	
 %	\section{General}
 %	Demonstrate benefit of OUU and/or robust optimal control. 
@@ -140,5 +158,8 @@
 	
 	\bibitem{SOCP WangGrant}
 	Wang, Z., and Grant, M., ``Constrained Trajectory Optimization for Planetary Entry via Sequential Convex Programming" Atmospheric Flight Mechanics, AIAA, 2016. 
+	
+	\bibitem{OptimalIneq}
+	Bertsimas, D., Popescu, I., ``Optimal Inequalities in Probability Theory: A Convex Optimization Approach" 1999.
 	\end{thebibliography}
 \end{document}
