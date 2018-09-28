@@ -1,7 +1,7 @@
 ''' Monte Carlo Filtering module'''
 
 import numpy as np
-
+import pandas as pd 
 
 def mcfilter(B, NB, input_names=None, ks_threshold=0, p_threshold=1e-3, plot=False, fontsize=16):
     ''' Performs monte carlo filtering on data that has been split into behavioral and non-behavioral sets.
@@ -34,31 +34,35 @@ def mcfilter(B, NB, input_names=None, ks_threshold=0, p_threshold=1e-3, plot=Fal
     ks_values = []
     p_values = []
     inputs = []
+    index = []
 
     for i in range(B.shape[0]):
         ks, p = kstest2(B[i,:], NB[i,:])
         if ks >= ks_threshold and p <= p_threshold:
             ks_values.append(ks)
             p_values.append(p)
-            inputs.append(i)
+            inputs.append(input_names[i])
+            index.append(i)
 
     # Sort and print
     if ks_values:
         ks_values_sorted, p_values_sorted, inputs_sorted = zip(*sorted(zip(ks_values, p_values, inputs), reverse=True))
         print("\n{}   KS      P".format('Input'.ljust(max_len)))
         print("-"*(max_len+15))
-        for i in inputs_sorted:
-            print("{name: {fill}}  {ks:.2f}   {p:.3f}".format(name=input_names[i], ks=ks_values[i], p=p_values[i], fill=max_str))
+        for name, value, pvalue in zip(inputs_sorted, ks_values_sorted, p_values_sorted):
+            print("{name: {fill}}  {ks:.2f}   {p:.3f}".format(name=name, ks=value, p=pvalue, fill=max_str))
         print('\n')
 
         # Display
         if plot:
             import matplotlib.pyplot as plt
-            for i in inputs_sorted:
+            for i in index:
                 _ecdf(B[i,:], NB[i,:], input_names[i], fontsize=fontsize)
             plt.show()
+        return pd.DataFrame({"Variable" : inputs_sorted, "KS" : ks_values_sorted, "p-value" : p_values_sorted})
     else:
         print("No significant inputs found.")
+        return 
 
 
 def mcsplit(inputs, outputs, criteria):
@@ -108,10 +112,14 @@ def _ecdf(dataB, dataNB, name, fontsize):
 if __name__ == "__main__":
 
     inputs = 2*(np.random.rand(3, 5000)-0.5)
+    inputs[1] = np.random.normal(0, 1/3, 5000)
     outputs = [10*inp[1]**2 + 2*inp[2] for inp in inputs.T]  # No dependence on inp[0], Strong dependence on inp[1], mild on inp[2]
 
     def my_fun(output):
-        return output > 3
+        return output > 2
 
     data = mcsplit(inputs, outputs, my_fun)
-    mcfilter(*data, input_names=['Really Long Name Is Long', 'Strong', 'Mild'], plot=True, ks_threshold=0, p_threshold=0.3)
+    # mcfilter(*data, input_names=['Really Long Name Is Long', 'Strong', 'Mild'], plot=True, ks_threshold=0, p_threshold=0.3)
+    # df = mcfilter(*data, input_names=['X', 'Y', 'Z'], plot=True, ks_threshold=0, p_threshold=1.0)
+    # print(df)
+    # df.to_hdf(".\MCFN.h5", "table", mode="w")
