@@ -1,9 +1,9 @@
-""" Pure python implementation of a projected newton method for solving linearly constrained quadratic programs """
+""" Pure python implementation of a projected newton method for solving box-constrained quadratic programs """
 
 import numpy as np
 
 
-def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
+def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=20, debug=False):
     """
     Solves the quadratic problem:
     min F(x) = 0.5*x'*hessian*x + gradient'*x
@@ -18,27 +18,29 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
 
     Outputs:
         x           -   the converged solution, or the last iteration if max iterations is reached
-        hff         -   the decomposition of the free directions of the Hessian
-        fopt        -   the value of the quadratic objective function evaluated at x
+        H           -   the Hessian with clamped directions set to 0 to prevent feedback in infeasible directions
+
+
+    Reference: Control-limited Differential Dynamic Programming 
 
     """
-    # if debug:
-        # print "Inputs:  "
-        # print "Hessian = {}".format(hessian)
-        # print "Gradient = {}".format(gradient)
-        # print "Initial guess = {}".format(x0)
-        # print "Lower bound: {}".format(bounds[0])
-        # print "Upper bound: {}".format(bounds[1])
-
-    iter = 0
-    iterMax = 100
+    iteration = 0
     n = len(x0)
+
+    if n == 1:  # trivial scalar case 
+        opt = np.clip(-np.squeeze(gradient)/np.squeeze(hessian), *bounds)
+        if opt in bounds:
+            H = 0
+        else:
+            H = hessian
+        return opt, H
+
 
     x = np.clip(x0, bounds[0], bounds[1]).squeeze()  # Make the initial point feasible
     xl = np.asarray(bounds[0])
     xu = np.asarray(bounds[1])
-    hessian = np.asarray(hessian)
-    gradient = np.asarray(gradient)
+    hessian = np.asarray(hessian).squeeze()
+    gradient = np.asarray(gradient).squeeze()
 
     if debug:
         print("After some transforms:  ")
@@ -46,7 +48,7 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
         print("Gradient = {}".format(gradient))
         print("Initial feasible guess = {}\n".format(x))
 
-    while iter < iterMax:
+    while iteration < iter_max:
         g = gradient + np.dot(hessian, x)
 
         # Determine the active set (and the complementary inactive set)
@@ -82,12 +84,18 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, debug=False):
 
         dx = np.zeros((n,))
         dx[f] = -np.dot(np.linalg.inv(hff), gf)
+        # dx[f] = -np.linalg.solve(hff, gf)
 
         alpha = _armijo(_fQuad(hessian, gradient), x, dx, g, xl, xu)
         x = np.clip(x+alpha*dx, xl, xu).squeeze()
-        iter += 1
+        iteration += 1
+    if debug:
+        if iteration == iter_max:
+            print("Maximum number of iterations reached without convergence.")
+        else:
+            print("Total iterations = {}".format(iteration))
 
-    clamped = np.where(c[0])[0]
+    clamped = c
     H = hessian
     H[clamped,:][:,clamped] = 0
     return x, H
@@ -111,29 +119,50 @@ def _fQuad(h, g):
     return fQuadFun
 
 
-def test():
-    from Regularize import Regularize
-    from scipy.optimize import minimize
+def test_scalar():
+    from scipy.optimize import minimize_scalar
 
-    n = 30       # Problem size
-    N = 10      # Number of problems to solve
+    H = 1
+    g = -1
+    x = 0
+
+    opt = ProjectedNewton([x], H, g, [-1, 10])
+    print("Optimum = {}".format(opt))
+    print(minimize_scalar(_fQuad(H, g), method='bounded', bounds=(-1,10)))
+
+
+def test():
+    from Regularize import Regularize, AbsRegularize
+    from scipy.optimize import minimize
+    import time 
+
+    n = 100       # Problem size
+    N = 1      # Number of problems to solve
     for _ in range(N):
         H = (-1 + 2*np.random.random((n, n)))*3
         H = H + H.T
-        H = Regularize(H, 0.1)
+        # H = Regularize(H, 0.1)
+        H = AbsRegularize(H)
 
-        H = np.eye(n)
         g = (-1 + 2*np.random.random((n,)))*5
         x = (-1 + 2*np.random.random((n,)))*3.2
 
 
         bounds = [-3*np.ones((n,)),5*np.ones((n,))]
-        xo,_ = ProjectedNewton(x,H,g,[-3*np.ones((n,)),5*np.ones((n,))], debug=False)
+        t0 = time.time()
+        xo,_ = ProjectedNewton(x,H,g,[-3*np.ones((n,)),5*np.ones((n,))], debug=False, iter_max=2*n, tol=1e-9)
+        tPN = time.time()
+        print("ProjNewton solved in {:.3g} s".format(tPN-t0))
         # Notice: This is not a QP-specific solver so we do not compare run times.
         # It is used solely to check the correctness of the solution returned.
-        sol = minimize(_fQuad(H,g), x, args=(), method='SLSQP', jac=None, hess=None, hessp=None, bounds=list(zip(*bounds)), constraints=(), tol=None, callback=None, options=None)
-        print("Solution difference = {}".format(np.linalg.norm(sol.x-xo)))
-
+        sol1 = minimize(_fQuad(H, g), x, args=(), method='L-BFGS-B', jac=lambda x: g + H.dot(x), hess=None, hessp=None, bounds=list(zip(*bounds)), constraints=(), tol=1e-12, callback=None, options=None)
+        sol2 = minimize(_fQuad(H, g), x, args=(), method='SLSQP', jac=lambda x: g + H.dot(x), hess=None, hessp=None, bounds=list(zip(*bounds)), constraints=(), tol=1e-12, callback=None, options=None)
+        print("Solution difference (scipy)= {:.3g}".format(np.linalg.norm(sol2.x-sol1.x, np.inf)))
+        print("Solution difference (QuasiNewton)= {:.3g}".format(np.linalg.norm(sol1.x-xo, np.inf)))
+        print("Solution difference (SQP) = {:.3g}".format(np.linalg.norm(sol2.x-xo, np.inf)))
+        # print(xo)
+        # print(sol1)
 
 if __name__ == "__main__":
+    test_scalar()
     test()
