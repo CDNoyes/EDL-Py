@@ -3,7 +3,7 @@
 import numpy as np
 
 
-def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=20, verbose=False, check_hessian=False):
+def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbose=False, check_hessian=False):
     """
     Solves the quadratic problem:
     min F(x) = 0.5*x'*hessian*x + gradient'*x
@@ -14,10 +14,10 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=20, verbos
         hessian     -   positive semi-definite curvature matrix of cost function, nxn matrix
         gradient    -   derivative of cost function, length n
         bounds      -   tuple of (nlower bounds, nupper bounds)
-        tol         -   objective value absolute convergence tolerance
+        tol         -   convergence tolerance using norm of free gradient directions 
         iter_max    -   the maximum number of iterations to be performed
         verbose     -   boolean for printing statements 
-        check_hessian - confirms the hessian meets the required positive semi-definite condition 
+        check_hessian - confirms the hessian meets the required positive definite condition 
 
     Outputs:
         x           -   the converged solution, or the last iteration if max iterations is reached
@@ -31,7 +31,7 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=20, verbos
     assert np.min(bounds[1]-bounds[0]) > 0, "The bounds provided have an empty interior."
 
     if check_hessian:
-        assert np.all(np.linalg.eigvalsh(hessian) >= 0)
+        assert np.all(np.linalg.eigvalsh(hessian) > 0), "Hessian is not positive definite"
 
     iteration = 0
     n = len(x0)
@@ -72,11 +72,16 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=20, verbos
             hfc = hessian[f, :][:, c]
             gf += np.dot(hfc, x[c])
 
-        if np.linalg.norm(gf) < tol:
+        if np.linalg.norm(gf, 1) < tol:
+            if verbose:
+                print("QP solved successfully:")
             break
 
         dx = np.zeros((n,))
-        dx[f] = -np.linalg.solve(hff, gf)
+        try:
+            dx[f] = -np.linalg.solve(hff, gf)
+        except np.linalg.LinAlgError:  # Singular case
+            dx[f] = -np.dot(np.linalg.pinv(hff), gf)
 
         alpha = _armijo(_fQuad(hessian, gradient), x, dx, g, xl, xu)
         x = np.clip(x+alpha*dx, xl, xu).squeeze()
@@ -113,6 +118,7 @@ def _fQuad(h, g):
 
 
 def test_scalar():
+    """ Scalar test case """ 
     from scipy.optimize import minimize_scalar
 
     H = 1
@@ -120,11 +126,12 @@ def test_scalar():
     x = 0
 
     opt = ProjectedNewton([x], H, g, [-1, 10])
-    sol = minimize_scalar(_fQuad(H, g), method='bounded', bounds=(-1,10))
+    sol = minimize_scalar(_fQuad(H, g), method='bounded', bounds=(-1, 10))
     assert np.allclose(opt[0], sol.x), "Projected Newton 'test_scalar' failed. Solution does not match scipy minimize_scalar."
 
-def test_checks():
 
+def test_checks():
+    """ Checks bounds and positive semi-definiteness of Hessian """
     n = 3
 
     g = np.zeros((n,))
@@ -144,13 +151,16 @@ def test_checks():
 
 
 def test():
+    import matplotlib.pyplot as plt 
+    import seaborn 
     from Regularize import Regularize, AbsRegularize
     from scipy.optimize import minimize
-    import time 
+    from timeit import default_timer as timer 
 
-    n = 400       # Problem size
-    N = 3      # Number of problems to solve
+    n = 4       # Problem size
+    N = 10000      # Number of problems to solve
     print("Solving {} problems of size {}\n".format(N, n))
+    tsolve = []
     for _ in range(N):
         H = (-1 + 2*np.random.random((n, n)))*30
         H = H + H.T
@@ -162,13 +172,14 @@ def test():
 
 
         bounds = [-3*np.ones((n,)), 5*np.ones((n,))]
-        t0 = time.time()
-        xo,_ = ProjectedNewton(x, H, g, bounds, verbose=True, iter_max=2*n, tol=1e-9)
-        tPN = time.time()
-        print("\tProjNewton solver time: {:.5g} s".format(tPN-t0))
+        t0 = timer()
+        xo, _ = ProjectedNewton(x, H, g, bounds, verbose=False, iter_max=20, tol=1e-9)
+        tPN = timer()
+        tsolve.append(tPN-t0)
+        # print("\tProjNewton solver time: {:.5g} s".format(tPN-t0))
         # Notice: This is not a QP-specific solver so we do not compare run times.
         # It is used solely to check the correctness of the solution returned. They are much slower for large problems (n > 300)
-        if n < 100:
+        if n < 100 and False:
             sol1 = minimize(_fQuad(H, g), x, args=(), method='L-BFGS-B', jac=lambda x: g + H.dot(x), hess=None, hessp=None, bounds=list(zip(*bounds)), constraints=(), tol=1e-12, callback=None, options=None)
             sol2 = minimize(_fQuad(H, g), x, args=(), method='SLSQP', jac=lambda x: g + H.dot(x), hess=None, hessp=None, bounds=list(zip(*bounds)), constraints=(), tol=1e-12, callback=None, options=None)
         # print("Solution difference (scipy)= {:.3g}".format(np.linalg.norm(sol2.x-sol1.x, np.inf)))
@@ -177,7 +188,17 @@ def test():
         # print(xo)
         # print(sol1)
 
+    # plt.plot(np.sort(tsolve)*1000)
+
+    print("Percentiles:")
+    for p in [90, 95, 99]:
+        print("{}% = {:.3f} ms".format(p, np.percentile(tsolve, p)*1000))
+
+    seaborn.kdeplot(np.array(tsolve)*1000, cumulative=True)
+    plt.xlabel("QP Solver Time (ms)")
+    plt.show()
+
 if __name__ == "__main__":
-    test_scalar()
     test_checks()
+    test_scalar()
     test()
