@@ -37,9 +37,9 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
     n = len(x0)
 
     if n == 1:  # trivial scalar case
-        opt = np.clip(-np.squeeze(gradient)/np.squeeze(hessian), *bounds)
+        opt = np.clip(-np.squeeze(gradient)/np.squeeze(hessian), *bounds)[0]
         if opt in bounds:
-            H = 0.
+            H = [[0.]]
         else:
             H = hessian
         return opt, H
