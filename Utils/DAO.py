@@ -10,7 +10,7 @@ except:
     from . import DA as da 
 
 
-def constraint_satisfaction(funs, guess, order=3, xtol=1e-4, max_iter=50, linesearch=True, verbose=False):
+def constraint_satisfaction(funs, guess, order=3, max_iter=50, linesearch=True, verbose=False):
 
     # Heuristic
     if np.all(guess == 0):
@@ -71,7 +71,6 @@ def constraint_satisfaction(funs, guess, order=3, xtol=1e-4, max_iter=50, linese
             guess = guess_new
 
         else:
-            found = True 
             a = 0.01
             b = 0.9
             step = a/np.linalg.norm(dxy) + b
@@ -79,12 +78,11 @@ def constraint_satisfaction(funs, guess, order=3, xtol=1e-4, max_iter=50, linese
             guess += delta
 
         history.append(guess.copy())
-        if np.linalg.norm(delta) < xtol and found:
-            if verbose: print("Terminating: change in solution smaller than requested tolerance.")
-            break
-        if verbose: print("(iter {}) constraint satisfaction value: {:3g}".format(it+1,np.max([fun(guess) for fun in funs])))
+        if verbose: 
+            print("(iter {}) constraint satisfaction value: {:3g}".format(it+1,np.max([fun(guess) for fun in funs])))
     if it == max_iter-1:
-        if verbose: print("Max iterations reached")
+        if verbose: 
+            print("Max iterations reached")
         return None, history, gradient_history
 
     return guess, history, gradient_history
@@ -145,6 +143,95 @@ def gradient_descent(obj, cons, guess, xtol=1e-4, max_iter=50, verbose=True):
             if verbose: print("Terminating: change in solution smaller than requested tolerance.")
             break
         if verbose: print("(iter {}) objective value: {}".format(it+1, obj(guess)))
+    return guess, history
+
+
+def SFNewton(obj, cons, guess, xtol=1e-4, ftol=1e-3, max_iter=50, verbose=True):
+    """ A Differential Algebraic Implementation of Saddle-Free Newton's Method
+
+        Uses a positive definite version of the Hessian to define a trust region 
+
+        dx = -df/dx |H|**(-1)
+
+        Get 2nd order expansion
+        Get gradient
+        Get Hessian
+        Form |H|
+        Return step, (line search)
+            Iterate
+    """
+    from Regularize import AbsRegularize
+
+    order = 2
+    history = []
+    obj_history = []
+
+    cons = np.asarray(cons)
+    assert np.all(np.array([fun(guess) for fun in cons])), 'Initial point is not feasible.'
+
+    vars = ['x{}'.format(i) for i in range(len(guess))]
+    pvars = ['p{}'.format(i) for i in range(len(guess))]
+
+    if verbose:
+        f0 = obj(guess)
+        print("\n(guess)  objective value: {:.3g}".format(f0))
+
+
+    for it in range(max_iter):
+
+        x = [gd(val, var, order) for val, var in zip(guess, vars)]
+
+        f = obj(x)
+        g = f          # sum of logarithm of constraints scaled and added to original objective
+
+
+        grad = da.gradient(g, vars)
+        H = da.hessian(g, vars)
+        Hp = AbsRegularize(H) 
+
+        dxy = -np.linalg.solve(H, grad) 
+        if np.any(np.isnan(dxy)):
+            print("Early termination -  step direction has NaN element(s)")
+            break
+
+        # linesearch to optimize subject to constraint satisfaction 
+
+        nsteps = 1000  # this many points will be checked, so a balance is needed. 
+        steps = np.linspace(-3, 3, nsteps)
+        feasible = []
+        feval = []
+        for step in steps:
+            guess_new = guess + step*dxy
+            con = np.array([fun(guess_new) for fun in cons])
+            fnew = obj(guess_new)
+            feasible.append(np.all(con<=0))
+            feval.append(fnew)
+
+        feasible = np.array(feasible, dtype=bool)
+        feval = np.array(feval)
+        try:
+            idx = np.argmin(feval[feasible])
+
+        except ValueError:  # no feasible point found, bad situation 
+            print("Early termination - loss of feasibility.")
+            break
+        if it and np.all(feval[feasible] > np.min(obj_history)):
+            print("Terminating: No descent direction found.")
+            break 
+        guess_new = guess + steps[feasible][idx]*dxy
+        guess = guess_new
+
+        history.append(guess.copy())
+        obj_history.append(obj(guess))
+        if np.linalg.norm(step*dxy) < xtol or (len(obj_history) > 1 and np.abs(obj_history[-1]-obj_history[-2]) < ftol):
+            if verbose: 
+                print("Terminating: change in solution smaller than requested tolerance.")
+            break
+        if verbose: 
+            if it:
+                print("(Iter {}) objective value: {:.5g}, change: {:.4g}".format(it+1, obj_history[-1], np.abs(obj_history[-1]-obj_history[-2])))
+            else:
+                print("(Iter {}) objective value: {:.5g}".format(it+1, obj_history[-1]))
     return guess, history
 
 
@@ -211,8 +298,8 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
 
         # linesearch to optimize subject to constraint satisfaction 
 
-        nsteps = 100  # this many points will be checked, so a balance is needed. 
-        steps = np.linspace(-1, 1, nsteps)
+        nsteps = 200  # this many points will be checked, so a balance is needed. 
+        steps = np.linspace(-2, 2, nsteps)
         feasible = []
         feval = []
         for step in steps:
@@ -233,20 +320,26 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
             rng = list(range(2,8))
             for idx in fail_list: # This prevents trying an order that has already failed, until a successful iteration occurs 
                 rng.pop(rng.index(idx))
-            if not rng: # Run out of options 
+            if not rng:  # Run out of options
+                print("Terminating: No feasible point found from current point using any order.")
                 break 
             order = int(np.random.choice(rng)) # randomly change the order and try again 
             print("Loss of feasibility - changing order to {}.".format(order))
             continue
+        if it and np.all(feval[feasible] > np.min(obj_history)):
+            print("Terminating: No descent direction found.")
+            break 
         guess_new = guess + steps[feasible][idx]*dxy
         guess = guess_new
 
         history.append(guess.copy())
         obj_history.append(obj(guess))
         if np.linalg.norm(step*dxy) < xtol or (len(obj_history) > 1 and np.abs(obj_history[-1]-obj_history[-2])<ftol):
-            if verbose: print("Terminating: change in solution smaller than requested tolerance.")
+            if verbose: 
+                print("Terminating: change in solution smaller than requested tolerance.")
             break
-        if verbose: print("(iter {}) objective value: {:.3g}".format(it+1, obj_history[-1]))
+        if verbose: 
+            print("(iter {}) objective value: {:.3g}".format(it+1, obj_history[-1]))
     return guess, history
 
 
@@ -255,18 +348,19 @@ def example_2d():
     from pyaudi import sqrt 
     import time 
 
-    obj = lambda x: (x[0]-1)**4 + (x[1]-1)**4 + sqrt(x[0])
+    obj = lambda x: (x[0]-1)**4 + (x[1]-1)**4 + sqrt(x[0]) - 5*x[0]**2
     f = [lambda x: 1-x[0]**2-x[1]**2, lambda x: x[0]**2+x[1]**2-2, lambda x: -x[0], lambda x: -x[1]]
 
     # x0 = np.array([0.7,0.5])
     x0 = np.array([0.1, 0.9])
 
     t0 = time.time()
-    x_f, h_f, g_f = constraint_satisfaction(f, x0, order=2, xtol=1e-2, max_iter=10, linesearch=True, verbose=True)
+    x_f, h_f, g_f = constraint_satisfaction(f, x0, order=2, max_iter=10, linesearch=True, verbose=True)
     t_cs = time.time()
     if x_f is not None:
         # x_o, h_gd = gradient_descent(obj, f, x_f,  xtol=1e-4, max_iter=30, verbose=True)
-        x_o, h_o = optimize(obj, f, x_f, order=2, xtol=1e-9, ftol=1e-12, max_iter=200, verbose=True)
+        x_o, h_o = optimize(obj, f, x_f, order=5, xtol=1e-9, ftol=1e-12, max_iter=200, verbose=True)
+        # x_o, h_o = SFNewton(obj, f, x_f, xtol=1e-9, ftol=1e-12, max_iter=200, verbose=True)
         t_opt = time.time()
         print("\nOpt: {}".format(x_o))
         print("Constraint Satisfaction:          {:.4g} s".format(t_cs-t0))
@@ -309,7 +403,10 @@ def example_rosenbrock(a=1, b=100):
     plt.legend()
     plt.show()
 
+
 def example_circ():
+    """ Solves a difficult problem in which the feasible region is a narrow band. """
+
     import time 
     import matplotlib.pyplot as plt
 
@@ -321,7 +418,7 @@ def example_circ():
     x0 = np.array([10., 10.])
 
     t0 = time.time()
-    x_f, h_f, _ = constraint_satisfaction(f, x0, order=2, xtol=1e-2, max_iter=100, linesearch=True, verbose=True)
+    x_f, h_f, _ = constraint_satisfaction(f, x0, order=2, max_iter=100, linesearch=True, verbose=True)
     t_cs = time.time()
     print("{:.3g} s".format(t_cs-t0))
 
@@ -342,5 +439,5 @@ def example_circ():
 
 if __name__ == "__main__":
     # example_rosenbrock()
-    # example_2d()
-    example_circ()
+    example_2d()
+    # example_circ()
