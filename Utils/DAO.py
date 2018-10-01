@@ -4,7 +4,10 @@ from pyaudi import gdual_double as gd
 from pyaudi import invert_map
 from pyaudi import log
 
-import DA as da
+try:
+    import DA as da
+except:
+    from . import DA as da 
 
 
 def constraint_satisfaction(funs, guess, order=3, xtol=1e-4, max_iter=50, linesearch=True, verbose=False):
