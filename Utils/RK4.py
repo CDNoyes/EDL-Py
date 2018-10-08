@@ -1,4 +1,4 @@
-import autograd.numpy as np
+import numpy as np
 
 
 def RK4(fun, x0, iv, args=()):
@@ -25,7 +25,7 @@ def _rk4_step(f, iv, x, h, args):
 
 def RK4_STM(fun, x0, iv, args):
     """ STM based sensitivity computation """
-    from autograd import jacobian
+    from DA import jacobian
     from scipy.interpolate import interp1d
 
 
