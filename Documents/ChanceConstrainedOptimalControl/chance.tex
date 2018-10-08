@@ -1,0 +1,170 @@
+\documentclass[letterpaper, preprint, paper,11pt]{AAS}	% for preprint proceedings
+%\usepackage[latin1]{inputenc}
+% These were my imports, can I still use them?
+%\usepackage{amsfonts}
+\usepackage{amssymb, amsthm}
+\usepackage{graphicx}
+
+\usepackage{bm}
+\usepackage{amsmath}
+\usepackage{subfigure}
+%\usepackage[notref,notcite]{showkeys}  % use this to temporarily show labels
+\usepackage[colorlinks=true, pdfstartview=FitV, linkcolor=black, citecolor= black, urlcolor= black]{hyperref}
+\usepackage{overcite}
+\usepackage{footnpag}			      	% make footnote symbols restart on each page
+
+\newtheorem{theorem}{Theorem}
+
+\PaperNumber{19-XXX}
+
+% Formatting notes:
+% Eq.~(1) or Equation~(1) are both acceptable
+% Figure 1, not Fig. or (1)
+% 
+
+
+\begin{document}
+\author{Connor D. Noyes\thanks{Ph.D. Student, Department of Mechanical and Aerospace Engineering, University of California, Irvine, 92697} \ and Kenneth D. Mease\thanks{Professor Emeritus, Department of Mechanical and Aerospace Engineering, University of California, Irvine, 92697}} %kmease@uci.edu
+\title{A Differential Algebraic Method for Chance-Constrained Optimal Control}
+\maketitle
+	
+	\section{Problem Statement}
+	Let $(\Omega, \mathcal{F}, P)$ be a probability space where $ \Omega $ is the sample space, $ \mathcal{F} $ is a $\sigma-$algebra and $P\colon \mathcal{F}\to[0,1]$ is a probability measure.
+	
+	We consider nonlinear optimal control problems of the form
+	\begin{align}
+	&\mathrm{min} \quad J = M(x(t_f)) + \int_{t_0}^{t_f} L(x, u)\ \mathrm{d}t \label{eq_objective}\\
+	&\mathrm{subject\,to\,} \nonumber\\ 
+	&\dot{x} = f(t, x, u, p) \\
+	&x(t_0) = x_0 \label{eq_initial_cond}\\
+	&g(x(t_f)) = 0 \label{eq_terminal_cond} \\
+	&\mathbb{P}[c_i(t, x) \le 0, \quad \forall \ i \in \left\lbrace 1,\dots,n_c \right\rbrace ] \ge 1-\delta  \label{eq_chance_constraint}
+	\end{align}
+	where $x\in\mathbb{R}^{n_x}$ is the state, $u\in U\subseteq\mathbb{R}^{n_u}$ is the control, $p\in\mathbb{R}^{n_p}$ is a vector of uncertain parameters, $f\colon \mathbb{R}^+\times\mathbb{R}^{n_x}\times U \times \mathbb{R}^{n_p}\to \mathbb{R}^{n_x}$ are the uncertain dynamics governing the evolution of the system, and $g\colon\mathbb{R}^{n_x}\to\mathbb{R}^{n_g}$ is a terminal constraint with $n_g\le n_x$. Equation~(\ref{eq_chance_constraint}) represents a so-called joint chance constraint where all constraints $c_i\colon \mathbb{R}^+\times\mathbb{R}^{n_x}\to\mathbb{R}$ must be satisfied with a given probability determined by $\delta\in [0,1)$. 
+	Joint chance constraints like Eq.~(\ref{eq_chance_constraint}) are in contrast to single (or individual) chance constraints
+	\begin{align}
+	\mathbb{P}[c_i(t, x) \le 0 ] \ge 1-\delta_i, \quad \forall\ i \in \left\lbrace 1,\dots,n_c \right\rbrace \label{eq_individual_chance}
+	\end{align}
+	because Eq.~(\ref{eq_chance_constraint}) represents only a single probabilistic constraint, while Eq.~(\ref{eq_individual_chance}) defines $n_c$ uncoupled probabilistic constraints.
+	
+	\textbf{Remark} Individual satisfaction of every $c_i$ does not guarantee that the joint chance constraint is met with the required probability, even if $\delta_i < \delta \, \forall \ i$.
+	
+	One might question why a probabilistic constraint is appropriate instead of a hard constraint, i.e., requiring that every realization of \textit{p} must satisfy the constraint by choosing $\delta=0$. Distributions with unbounded support, such as Gaussian distributions, are frequently used to model uncertain parameters and initial states; the infinite support of these distributions means that since very large deviations from the mean are possible, if very improbable, constraint satisfaction may be impossible. Chance constraints allow us to choose how much constraint violation is tolerable and thereby tradeoff optimality and robustness. 
+	
+	\subsection{Example 1: Planetary Landing}
+	
+	\begin{align}
+	&\mathrm{min}\ -\mathbb{E}[m(t_f)]- \kappa\mathbb{V}[m(t_f)]\\
+	&\mathrm{subject\,to:\,} \nonumber\\ 
+	&\mathbf{\dot{r}} = \mathbf{v} \\
+	&\mathbf{\dot{v}} = \frac{\mathbf{T}}{m} + \mathbf{g} \\
+	&\dot{m} = -\alpha ||\mathbf{T}|| \\
+	&\mathbb{E}[x(t_0)] = \mathbf{x_0} \\
+	&\mathbb{E}[r(t_f)] = \mathbf{0} \\
+	&\mathbb{E}[v(t_f)] = \mathbf{0} \\
+	&\mathbb{P}[-z(t) \le 0] \ge 1-\delta \label{eq_min_altitude} \\
+	&T_{\min} \le ||\mathbf{T}|| \le T_{\max}
+	\end{align}
+	where $\kappa$ is a parameter that penalizes variations in the final mass, Eq.~(\ref*{eq_min_altitude}) represents a probabilistic constraint preventing subsurface flight. In addition to the initial spacecraft state, the value of $\alpha$ is uncertain. 
+	
+	The joint chance constraint is preferable to individual chance constraints in this scenario. Posing the subsurface constraint at different time points as individual constraints implies that a given trajectory may not be feasible. We want instead that a given trajectory satisfies the condition at every time point to guarantee that any individual trajectories from the reachable set is feasible. 
+	
+	Assume a well-design closed-loop feedback controller is available. Design the feedforward component to minimize the objective while satisfying the constraints. Does this force us to consider control constraints probabilistically as well?
+	\begin{align}
+	\mathbb{P}[||T(t)|| \le T_{\max}] \ge 1-\delta
+	\end{align}
+	
+%	Chance-constrained optimization problems, even linear ones, are notoriously difficult to solve. 
+
+	\section{Constraint Reformulation Based on Reachable Sets}
+		Reference~\citenum{PCE_RS_CCOCP} proposed a reformulation of chance constraints based on the basic principles of set theory and reachable set analysis. 
+		
+		They employed polynomial chaos expansions to map the reachable set; we instead propose to use adaptive Taylor expansions. Determining the polynomial chaos expansion coefficients requires sampling a number of trajectories while the use of differential-algebraic techniques allows us to compute accurate Taylor expansions using a small number of trajectories that need not be chosen \textit{a priori}. 
+		
+	\subsection{Reachable Set Propagation}
+	In the typical certain scenario, the reachable set is the set of states achievable over all admissible choices of control, i.e.,
+\begin{align}
+	 RS(\tau) = \lbrace x\in\mathbb{R}^{n_x} \ |\ x = x_0 + \int_{t_0}^{\tau} f(t,x,u)\ \mathrm{d}t,\ u\in U    \rbrace
+\end{align}
+
+	 In the presence of uncertainty, the reachable set also includes all states reachable over all controls and uncertain parameters.  
+	 \begin{align}
+	 RS(\tau) = \lbrace x\in\mathbb{R}^{n_x} \ |\ x = x_0 + \int_{t_0}^{\tau} f(t,x,u,p)\ \mathrm{d}t,\ u\in U    \rbrace
+	 \end{align} 
+	 Finally, the uncertain reachable set conditioned on a given control is
+	 	 \begin{align}
+	 	 RS(\tau; u(\cdot)) = \lbrace x\in\mathbb{R}^{n_x} \ |\ x = x_0 + \int_{t_0}^{\tau} f(t,x,u,p)\ \mathrm{d}t \rbrace
+	 	 \end{align} 
+	 	 
+	Adaptive Taylor models based on differential-algebraic techniques are used to propagate uncertainty through the system and construct a subset of the reachable set conditioned on a given control. 
+	
+	\subsection{Lemma: Set Based Reformulation}
+	Consider a domain $X$ and a subset $S \subseteq X$ such that 
+		\begin{align}
+		\mathbb{P}[x\in X] &= 1 \\
+		\mathbb{P}[x\in S] &= 1-\delta
+		\end{align}
+		where $\delta \in [0,1)$.
+	Consider a transformation $F\colon X\to Y$, and denote the image of $S$ under $F$ as $R = \left\lbrace F(x)\,|\,x\in S \right\rbrace$. Then, $\mathbb{P}[F(x)\in R] \ge 1-\delta$.
+	
+	\begin{proof}
+		From the properties of sets, $S\subseteq F^{-1}(R)$ (equality holds when $ F $ is injective). By monotonicity of the probability measure it holds that $\mathbb{P}[x\in S] \leq \mathbb{P}[x\in F^{-1}(R)]$ where $F^{-1}$ is the preimage of $ F $ (not to be confused with the inverse function though they are equivalent if $F$ is bijective). Then, the relation $x\in F^{-1}(R) \Leftrightarrow F(x)\in R$ implies
+		\begin{align*}
+		1-\delta = \mathbb{P}[x\in S] \le \mathbb{P}[x\in F^{-1}(R)] = \mathbb{P}[F(x)\in R] 
+		\end{align*}
+		which completes the proof.
+	\end{proof}
+
+	
+	
+	\subsection{Gradient Computation}
+	Even using an efficient method to propagate system uncertainty is not in general sufficient to allow use of numerically estimated gradients.	We need a method to compute $ \frac{\partial J}{\partial u_i} $ and $ \frac{\partial c_k}{\partial u_i} $ where $u_i \equiv u(t_i)$.
+		
+		
+		
+		
+	\section{Sequential Convex Feedback Control}
+	What is the optimal feedback back problem? Design a controller, possibly nonlinear, that optimally regulates back to an existing trajectory? This doesn't seem to be the correct approach for entry. 
+	
+			
+	\section{What problem(s) am I trying to solve?}
+	Efficient UQ via Taylor polynomials with adaptive splitting routine. Since linear transforms are fine, compare the largest of higher order terms to the gradient? Split in each direction that violates the condition for any state variable. 
+	
+	Consider the state $x=[x_1,\ x_2]$. Let $z = f(x) \in \mathbb{R}^2$. 
+	\begin{align}
+	P(x) = f(0) + f_xx + 0.5x^Tf_{xx}x +\dots
+	\end{align}
+	where $f_x$ is a Jacobian matrix, etc. We can take eigenvalues of both the Jacobian (for the overall directions?) as well as for each element of the Hessian tensor (one eigendecomp per direction). Maybe compare the norm of the gradient to something? Note also that the PDF of z is given by $p_z(z) = \frac{p_x(x(z))}{|f_x^{-1}|} $. We can also compute the expectation of each variable fairly cheaply (using an actual grid) and compare it to the zero point (expected value of inputs). With zero nonlinearity they will match. 
+	
+	DA-based solution to pseudospectral problems? Although the problem is very large-scale (in the number of variables), there is no integration required so the total number of operations is small. 1st and 2nd derivatives can be evaluated easily and analytically. 
+	
+	Optimal trajectory design - convex inner approximation approach seems sufficient for a single trajectory. 
+	
+	Controller design - some form of feedback design to work with a reference trajectory? Perhaps makes more sense in the SRP phase than during entry 
+	
+	Coupled trajectory and feedback design to meet probabilistic constraints and minimize endpoint dispersions. In contrast to Tsiotras approach, which is explicit covariance steering, we would rather minimize (elements of) the covariance.
+	
+	Higher-order Taylor series expansion for neighboring optimal control? Derive higher expansions? 
+	
+	Iterative convex optimization approach to multi-phase optimal control? So long as the constraints linking the two phases are amenable, this could be a good approach. It has relevant components (EDL, modern SRP-based landing) and the individual problems are well studied. Really we are just solving the SRP problem from an earlier condition? Although the state constraints linking the phases are easily implemented, what about the duration(s) of each portion? This is difficult to tackle. 
+	
+	Can we develop kriging controller(s) for entry and srp and then use them as surrogates to find the optimal ignition point? Or maybe for entry (deterministic) we only need to determine the boundaries of the reachable set, and from there we can use an srp kriging controller (or actually solve the SRP OCP). Then again, if the SRP controller has been designed, we know the mass from any given point. 
+	\pagebreak
+	
+	\begin{theorem}
+		Tang $\not= H_2O$
+	\end{theorem}
+	\begin{proof}
+		The proof is by contradiction. We have
+		\begin{align}
+		Tang = H_2O + C_{12}H_{22}O_{11} \\
+		H_2O = H_2O + C_{12}H_{22}O_{11} \\
+		C_{12}H_{22}O_{11} = 0
+		\end{align}
+		but this final equality does not hold, and the proof is complete.
+	\end{proof}
+		
+%	\bibliographystyle{AAS_publication}
+%	\bibliography{bib}
+
+\end{document}
