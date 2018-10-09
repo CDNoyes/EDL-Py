@@ -1,7 +1,7 @@
 """ Pure python implementation of a projected newton method for solving box-constrained quadratic programs """
 
 import numpy as np
-
+from itertools import product 
 
 def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbose=False, check_hessian=False):
     """
@@ -98,9 +98,13 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
         else:
             print("Total iterations = {}".format(iteration))
 
-    clamped = c
+
+    # TODO: The following code works but there must be a vectorized way to set all of these values to zero 
+    clamped = np.where(c)[0]
     H = hessian
-    H[clamped, :][:, clamped] = 0
+    for pt in product(clamped, clamped):
+        H[pt] = 0
+    # H[clamped, :][:, clamped] = 0
     return x, H
 
 

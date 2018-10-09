@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt 
 import numpy as np 
 import pyaudi as pa 
+
 import pdb 
 
 import DA as da 
@@ -96,7 +97,6 @@ class DDP:
                     QuuP = AbsRegularize(Quu, shift=reg)
                     k[i], Quuf = solveQP(k[i], QuuP, Qu, ([bounds[0]-u[i]], [bounds[1]-u[i]]), verbose=False)
                     K[i] = -np.linalg.pinv(Quuf) @ Qux  # Pinv is the same as inv when Quuf > 0, but also correctly handles clamped directions Quuf >= 0
-
                 
                 dV = [dV[0] + k[i].T @ Qu, dV[1] + 0.5*(k[i].T @ Quu @ k[i]).squeeze()]
                 # V += -0.5*(k[i].T @ Quu @ k[i]).squeeze()
@@ -277,10 +277,12 @@ class Linear(DDP):
     def __init__(self, n, m, h):
         from scipy.linalg import expm 
         self.dt = h 
-        A = np.random.standard_normal((n, n))
-        A = A - A.T 
+        # A = np.random.standard_normal((n, n))
+        # A = A - A.T 
+        A = np.diag([0, -1, 0.1, -0.5])
         A = expm(A*h)
-        B = h*np.random.standard_normal((n,m))
+        # B = h*np.random.standard_normal((n,m))
+        B = h*np.ones((n,m))
         self.A = A 
         self.B = B 
 
@@ -289,7 +291,7 @@ class Linear(DDP):
 
     def lagrange(self, x, u):
         Q = self.dt  
-        R = 0.1 * self.dt 
+        R = 0.01 * self.dt 
         return 0.5*Q*x.dot(x) + 0.5*R*u.dot(u)
 
     def mayer(self, xf):
@@ -311,14 +313,15 @@ if __name__ == "__main__":
     # plt.show()
 
 
-    n = 10 
+    n = 4
     m = 2
     N = 1000
     test = Linear(n, m, 0.01)
-    x0 = np.random.standard_normal((n,))
+    # x0 = np.random.standard_normal((n,))
+    x0 = np.ones((n,))
     u0 = 0.1*np.random.standard_normal((N, m))
     bounds = np.ones((2, m))*0.6
     bounds[0] *= -1
-    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=15) 
+    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=10) 
 
     plt.show()
