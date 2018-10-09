@@ -34,14 +34,19 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
         assert np.all(np.linalg.eigvalsh(hessian) > 0), "Hessian is not positive definite"
 
     iteration = 0
-    n = len(x0)
+    try:
+        n = len(x0)
+    except TypeError:
+        n = 1
 
     if n == 1:  # trivial scalar case
-        opt = np.clip(-np.squeeze(gradient)/np.squeeze(hessian), *bounds)[0]
+        opt = np.clip(-np.squeeze(gradient)/np.squeeze(hessian), *bounds).squeeze()
+        opt = np.array([opt])
+        
         if opt in bounds:
             H = [[0.]]
         else:
-            H = hessian
+            H = [[np.squeeze(hessian)]]
         return opt, H
 
     x = np.clip(x0, bounds[0], bounds[1]).squeeze()  # Make the initial point feasible
@@ -59,7 +64,7 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
         gu = g > 0
         gl = g < 0  # = np.logical_not(gu)
 
-        c = np.logical_or(np.logical_and(gl, idu), np.logical_and(gu, idl))
+        c = np.logical_or(np.logical_and(gl, idu), np.logical_and(gu, idl)).squeeze()
         f = np.logical_not(c)
         hff = hessian[f, :][:, f]
 
@@ -106,7 +111,7 @@ def _armijo(f, x, dx, g, xl, xu):
     r = 0.5*gamma
     while r < gamma:
         alpha *= c
-        xa = np.clip(x+alpha*dx, xl, xu)
+        xa = np.clip(x+alpha*dx, xl, xu).squeeze()
         r = (f(x)-f(xa))/np.dot(g, (x-xa))
     return alpha
 
@@ -125,7 +130,7 @@ def test_scalar():
     g = -1
     x = 0
 
-    opt = ProjectedNewton([x], H, g, [-1, 10])
+    opt = ProjectedNewton(x, H, g, [-1, 10])
     sol = minimize_scalar(_fQuad(H, g), method='bounded', bounds=(-1, 10))
     assert np.allclose(opt[0], sol.x), "Projected Newton 'test_scalar' failed. Solution does not match scipy minimize_scalar."
 
@@ -170,7 +175,6 @@ def test():
         g = (-1 + 2*np.random.random((n,)))*25
         x = (-1 + 2*np.random.random((n,)))*50
 
-
         bounds = [-3*np.ones((n,)), 5*np.ones((n,))]
         t0 = timer()
         xo, _ = ProjectedNewton(x, H, g, bounds, verbose=False, iter_max=20, tol=1e-9)
@@ -193,6 +197,7 @@ def test():
     print("Percentiles:")
     for p in [90, 95, 99]:
         print("{}% = {:.3f} ms".format(p, np.percentile(tsolve, p)*1000))
+    print("Max = {:.3f} ms".format(np.max(tsolve)*1000))
 
     seaborn.kdeplot(np.array(tsolve)*1000, cumulative=True)
     plt.xlabel("QP Solver Time (ms)")
