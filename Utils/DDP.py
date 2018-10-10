@@ -19,7 +19,12 @@ class DDP:
         pass 
     
     def solve(self, x0, N, bounds, u=None, maxIter=10, tol=1e-6, verbose=True):  # TODO: This should be implemented in specific versions of DDP, this algorithm is specific to control-limited 
-        reg = 1
+        reg = 1   # initial regularization parameter 
+        dreg = 1  # initial regularization update parameter 
+        reg_factor = 1.6
+        gradient_tol = 1e-5
+        objective_tol = 1e-7
+
         reduction_ratio = []
         self.bounds = np.asarray(bounds)
         self.N = N 
@@ -42,42 +47,35 @@ class DDP:
             if np.ndim(u) == 1:
                 u = u[:, None]
         u = np.clip(u, *bounds)
+        u[-1] = 0 # Always 
         
         J = []
         for iter in range(maxIter):
-            # print("Iteration {}".format(iter))
             # Forward propagation
             if not iter:
                 x = self.forward(x0, u)
+            
+            # Derivatives along trajectory
             Ld, Fd = self.Lagrange(x, u)
             Fg, Fh = Fd
             L, Lg, Lh = Ld
             LN, Mx, Mxx = self.Mayer(x[-1])
 
-            J.append(np.sum(L[:-1]) + LN)
+            J.append(np.sum(L) + LN)
             # if len(J) > 1:
             #     if np.abs(J[-1]-J[-2]) < tol:
             #         break
-            # if iter < 10 or not (iter+1)%10:            
-            #     plt.figure(1)
-            #     plt.plot(list(range(self.N)), x,'--', label="{}".format(iter))
-
-            #     plt.figure(2)
-            #     plt.plot(list(range(self.N)), u, '--', label="{}".format(iter))
-                # pdb.set_trace()
-                # plt.figure(4)
-                # plt.plot(L, 'o', label="{}".format(iter))
 
 
-            # Final conditions on Value function and its derivs
+
+            # Final conditions on Value function derivs
             dV = [0, 0]
-            V = LN
-            Vx = Mx
-            Vxx = Mxx
+            Vx = Mx + Lg[-1][0:self.n]
+            Vxx = Mxx + submatrix(Lh[-1], xrows, xrows)
             # Backward propagation
             k = [np.zeros((self.m,))]*self.N
             K = [np.zeros((self.m, self.n))]*self.N
-            for i in range(N)[::-1]:
+            for i in range(N-1)[::-1]:
                 Qg = Lg[i] + Fg[i].T @ Vx
                 Qx = Qg[0:self.n]
                 Qu = Qg[self.n:p]
@@ -90,7 +88,7 @@ class DDP:
                 
                 # No control limits 
                 if False:
-                    k[i] = (-Qu/Quu) # Shouldnt be any divide by zero error here 
+                    k[i] = (-Qu/Quu)  # Shouldnt be any divide by zero error here 
                     K[i] = (-Qux/Quu)
                 # Bounded controls:
                 else:
@@ -99,30 +97,49 @@ class DDP:
                     K[i] = -np.linalg.pinv(Quuf) @ Qux  # Pinv is the same as inv when Quuf > 0, but also correctly handles clamped directions Quuf >= 0
                 
                 dV = [dV[0] + k[i].T @ Qu, dV[1] + 0.5*(k[i].T @ Quu @ k[i]).squeeze()]
-                # V += -0.5*(k[i].T @ Quu @ k[i]).squeeze()
-                Vx = (Qx-K[i].T @ Quu @ k[i]).squeeze()
-                Vxx = Qxx-K[i].T @ Quu @ K[i] 
+                Vx = (Qx + K[i].T @ Quu @ k[i] + K[i].T @ Qu + Qux.T @ k[i]).squeeze()
+                Vxx = Qxx + K[i].T @ Quu @ K[i] + K[i].T @ Qux + Qux.T @ K[i]
+                Vxx = 0.5*(Vxx + Vxx.T)
 
             # Forward correction
             xnew, unew, Jnew, step, success = self.correct(x, u, k, K)  # Backtracking line search, simply looks to reduce cost
             if success:
-                reg *= 0.25 
+                dreg = np.min((dreg/reg_factor, 1/reg_factor))
+                reg *= dreg
                 x = xnew 
                 u = unew 
                 reg = np.clip(reg, 1e-6, 1e6)
             else:
-                reg *= 1.6
-                reg = np.clip(reg, 1e-6, 1e6)
-                print("Failed iteration: no cost reduction achieved")
+                dreg = np.maximum(dreg*reg_factor, reg_factor)
+                reg = np.maximum(reg*reg_factor, 1e-4) # minimum regulation 
+                if reg > 1e8:
+                    if verbose:
+                        print("Maximum regulation achieved and step failed. Aborting.")
+                    break
+                # if verbose:
+                #     print("No cost reduction achieved. Increasing regulation.")
                 continue 
 
             expected = -step*(dV[0] + step*dV[1])
-            g_norm = np.mean(np.max(np.abs(k)/(np.abs(u)+1)))
-            reduction_ratio.append((J[-1]-Jnew)/expected)
+            g_norm = np.mean(np.max(np.abs(k)/(np.abs(u)+1), axis=1))
+            if g_norm < gradient_tol and reg < 1e-3:
+                if verbose:
+                    print("Success: gradient norm less than tolerance with minimal regulation")
+                break
+            reduction_ratio.append((J[-1]-Jnew)/expected) # this is "z" in matlab implement 
+            if J[-1]-Jnew < objective_tol:
+                if verbose:
+                    print("Success: change in objective function smaller than tolerance")
+                break
+            if expected < objective_tol/10:
+                if verbose:
+                    print("Success: expected change in objective function smaller than tolerance")
+                break
+
             if verbose:
                 if not iter or not iter % 5:
                     header_print()
-                iter_print(iter, J[-1], J[-1]-Jnew, expected, g_norm)
+                iter_print(iter, J[-1], J[-1]-Jnew, expected, g_norm, reg)
             
         plt.figure(1)    
         plt.plot(list(range(self.N)), x, label='Final')
@@ -170,7 +187,7 @@ class DDP:
     def evalCost(self, x, u):
         L = [self.lagrange(xi, ui) for xi, ui in zip(x, u)]
         LN = self.mayer(x[-1])
-        return np.sum(L[:-1]) + LN 
+        return np.sum(L) + LN 
         
     def transition(self, x, u, N):
         raise NotImplementedError
@@ -244,11 +261,11 @@ def vector_tensor(v, T):
 
 
 def header_print():
-    print("iteration    cost        reduction    expected     gradient")
+    print("iteration    cost        reduction    expected     gradient     log10(lambda)")
 
 
-def iter_print(iter, cost, reduction, expected, gradient):
-    print("   {:<2}        {:.4g}         {:.3g}          {:.3g}          {:.3g}".format(iter, cost, reduction, expected, gradient))
+def iter_print(iter, cost, reduction, expected, gradient, regularization):
+    print("   {:<2}        {:<13.4g}{:<13.3g}{:<13.3g}{:<13.3g}{:<5.3g}".format(iter, cost, reduction, expected, gradient, np.log10(regularization)))
 
 
 class Test(DDP):
@@ -277,12 +294,12 @@ class Linear(DDP):
     def __init__(self, n, m, h):
         from scipy.linalg import expm 
         self.dt = h 
-        # A = np.random.standard_normal((n, n))
-        # A = A - A.T 
-        A = np.diag([0, -1, 0.1, -0.5])
+        A = np.random.standard_normal((n, n))
+        A = A - A.T 
+        # A = np.diag([0, -1, 0.1, -0.5])
         A = expm(A*h)
-        # B = h*np.random.standard_normal((n,m))
-        B = h*np.ones((n,m))
+        B = h*np.random.standard_normal((n,m))
+        # B = h*np.ones((n,m))
         self.A = A 
         self.B = B 
 
@@ -313,15 +330,16 @@ if __name__ == "__main__":
     # plt.show()
 
 
-    n = 4
+    n = 10
     m = 2
     N = 1000
     test = Linear(n, m, 0.01)
-    # x0 = np.random.standard_normal((n,))
-    x0 = np.ones((n,))
+    x0 = np.random.standard_normal((n,))
+    # x0 = np.ones((n,))
     u0 = 0.1*np.random.standard_normal((N, m))
+    # u0 = np.ones((N,m))*0.01
     bounds = np.ones((2, m))*0.6
     bounds[0] *= -1
-    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=10) 
+    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=25) 
 
     plt.show()
