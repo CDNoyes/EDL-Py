@@ -105,10 +105,10 @@ class DDP:
             xnew, unew, Jnew, step, success = self.correct(x, u, k, K)  # Backtracking line search, simply looks to reduce cost
             if success:
                 dreg = np.min((dreg/reg_factor, 1/reg_factor))
-                reg *= dreg
+                reg *= dreg * float(reg > 1e-8)
                 x = xnew 
                 u = unew 
-                reg = np.clip(reg, 1e-6, 1e6)
+                reg = np.clip(reg, 1e-8, 1e6)
             else:
                 dreg = np.maximum(dreg*reg_factor, reg_factor)
                 reg = np.maximum(reg*reg_factor, 1e-4) # minimum regulation 
@@ -184,10 +184,12 @@ class DDP:
             u = u[:, None]
         return np.array(xnew), u, Jnew, step, success 
         
+    # def da_correct(self):  #Make the stepsize a DA, and solve an optimization problem to find the next step 
+
     def evalCost(self, x, u):
         L = [self.lagrange(xi, ui) for xi, ui in zip(x, u)]
         LN = self.mayer(x[-1])
-        return np.sum(L) + LN 
+        return np.sum(L) + LN
         
     def transition(self, x, u, N):
         raise NotImplementedError
@@ -332,7 +334,7 @@ if __name__ == "__main__":
 
     n = 10
     m = 2
-    N = 1000
+    N = 200
     test = Linear(n, m, 0.01)
     x0 = np.random.standard_normal((n,))
     # x0 = np.ones((n,))
