@@ -333,8 +333,8 @@ if __name__ == "__main__":
 
 
     n = 10
-    m = 2
-    N = 200
+    m = 5
+    N = 1000
     test = Linear(n, m, 0.01)
     x0 = np.random.standard_normal((n,))
     # x0 = np.ones((n,))
@@ -342,6 +342,6 @@ if __name__ == "__main__":
     # u0 = np.ones((N,m))*0.01
     bounds = np.ones((2, m))*0.6
     bounds[0] *= -1
-    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=25) 
+    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=150) 
 
     plt.show()
