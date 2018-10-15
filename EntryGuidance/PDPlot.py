@@ -8,7 +8,7 @@ def Plot(df):
     y = df['y']
     z = df['z']
 
-    # r = np.linalg.norm([x,y,z], axis=0)
+    hor = np.linalg.norm([x,y], axis=0)
     
     t = df.index 
     m = df['mass'] # not all versions have mass ?
@@ -24,7 +24,7 @@ def Plot(df):
     V = np.linalg.norm((u,v,w), axis=0)
     T = np.linalg.norm((Tx,Ty,Tz), axis=0)
 
-    figsize = (16,10)
+    figsize = (16,7)
     plt.figure(figsize=figsize)
 
     plt.subplot(2,2,1)
@@ -43,8 +43,17 @@ def Plot(df):
     plt.ylabel("Velocity (m/s)")
 
     plt.subplot(2,2,4)
-    plt.plot(t, T)
+    plt.plot(t, T/1000)
     plt.xlabel('Time (s)')
-    plt.ylabel("Thrust (N)")
+    plt.ylabel("Thrust (kN)")
+
+    # Plot the control unit vector 
+
+    plt.figure()
+    plt.plot(hor, z)
+    plt.plot(hor, hor*np.tan(15*np.pi/180), 'k--', label="15 deg glide-slope constraint")
+    plt.xlabel("Horizontal Distance (m)")
+    plt.ylabel("Altitude (m)")
+    plt.legend()
 
     plt.show()

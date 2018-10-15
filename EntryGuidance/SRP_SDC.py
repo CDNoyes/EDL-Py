@@ -60,7 +60,7 @@ class Full:
 
         V = np.linalg.norm(v)
 
-        Z = np.zeros((3,3))
+        Z = np.zeros((3, 3))
         I = np.eye(4)[:-1]
 
         Ar = np.concatenate((Z, I), axis=1)
@@ -68,9 +68,18 @@ class Full:
         Av = np.zeros((3, 7))
         Av[2, -1] = -3.71/m          # gravity term 
 
+        # Aerodynamic drag 
+        rho0 = 0.0158   # assume we're close enough to the ground 
+        Cd = 1.4        # constant drag 
+        S = 15.8        # area, m^2 
+        Dv = -0.5*rho0*V*S/m * Cd
+        Dm = -0.5*rho0*V*S/m**2 * Cd * v
+        alpha = 0.5 # weighting between mass and velocity components of drag 
+        Av_aero = np.concatenate((Z, np.eye(3)*Dv*alpha, Dm[:, None]*(1-alpha)), axis=1)
+
         Am = np.zeros((1, 7))
 
-        return np.concatenate((Ar, Av, Am), axis=0)
+        return np.concatenate((Ar, Av+Av_aero, Am), axis=0)
 
     def B(self, t, x, u):
 
@@ -179,17 +188,18 @@ if __name__ == "__main__":
     v0 = [600, 0, -265]
     m0 = [8500]
 
-
     x0 = np.array(r0+v0+m0)
+
     t0 = 0
     tf = 17
     N = 200
     t = np.linspace(t0, tf, N)
+
     model = Full()
 
-    Q = lambda t,x: np.diag([1,1,1,10,10,10])*1e-4
+    Q = lambda t,x: np.diag([1,1,1,10,10,10])*1e-3
     R = lambda t,x,u: np.eye(3)*1e-8 
-    F = lambda xf: np.eye(6)*1
+    F = lambda xf: np.diag([1,1,1,10,10,10])*1e-1
     z = lambda t: np.zeros((6, 1)) 
 
     x,u,K = ASRE(x0, tf, model.A, model.B, model.C, Q, R, F, z, model.m, max_iter=15, tol=1e-12, n_discretize=N, guess=model.guess(x0, tf, N))
