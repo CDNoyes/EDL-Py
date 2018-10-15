@@ -70,7 +70,7 @@ class Full:
 
         # Aerodynamic drag
         rho0 = 0.0158   # assume we're close enough to the ground
-        Cd = 1.4*0        # constant drag
+        Cd = 1.4        # constant drag
         S = 15.8        # area, m^2
         Dv = -0.5*rho0*V*S/m * Cd
         Dm = -0.5*rho0*V*S/m**2 * Cd * v
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     z = lambda t: np.zeros((6, 1)) 
 
     print("Running unconstrained SRP landing ")
-    x,u,K = ASRE(x0, tf, model.A, model.B, model.C, Q, R, F, z, model.m, max_iter=15, tol=1e-12, n_discretize=N, guess=model.guess(x0, tf, N))
+    x,u,K = ASRE(x0, tf, model.A, model.B, model.C, Q, R, F, z, model.m, max_iter=15, tol=1e-4, n_discretize=N, guess=model.guess(x0, tf, N))
 
     XU = np.concatenate((x,u), axis=1)
 
