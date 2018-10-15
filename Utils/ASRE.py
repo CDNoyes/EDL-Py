@@ -1,15 +1,14 @@
 """ Implements two versions of Approximating Sequence of Riccati Equations nonlinear control method """
 
-from numpy import sin, cos, tan, dot, arccos
+import matplotlib.pyplot as plt
 import numpy as np
+from numpy import sin, cos, dot
 from scipy.linalg import solve as matrix_solve
 from scipy.integrate import simps as trapz
 from scipy.interpolate import interp1d
-# from scipy.integrate import odeint 
-from RK4 import RK4 as odeint 
-import matplotlib.pyplot as plt
-from functools import partial
 from itertools import product
+
+from RK4 import RK4 as odeint 
 
 interp_type = 'cubic'
 
@@ -17,67 +16,9 @@ interp_type = 'cubic'
 #                           Approximating Sequence of Riccati Equations                          #
 # ################################################################################################
 
-# TODO: The reshaped matrices can be integrated directly using my RK4 scheme instead of scipy.odeint, not sure which is faster 
 # TODO: Implement and study the stochastic versions which simply requires adding stochastic terms to the Riccati equations
 # TODO: Test state constraints 
 # TODO: Implement SRP with integral control and compare 
-
-
-def asre_feedback(t, x, u, B, R, P):
-
-    return [dot(matrix_solve(R(ti, xi, ui), B(ti, xi, ui).T), Pi) for ti,xi,ui,Pi in zip(t,x,u,P)] 
-
-
-def asre_integrateV(t, Vf, A, B, K, x, u):
-    V = [Vf]
-    dt = np.diff(t)
-    for ti,xi,ui,k,dti in zip(t[::-1], x[::-1], u[::-1], K[::-1], dt[::-1]):
-        a = A(ti, xi)
-        b = B(ti, xi, ui)
-        V.append(odeint(V_dynamics, V[-1], [0,dti], args=(a,b,k,))[-1])
-
-    return np.array(V)
-
-
-def asre_Pdynamics(P, t, V, B, R):
-    return -V.T.dot(B).dot(np.linalg.solve(R, B.T.dot(V)))
-
-
-def asre_integrateP(t, V, B, R, x, u):
-    dt = np.diff(t)
-    n = V[0].shape[1]
-    P = [np.zeros((n,n))]
-    for ti,xi,ui,Vi,dti in list(zip(t,x,u,V,dt))[::-1]:
-        P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi, B(ti,xi,ui), R(ti,xi,ui)))[-1]) 
-    return np.array(P)
-
-
-def asrec_dynamics(x,t,A,B,R,K,P,V,z):
-    u = asrec_control(x, A, B, R, K, P, V, z.squeeze())
-    return A.dot(x) + B.dot(u)
-
-
-def asrec_control(x,A,B,R,K,P,V,z):
-    rb = np.linalg.solve(R, B.T)
-
-    try:
-        u = -(K - rb.dot(V).dot(np.linalg.solve(P, V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P, z))
-    except np.linalg.LinAlgError:
-        u = -(K - rb.dot(V).dot(np.linalg.lstsq(P, V.T)[0])).dot(x) - rb.dot(V).dot(np.linalg.lstsq(P, z)[0])
-
-    return u
-
-
-def asrec_cost(t, x, u, Q, R, F, C):
-    integrand = 0.5*np.array([dot(xi.T,dot(Q(ti,xi),xi)) + dot(ui, dot(R(ti,xi,ui), ui.T)) for ti,xi,ui in zip(t,x,u)]).flatten() 
-    J0 = 0.5*dot(x[-1].T, dot(F, x[-1]))
-    return J0 + trapz(integrand, t)
-
-
-def check(x, msg):
-    if not np.all(np.isfinite(x)):
-        print(msg)
-        raise Exception
 
 
 def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
@@ -108,13 +49,9 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         # Riccati equation for feedback solution
         Pf = C.T.dot(F.dot(C))
         P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: C, Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T)))[::-1]
-        check(P, "P")
         K = asre_feedback(t, x, u, B, R, P)
-        check(K,"K")
         V = asre_integrateV(t, C.T, A, B, K, x, u)[::-1]
-        check(V,"V")
         P = asre_integrateP(t, V, B, R, x, u)[::-1] # This P has nothing to do with the previous one 
-        check(P, "P2")
 
         # Compute new state trajectory and control
         xold = x 
@@ -122,9 +59,7 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         u = [u[0].T]
         for stage in range(n_discretize-1):
             u.append(asrec_control(x[-1], A(t[stage], x[-1]), B(t[stage],x[-1],u[-1]), R(t[stage],x[-1],u[-1]), K[stage], P[stage], V[stage], z.squeeze()).T) 
-            x.append(odeint(asrec_dynamics, x[-1], [0, dt[stage]], args=(A(t[stage], x[-1]), B(t[stage],x[-1],u[-1]), R(t[stage],x[-1],u[-1]), K[stage], P[stage], V[stage], z))[-1])
-            # print("u = {}".format(u[-1]))
-
+            x.append(odeint(asrec_dynamics, x[-1], [0, dt[stage]], args=(A(t[stage], x[-1]), B(t[stage], x[-1], u[-1]), R(t[stage], x[-1], u[-1]), K[stage], P[stage], V[stage], z))[-1])
 
         x[-1] = x[-2]
         u[0] = u[1]
@@ -230,12 +165,13 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
             si = interp1d(tb, s, kind=interp_type, fill_value=(s[0],s[-1]), axis=0, bounds_error=False)
 
             # Compute new state trajectory and control
-            # xold = np.copy(x)
             Jold = J
+            xold = x 
             x = odeint(dynamics, x0, t, args=(A, B, R, Pi, ui, si))
             u = compute_control(B, R, Pv, x, u, s, n, t)
             J = compute_cost(t, x, u, C, Q, R, F, z)
-            converge = np.abs(J-Jold)/J
+            converge = np.max(np.abs(np.array(x)-xold))
+            # converge = np.abs(J-Jold)/J
 
         print("Current cost: {}".format(J))
         if J < pocket['cost']:
@@ -250,6 +186,51 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
             return x, u, np.array([sdre_feedback(B(tc,xc,uc),R(tc,xc,uc),p) for tc,xc,uc,p in zip(t,x,u,Pv[::-1])])
     print("Best cost found {}".format(pocket['cost']))
     return pocket['state'], pocket['control'], pocket['feedback']
+
+
+def asre_feedback(t, x, u, B, R, P):
+
+    return [dot(matrix_solve(R(ti, xi, ui), B(ti, xi, ui).T), Pi) for ti, xi, ui, Pi in zip(t, x, u, P)] 
+
+
+def asre_integrateV(t, Vf, A, B, K, x, u):
+    V = [Vf]
+    dt = np.diff(t)
+    for ti, xi, ui, k, dti in zip(t[::-1], x[::-1], u[::-1], K[::-1], dt[::-1]):
+        a = A(ti, xi)
+        b = B(ti, xi, ui)
+        V.append(odeint(V_dynamics, V[-1], [0, dti], args=(a, b, k,))[-1])
+
+    return np.array(V)
+
+
+def asre_Pdynamics(P, t, V, B, R):
+    return -V.T.dot(B).dot(np.linalg.solve(R, B.T.dot(V)))
+
+
+def asre_integrateP(t, V, B, R, x, u):
+    dt = np.diff(t)
+    n = V[0].shape[1]
+    P = [np.zeros((n, n))]
+    for ti, xi, ui, Vi, dti in list(zip(t, x, u, V, dt))[::-1]:
+        P.append(odeint(asre_Pdynamics, P[-1], [0, dti], args=(Vi, B(ti, xi, ui), R(ti, xi, ui)))[-1]) 
+    return np.array(P)
+
+
+def asrec_dynamics(x, t, A, B, R, K, P, V, z):
+    u = asrec_control(x, A, B, R, K, P, V, z.squeeze())
+    return A.dot(x) + B.dot(u)
+
+
+def asrec_control(x, A, B, R, K, P, V, z):
+    rb = np.linalg.solve(R, B.T)
+
+    try:
+        u = -(K - rb.dot(V).dot(np.linalg.solve(P, V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P, z))
+    except np.linalg.LinAlgError:
+        u = -(K - rb.dot(V).dot(np.linalg.lstsq(P, V.T)[0])).dot(x) - rb.dot(V).dot(np.linalg.lstsq(P, z)[0])
+
+    return u
 
 
 def compute_control(B,R,Pv,X,U,S,n,T):
@@ -275,18 +256,10 @@ def dP(p, t, A, B, C, Q, R, X, U):
     u = U(t)
     a = A(t, x)
     b = B(t, x, u)
-    if not np.all(np.isfinite(p)):
-        import pdb 
-        pdb.set_trace()
     c = C(t, x)
     q = Q(t, x)
     r = R(t, x, u)
-    if np.any(np.isnan(q)) or np.any(np.isnan(r)):
-        import pdb 
-        pdb.set_trace()
-    # try:
-    s = dot(b,matrix_solve(r,b.T))
-    # except ValueError:
+    s = dot(b, matrix_solve(r,b.T))
     return (-dot(c.T,dot(q,c)) - dot(p,a) - dot(a.T,p) + dot(p,dot(s,p)))
 
 
