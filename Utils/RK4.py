@@ -23,17 +23,37 @@ def _rk4_step(f, iv, x, h, args):
     return x + h*(k1 + 2*k2 + 2*k3 + k4)/6.0
 
 
-def RK45(fun, x0, iv, args=(), tol=1e-4):
+def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
     T = DOPRI45()
     # Step through adaptively then output at the points in iv 
+
+    s = np.sign(iv[-1]-iv[0]) # allows for decreasing stepsizes 
+    tf = iv[-1] 
     x = [np.asarray(x0)]
-    h = 1 # Initial stepsize 
-    t = iv[0] # Current time 
+    t = [iv[0]]
+    h = 1*s # Initial stepsize 
+    tc = iv[0] # Current time 
 
 
-    xc = _step(fun, t, x[-1], h, args, T) # candidate step
-    err = np.max(np.abs(xc[0] - xc[1]))
-    rel_err = err/tol 
+    while t[-1] < tf :
+        if h > (tf-tc)*s:
+            h = (tf-tc)*s
+
+        accept = False 
+        attempts = 0
+        while not accept and attempts < 10:
+            xc = _step(fun, tc, x[-1], h, args, T) # candidate step
+            tnew = tc + h 
+            err = np.max(np.abs(xc[0] - xc[1]))
+            rel_err = err/tol 
+            h, accept = _step_control(np.abs(h), hmin, 0.2, 10, rel_err, order=5)
+            h *= s 
+            attempts += 1
+        
+        t.append(tnew)
+        x.append(xc[0])
+
+    return np.array(t), np.array(x)
 
 
 
@@ -54,6 +74,27 @@ def _step(f, iv, x, h, args, tableau):
     return x + h*np.dot( np.moveaxis(k, 0, 2), tableau.b)
 
 
+def _step_control(h, hmin, shrink, grow, err, order):
+    
+    alpha = -1/order 
+    accept_previous_step = err <= 1
+
+    if accept_previous_step: # Determine the next step size
+        if err == 0:
+            scale = grow 
+        else:
+            scale = np.min((grow, np.max(shrink, 0.9*err**alpha)))
+
+        hnew = np.max((hmin, h*scale))
+    else:                       # Determine a new stepsize to retry 
+        if h <= hmin: # bad situation, error is too large and minimum stepsize is already being used 
+            hnew = h 
+            accept_previous_step = True 
+        else:
+            hnew = np.max((hmin, h*np.max((shrink, 0.9*err**alpha))))
+
+
+    return hnew, accept_previous_step
 
 class Tableau:
 
@@ -113,17 +154,26 @@ class RungeKutta4(Tableau):
     
 
 def test():
+    import matplotlib.pyplot as plt 
 
     def dyn(x,t):
         return t*x 
 
-    # x0 = np.array([1,2,3])
-    x0 = np.eye(3)
-    print(_rk4_step(dyn, 1, x0, 0.5, ()))
-    print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
-    x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
-    print(x[:,:,0])
-    print(x[:,:,1])
+    x0 = np.array([1,2,3])
+    # x0 = np.eye(3)
+    # print(_rk4_step(dyn, 1, x0, 0.5, ()))
+    # print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
+    # x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
+    # print(x[:,:,0])
+    # print(x[:,:,1])
+
+    t = np.linspace(0,5)
+    x = RK4(dyn, x0, t)
+    ty, y = RK45(dyn, x0, [0,5])
+    plt.plot(t,x)
+    plt.plot(ty, y)
+    plt.show()
+
 
 if __name__ == "__main__":
     test()
