@@ -29,15 +29,14 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
     T = DOPRI45()
     # Step through adaptively then output at the points in iv 
 
-    s = np.sign(iv[-1]-iv[0]) # allows for decreasing stepsizes 
+    s = np.sign(iv[-1]-iv[0])  # allows for decreasing stepsizes 
     tf = iv[-1] 
     x = [np.asarray(x0)]
     t = [iv[0]]
-    h = 0.1*s # Initial stepsize 
-    tc = iv[0] # Current time 
+    h = 1*s     # Initial stepsize 
+    tc = iv[0]  # Current time 
 
-
-    while t[-1] < tf:
+    while t[-1]*s < tf*s:
         print("Current time: {:.3g}".format(tc))
         if h > (tf-tc)*s:
             h = (tf-tc)*s
@@ -48,10 +47,9 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
             xc = _step(fun, tc, x[-1], h, args, T) # candidate step
             xc = np.moveaxis(xc, -1, 0)
             tnew = tc + h 
-            err = np.max(np.abs(xc[0] - xc[1]))
+            err = np.max(np.abs(xc[0] - xc[1])) # TODO: Consider scaling this by something like |x| + |xdot * h| + eps 
             rel_err = err/tol 
             h, accept = _step_control(np.abs(h), hmin, 0.2, 10, rel_err, order=5)
-            # h, accept = 0.1, True
             h *= s 
             attempts += 1
         print("maximum err in step ~ {:.1g} x tolerance".format(rel_err))
@@ -60,7 +58,6 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
         x.append(xc[0].squeeze())
 
     return np.array(t), np.array(x)
-
 
 
 def _step(f, iv, x, h, args, tableau):
@@ -86,21 +83,21 @@ def _step_control(h, hmin, shrink, grow, err, order):
     accept_previous_step = err <= 1
 
     if accept_previous_step: # Determine the next step size
-        if err == 0:
+        if err < 1e-3:   # 1000x smaller than our tolerance allows -> let it grow
             scale = grow 
         else:
-            scale = np.min((grow, np.max((shrink, 0.9*err**alpha))))
+            scale = np.min((grow,  err**alpha))
 
         hnew = np.max((hmin, h*scale))
     else:                       # Determine a new stepsize to retry 
-        if h <= hmin: # bad situation, error is too large and minimum stepsize is already being used 
+        if h <= hmin:  # bad situation, error is too large and minimum stepsize is already being used 
             hnew = h 
             accept_previous_step = True 
         else:
             hnew = np.max((hmin, h*np.max((shrink, 0.9*err**alpha))))
 
-
     return hnew, accept_previous_step
+
 
 class Tableau:
 
@@ -162,24 +159,26 @@ def test():
     import matplotlib.pyplot as plt 
 
     def dyn(x, t):
-        return -t*x 
+        return t*x 
 
-    # x0 = np.eye(3)
-    x0 = np.array([1,2,3])
-    print(_rk4_step(dyn, 1, x0, 0.5, ()))
-    print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
-    x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
-    print(x)
+    x0 = np.eye(3)
+    x0 = np.random.random((3,3))
+    # x0 = np.array([1,2,3])
+    # print(_rk4_step(dyn, 1, x0, 0.5, ()))
+    # print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
+    # x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
+    # print(x)
     # print(x[:,:,0])
     # print(x[:,:,1])
 
     
-    x0 = np.array([1,2,3])
-    t = np.linspace(0,5)
+    # x0 = np.array([1,2,3])
+
+    t = np.linspace(0, 5)[::-1]
     x = RK4(dyn, x0, t)
-    ty, y = RK45(dyn, x0, [0,5])
-    print(ty.shape)
-    print(y.shape)
+    x.shape = (t.size, 9)
+    ty, y = RK45(dyn, x0, [t[0], t[-1]], tol=1e-5)
+    y.shape = (ty.size, 9)
     plt.plot(t, x)
     plt.plot(ty, y, 'o')
     plt.show()
