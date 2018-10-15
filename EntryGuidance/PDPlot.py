@@ -1,0 +1,50 @@
+import numpy as np 
+import matplotlib.pyplot as plt 
+
+
+def Plot(df):
+
+    x = df['x']
+    y = df['y']
+    z = df['z']
+
+    # r = np.linalg.norm([x,y,z], axis=0)
+    
+    t = df.index 
+    m = df['mass'] # not all versions have mass ?
+
+    u = df['vx']
+    v = df['vy']
+    w = df['vz']
+
+    Tx = df['Tx']
+    Ty = df['Ty']
+    Tz = df['Tz']
+
+    V = np.linalg.norm((u,v,w), axis=0)
+    T = np.linalg.norm((Tx,Ty,Tz), axis=0)
+
+    figsize = (16,10)
+    plt.figure(figsize=figsize)
+
+    plt.subplot(2,2,1)
+    plt.plot(t, np.array((x,y,z)).T)
+    plt.xlabel('Time (s)')
+    plt.ylabel("Distance (m)")
+
+    plt.subplot(2,2,2)
+    plt.plot(t, m)
+    plt.xlabel('Time (s)')
+    plt.ylabel("Mass (kg)")
+
+    plt.subplot(2,2,3)
+    plt.plot(t, np.array((u,v,w)).T)
+    plt.xlabel('Time (s)')
+    plt.ylabel("Velocity (m/s)")
+
+    plt.subplot(2,2,4)
+    plt.plot(t, T)
+    plt.xlabel('Time (s)')
+    plt.ylabel("Thrust (N)")
+
+    plt.show()
