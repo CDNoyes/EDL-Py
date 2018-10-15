@@ -187,9 +187,9 @@ if __name__ == "__main__":
     t = np.linspace(t0, tf, N)
     model = Full()
 
-    Q = lambda t,x: np.diag([1,1,1,1,1,1])*100
-    R = lambda t,x,u: np.eye(3)*1e-2 
-    F = lambda xf: np.eye(6)*1e5
+    Q = lambda t,x: np.diag([1,1,1,10,10,10])*1e-4
+    R = lambda t,x,u: np.eye(3)*1e-8 
+    F = lambda xf: np.eye(6)*1
     z = lambda t: np.zeros((6, 1)) 
 
     x,u,K = ASRE(x0, tf, model.A, model.B, model.C, Q, R, F, z, model.m, max_iter=15, tol=1e-12, n_discretize=N, guess=model.guess(x0, tf, N))
