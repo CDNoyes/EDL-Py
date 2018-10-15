@@ -7,8 +7,10 @@ def RK4(fun, x0, iv, args=()):
     """
     x = [np.asarray(x0)]
     div = np.diff(iv)
+    T = RungeKutta4()
     for t,dt in zip(iv, div):
-        x.append(_rk4_step(fun, t, x[-1], dt, args))
+        # x.append(_rk4_step(fun, t, x[-1], dt, args))
+        x.append(_step(fun, t, x[-1], dt, args, T))
 
     return np.asarray(x)
 
@@ -31,11 +33,12 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
     tf = iv[-1] 
     x = [np.asarray(x0)]
     t = [iv[0]]
-    h = 1*s # Initial stepsize 
+    h = 0.1*s # Initial stepsize 
     tc = iv[0] # Current time 
 
 
-    while t[-1] < tf :
+    while t[-1] < tf:
+        print("Current time: {:.3g}".format(tc))
         if h > (tf-tc)*s:
             h = (tf-tc)*s
 
@@ -43,15 +46,18 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
         attempts = 0
         while not accept and attempts < 10:
             xc = _step(fun, tc, x[-1], h, args, T) # candidate step
+            xc = np.moveaxis(xc, -1, 0)
             tnew = tc + h 
             err = np.max(np.abs(xc[0] - xc[1]))
             rel_err = err/tol 
             h, accept = _step_control(np.abs(h), hmin, 0.2, 10, rel_err, order=5)
+            # h, accept = 0.1, True
             h *= s 
             attempts += 1
-        
+        print("maximum err in step ~ {:.1g} x tolerance".format(rel_err))
+        tc = tnew 
         t.append(tnew)
-        x.append(xc[0])
+        x.append(xc[0].squeeze())
 
     return np.array(t), np.array(x)
 
@@ -60,18 +66,18 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
 def _step(f, iv, x, h, args, tableau):
     """ A general stepping method given a butcher tableau """
     k = [ f(x[:], iv, *args) ]
-
+    move_axis = np.ndim(x)
     for ai, ci in zip(tableau.a[1:], tableau.c[1:]):
-        dx = h*np.dot(np.moveaxis(k, 0, 2), ai)
-        # dx2 = h*np.sum( aii*ki for aii,ki in zip(ai, k))  # Equivalent, should test to see which is faster 
+        dx = h*np.dot(np.moveaxis(k, 0, move_axis), ai)
+        # dx = h*np.sum( aii*ki for aii,ki in zip(ai, k))  # Equivalent, should test to see which is faster 
         knew = f(x+dx, iv + ci*h, *args)
-        k.append( knew )
+        k.append(knew)
 
     # This allows for stepsize control with matrix valued differential equations 
-    if np.ndim(tableau.b) > 1 and np.ndim(x) > 1:
-        x = np.expand_dims(x, -1) # This allows for proper broadcasting 
+    if np.ndim(tableau.b) > 1: 
+        x = np.expand_dims(x, -1) # This allows for proper broadcasting in the return function 
 
-    return x + h*np.dot( np.moveaxis(k, 0, 2), tableau.b)
+    return x + h*np.dot( np.moveaxis(k, 0, move_axis), tableau.b)
 
 
 def _step_control(h, hmin, shrink, grow, err, order):
@@ -83,7 +89,7 @@ def _step_control(h, hmin, shrink, grow, err, order):
         if err == 0:
             scale = grow 
         else:
-            scale = np.min((grow, np.max(shrink, 0.9*err**alpha)))
+            scale = np.min((grow, np.max((shrink, 0.9*err**alpha))))
 
         hnew = np.max((hmin, h*scale))
     else:                       # Determine a new stepsize to retry 
@@ -133,7 +139,6 @@ class DOPRI45(Tableau):
                 [35.0/384.0, 0.0, 500.0/1113.0, 125.0/192.0, -2187.0/6784.0, 11.0/84.0]]
                 
                 
-
 class RungeKutta4(Tableau):
 
     @property
@@ -156,22 +161,27 @@ class RungeKutta4(Tableau):
 def test():
     import matplotlib.pyplot as plt 
 
-    def dyn(x,t):
-        return t*x 
+    def dyn(x, t):
+        return -t*x 
 
-    x0 = np.array([1,2,3])
     # x0 = np.eye(3)
-    # print(_rk4_step(dyn, 1, x0, 0.5, ()))
-    # print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
-    # x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
+    x0 = np.array([1,2,3])
+    print(_rk4_step(dyn, 1, x0, 0.5, ()))
+    print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
+    x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
+    print(x)
     # print(x[:,:,0])
     # print(x[:,:,1])
 
+    
+    x0 = np.array([1,2,3])
     t = np.linspace(0,5)
     x = RK4(dyn, x0, t)
     ty, y = RK45(dyn, x0, [0,5])
-    plt.plot(t,x)
-    plt.plot(ty, y)
+    print(ty.shape)
+    print(y.shape)
+    plt.plot(t, x)
+    plt.plot(ty, y, 'o')
     plt.show()
 
 
