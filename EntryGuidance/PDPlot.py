@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 
 
-def Plot(df):
+def Plot(df, show=False, figsize=(16,7)):
 
     x = df['x']
     y = df['y']
@@ -24,7 +24,7 @@ def Plot(df):
     V = np.linalg.norm((u,v,w), axis=0)
     T = np.linalg.norm((Tx,Ty,Tz), axis=0)
 
-    figsize = (16,7)
+    
     plt.figure(figsize=figsize)
 
     plt.subplot(2,2,1)
@@ -50,10 +50,10 @@ def Plot(df):
     # Plot the control unit vector 
 
     plt.figure()
-    plt.plot(hor, z)
+    plt.plot(hor, z, label="Trajectory")
     plt.plot(hor, hor*np.tan(15*np.pi/180), 'k--', label="15 deg glide-slope constraint")
     plt.xlabel("Horizontal Distance (m)")
     plt.ylabel("Altitude (m)")
     plt.legend()
-
-    plt.show()
+    if show:
+        plt.show()

@@ -66,15 +66,15 @@ class Full:
         Ar = np.concatenate((Z, I), axis=1)
 
         Av = np.zeros((3, 7))
-        Av[2, -1] = -3.71/m          # gravity term 
+        Av[2, -1] = -3.71/m          # gravity term
 
-        # Aerodynamic drag 
-        rho0 = 0.0158   # assume we're close enough to the ground 
-        Cd = 1.4        # constant drag 
-        S = 15.8        # area, m^2 
+        # Aerodynamic drag
+        rho0 = 0.0158   # assume we're close enough to the ground
+        Cd = 1.4*0        # constant drag
+        S = 15.8        # area, m^2
         Dv = -0.5*rho0*V*S/m * Cd
         Dm = -0.5*rho0*V*S/m**2 * Cd * v
-        alpha = 0.5 # weighting between mass and velocity components of drag 
+        alpha = 0.5     # weighting between mass and velocity components of drag factorization
         Av_aero = np.concatenate((Z, np.eye(3)*Dv*alpha, Dm[:, None]*(1-alpha)), axis=1)
 
         Am = np.zeros((1, 7))
@@ -90,7 +90,6 @@ class Full:
         m = x[-1]
 
         T = np.linalg.norm(u)
-
         Br = np.zeros((3, 3))
         Bv = np.eye(3)/m 
 
@@ -104,7 +103,7 @@ class Full:
         
         return np.concatenate((Br, Bv, Bm), axis=0)
 
-    def C(self, t, x): # trims off the mass state since we don't want to regulate it to zero, nor constrain it to a particular final value 
+    def C(self, t, x):  # trims off the mass state since we don't want to regulate it to zero, nor constrain it to a particular final value 
         return np.eye(7)[:-1]
 
     def guess(self, x0, tf, N):
@@ -112,7 +111,7 @@ class Full:
 
         m = np.linspace(x0[-1], x0[-1]*0.7, N)[:, None]
 
-        a = -np.ones((N,3))*x[:,3:6]/np.linalg.norm(x[:,3:6], axis=1)[:, None]
+        a = -np.ones((N,3))*x[:, 3:6]/np.linalg.norm(x[:, 3:6], axis=1)[:, None]
         T = a*70*m
 
         guess = {}
@@ -182,9 +181,9 @@ if __name__ == "__main__":
     sys.path.append("./Utils")
 
     from PDPlot import Plot 
-    from ASRE import ASRE 
+    from ASRE import ASRE, ASREC 
 
-    r0 = [-3200, 100, 2600]
+    r0 = [-3200, 100, 1600]
     v0 = [600, 0, -265]
     m0 = [8500]
 
@@ -192,7 +191,7 @@ if __name__ == "__main__":
 
     t0 = 0
     tf = 17
-    N = 200
+    N = 250
     t = np.linspace(t0, tf, N)
 
     model = Full()
@@ -202,9 +201,24 @@ if __name__ == "__main__":
     F = lambda xf: np.diag([1,1,1,10,10,10])*1e-1
     z = lambda t: np.zeros((6, 1)) 
 
+    print("Running unconstrained SRP landing ")
     x,u,K = ASRE(x0, tf, model.A, model.B, model.C, Q, R, F, z, model.m, max_iter=15, tol=1e-12, n_discretize=N, guess=model.guess(x0, tf, N))
 
     XU = np.concatenate((x,u), axis=1)
 
     df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
     Plot(df)
+
+
+    Q = lambda t,x: np.diag([1,1,1,10,10,10])*0
+    R = lambda t,x,u: np.eye(3)*1e-9
+    F = np.diag([1,1,1,10,10,10])*0
+    z = np.ones((6, 1)) 
+
+    print("Running endpoint constrained SRP landing ")
+    x,u,K = ASREC(x0, t, model.A, model.B, model.C(0,0), Q, R, F, z, model.m, max_iter=15, tol=1e-4, guess=model.guess(x0, tf, N))
+
+    XU = np.concatenate((x,u), axis=1)
+
+    df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
+    Plot(df, show=True)

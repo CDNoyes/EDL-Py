@@ -48,35 +48,37 @@ def asre_integrateP(t, V, B, R, x, u):
     n = V[0].shape[1]
     P = [np.zeros((n,n))]
     for ti,xi,ui,Vi,dti in list(zip(t,x,u,V,dt))[::-1]:
-        P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi,B(ti,xi,ui),R(ti,xi,ui)))[-1]) 
+        P.append(odeint(asre_Pdynamics, P[-1], [0,dti], args=(Vi, B(ti,xi,ui), R(ti,xi,ui)))[-1]) 
     return np.array(P)
 
 
 def asrec_dynamics(x,t,A,B,R,K,P,V,z):
-    u = asrec_control(x,A,B,R,K,P,V,z)
+    u = asrec_control(x, A, B, R, K, P, V, z.squeeze())
     return A.dot(x) + B.dot(u)
 
 
 def asrec_control(x,A,B,R,K,P,V,z):
-    rb = np.linalg.solve(R,B.T)
+    rb = np.linalg.solve(R, B.T)
 
     try:
-        u = -(K - rb.dot(V).dot(np.linalg.solve(P,V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P,z))
+        u = -(K - rb.dot(V).dot(np.linalg.solve(P, V.T))).dot(x) - rb.dot(V).dot(np.linalg.solve(P, z))
     except np.linalg.LinAlgError:
-        u = -(K - rb.dot(V).dot(np.linalg.lstsq(P,V.T)[0])).dot(x) - rb.dot(V).dot(np.linalg.lstsq(P,z)[0])
+        u = -(K - rb.dot(V).dot(np.linalg.lstsq(P, V.T)[0])).dot(x) - rb.dot(V).dot(np.linalg.lstsq(P, z)[0])
 
     return u
 
 
-def asrec_cost(t, x, u, Q, R, F):
+def asrec_cost(t, x, u, Q, R, F, C):
     integrand = 0.5*np.array([dot(xi.T,dot(Q(ti,xi),xi)) + dot(ui, dot(R(ti,xi,ui), ui.T)) for ti,xi,ui in zip(t,x,u)]).flatten() 
-    J0 = 0.5*dot(x[-1].T,dot(F,x[-1]))
+    J0 = 0.5*dot(x[-1].T, dot(F, x[-1]))
     return J0 + trapz(integrand, t)
+
 
 def check(x, msg):
     if not np.all(np.isfinite(x)):
         print(msg)
         raise Exception
+
 
 def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
     """ Approximating Sequence of Riccati Equations with Terminal Constraints Cx=z """
@@ -100,12 +102,12 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         print("Current iteration: {}".format(iter))
         
         if not iter: # LTI iteration
-            u = [np.zeros((m))]*n_discretize
+            u = [np.zeros((m,))]*n_discretize
             x = np.array([x0]*n_discretize)  # This is the standard approach, but it seems like it would be far superior to actually integrate the system using the initial control
 
         # Riccati equation for feedback solution
-        Pf = F
-        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: np.eye(n), Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T)))[::-1]
+        Pf = C.T.dot(F.dot(C))
+        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: C, Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T)))[::-1]
         check(P, "P")
         K = asre_feedback(t, x, u, B, R, P)
         check(K,"K")
@@ -119,11 +121,15 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         x = [x0]
         u = [u[0].T]
         for stage in range(n_discretize-1):
+            u.append(asrec_control(x[-1], A(t[stage], x[-1]), B(t[stage],x[-1],u[-1]), R(t[stage],x[-1],u[-1]), K[stage], P[stage], V[stage], z.squeeze()).T) 
             x.append(odeint(asrec_dynamics, x[-1], [0, dt[stage]], args=(A(t[stage], x[-1]), B(t[stage],x[-1],u[-1]), R(t[stage],x[-1],u[-1]), K[stage], P[stage], V[stage], z))[-1])
-            u.append(asrec_control(x[-2], A(t[stage], x[-2]), B(t[stage],x[-2],u[-1]), R(t[stage],x[-2],u[-1]), K[stage], P[stage], V[stage], z).T) 
+            # print("u = {}".format(u[-1]))
 
 
-        J = asrec_cost(t, x, u, Q, R, F)
+        x[-1] = x[-2]
+        u[0] = u[1]
+        u[-1] *= 0
+        J = compute_cost(t, x, u, lambda t,x: C, Q, R, lambda xf: F, lambda t: z)
         # converge = np.abs(J-Jold)/J
         converge = np.max(np.abs(np.array(x)-xold))
         Jold = J
@@ -348,7 +354,7 @@ def SRP_A(t, x, bounds=(40,70)):
     return np.concatenate(A, axis=0)
 
 def SRP_Bu(t, x, u):
-    return np.concatenate((np.zeros((6,3)),np.eye(3)),axis=0)
+    return np.concatenate((np.zeros((6,3)),np.eye(3)), axis=0)
 
 # def SRP_C(t, x):
 #     return np.eye(6)
