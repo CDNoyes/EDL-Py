@@ -1,5 +1,5 @@
 import numpy as np
-
+from scipy.interpolate import interp1d 
 
 def RK4(fun, x0, iv, args=()):
     """ Pure python implementation of a common
@@ -26,6 +26,9 @@ def _rk4_step(f, iv, x, h, args):
 
 
 def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
+
+    
+
     T = DOPRI45()
     # Step through adaptively then output at the points in iv 
 
@@ -57,7 +60,13 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
         tc = tnew 
         t.append(tnew)
         x.append(xc[0].squeeze())
-    return np.array(t), np.array(x)
+
+    if len(iv) > 2: # interpolate solution onto desired timepoints 
+        x = interp1d(t, x, axis=0, kind='cubic')(iv)
+        return np.array(iv), x 
+    else:  # Otherwise just give the dense output 
+
+        return np.array(t), np.array(x)
 
 
 def _step(f, iv, x, h, args, tableau):
@@ -177,7 +186,8 @@ def test():
     t = np.linspace(0, 5)[::-1]
     x = RK4(dyn, x0, t)
     x.shape = (t.size, 9)
-    ty, y = RK45(dyn, x0, [t[0], t[-1]], tol=1e-5)
+    ty, y = RK45(dyn, x0, [t[0], t[-1]], tol=1e-3) # gets the adaptive steps
+    # ty, y = RK45(dyn, x0, t, tol=1e-5) # gets the fixed time points 
     y.shape = (ty.size, 9)
     plt.plot(t, x)
     plt.plot(ty, y, 'o')
