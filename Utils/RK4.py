@@ -37,7 +37,7 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
     tc = iv[0]  # Current time 
 
     while t[-1]*s < tf*s:
-        print("Current time: {:.3g}".format(tc))
+        # print("Current time: {:.3g}".format(tc))
         if h*s > (tf-tc)*s:
             h = (tf-tc)
 
@@ -48,16 +48,15 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
             xc = np.moveaxis(xc, -1, 0)
             tnew = tc + h 
             scale = np.abs(x[-1]) + np.abs(x[-1]-xc[0]) + 1e-16 
-            err = np.max(np.abs(xc[0] - xc[1])/scale) # TODO: Consider scaling this by something like |x| + |xdot * h| + eps 
+            err = np.max(np.abs(xc[0] - xc[1])/scale) 
             rel_err = err/tol 
             h, accept = _step_control(np.abs(h), hmin, 0.2, 10, rel_err, order=5)
             h *= s 
             attempts += 1
-        print("maximum err in step ~ {:.1g} x tolerance".format(rel_err))
+        # print("maximum err in step ~ {:.1g} x tolerance".format(rel_err))
         tc = tnew 
         t.append(tnew)
         x.append(xc[0].squeeze())
-    print("final time = {}".format(t[-1]))
     return np.array(t), np.array(x)
 
 
