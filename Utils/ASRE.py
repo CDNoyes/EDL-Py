@@ -25,13 +25,14 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
     """ Approximating Sequence of Riccati Equations with Terminal Constraints Cx=z """
     # Problem size
     n = x0.size
+    E = lambda t,x: np.zeros((n,1))
+    sigma = 0 
 
     n_discretize = len(t)
     dt = np.diff(t)
     tb = t[::-1]                            # For integrating backward in time
 
     converge = tol + 1
-    Jold = -1e16
     print("Approximating Sequence of Riccati Equations")
     start_iter = 0
     if guess is not None:
@@ -48,7 +49,7 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
 
         # Riccati equation for feedback solution
         Pf = C.T.dot(F.dot(C))
-        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: C, Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T)))[::-1]
+        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: C, Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T), E, sigma))[::-1]
         K = asre_feedback(t, x, u, B, R, P)
         V = asre_integrateV(t, C.T, A, B, K, x, u)[::-1]
         P = asre_integrateP(t, V, B, R, x, u)[::-1] # This P has nothing to do with the previous one 
@@ -65,9 +66,7 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         u[0] = u[1]
         u[-1] *= 0
         J = compute_cost(t, x, u, lambda t,x: C, Q, R, lambda xf: F, lambda t: z)
-        # converge = np.abs(J-Jold)/J
         converge = np.max(np.abs(np.array(x)-xold))
-        Jold = J
         print("Current cost: {}".format(J))
         print("Convergence criteria: {:.3g}\n".format(converge))
 
@@ -78,12 +77,26 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
     return np.array(x), np.array(u), np.array(K)
 
 
-def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250, guess=None):
+def ASRE(x0, tf, A, B, C, Q, R, F, z, m, E=None, sigma=0, max_iter=10, tol=0.01, n_discretize=250, guess=None):
     """ Approximating Sequence of Riccati Equations 
-    
-        Nonlinear optimal output tracking such that C(t,x)x(t) = z(t)
-            Reduces to stabilization (or regulation) problem with z(t) = 0
-            C(x) = I implies full-state feedback 
+
+            Solves a nonlinear optimal control problem of the form
+
+                J = 0.5 * e(tf)' F e(tf) + int[e Q e + u R u] dt
+
+            subject to stochastic dynamics: 
+                dx =  (A(t,x)x + B(t,x,u)u)dt + E(t,x)dw
+
+                where dw is a zero-mean unit covariance Wiener process 
+        
+            and the error e is defined by C(t,x)x(t) = z(t)
+
+        When E is not None, and sigma is not zero, the problem solves the exponential form of the above cost.
+        This places weight on the higher probability moments of J, i.e. incorporates variance information.
+        See "Optimal Stochastic Linear Systems with Exponential Performance Criteria..." by Jacobson 
+
+        Reduces to stabilization (or regulation) problem with z(t) = 0
+        C(x) = I implies full-state feedback 
 
         Inputs:
             x0          -   current state
@@ -94,9 +107,11 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
             Q(t,x)      -   function returning LQR tracking error matrix
             R(t,x,u)    -   function returning LQR control weight matrix
             F(xf)       -   function returning LQR terminal weight matrix 
-            z(t)        -   function returning the reference signal(s) at each value of the independent variable. Single step version can take a single value instead of function.
+            z(t)        -   function returning the reference signal(s) at each value of the independent variable. 
 
         Optional Inputs:
+            E(t,x)      -   function returning the stochastic term
+            sigma       -   scalar value determining the weight on higher order moments in the cost function 
             max_iter    -   maximum number of iterations 
             tol         -   convergence tolerance in relative change in objective
             n_discretize-   number of time points at which to compute the optimal solution.
@@ -108,11 +123,15 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
     
     """
 
+
     # Setup a "pocket" algorithm to store the best result
     pocket = {'cost': 1e16}
 
     # Problem size
     n = x0.size
+
+    if E is None:
+        E = lambda t,x: np.zeros((n,1))
 
     t0 = 0
     t = np.linspace(t0, tf, n_discretize)
@@ -128,6 +147,9 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
         x = guess['state']
         u = guess['control']
         J = compute_cost(t, x, u, C, Q, R, F, z)
+        if np.isnan([J])[0]:
+            print("Cost could not be evaluated on initial point")
+            return
 
     for iter in range(start_iter, max_iter):
         print("Current iteration: {}".format(iter))
@@ -136,12 +158,12 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
 
             # Riccati equation for feedback solution
             Pf = dot(C(t0, x0).T,dot(F(x0),C(t0, x0)))
-            Pv = odeint(dP, Pf, tb, args=(A, B, C, Q, R, lambda t: x0, lambda t: np.zeros((m,1))))
+            Pv = odeint(dP, Pf, tb, args=(A, B, C, Q, R, lambda t: x0, lambda t: np.zeros((m,1)),E,sigma))
             Pi = interp1d(tb, Pv, kind=interp_type, fill_value=(Pv[0],Pv[-1]), axis=0, bounds_error=False)
 
             # Feedforward solution
             sf = dot(C(t0, x0).T,dot(F(x0),z(tf))).T.squeeze()
-            s = odeint(ds, sf, tb, args=(A, B, C, Q, R, lambda t: x0, lambda t: np.zeros((m,1)), Pi, z))
+            s = odeint(ds, sf, tb, args=(A, B, C, Q, R, lambda t: x0, lambda t: np.zeros((m,1)), Pi, z, E, sigma))
             si = interp1d(tb, s, kind=interp_type, fill_value=(s[0],s[-1]), axis=0, bounds_error=False)
 
             # Compute new state trajectory and control
@@ -156,21 +178,23 @@ def ASRE(x0, tf, A, B, C, Q, R, F, z, m, max_iter=10, tol=0.01, n_discretize=250
 
             # Riccati equation for feedback solution
             Pf = dot(C(tf, xf).T,dot(F(xf),C(tf, xf)))
-            Pv = odeint(dP, Pf, tb, args=(A, B, C, Q, R, xi, ui))
+            Pv = odeint(dP, Pf, tb, args=(A, B, C, Q, R, xi, ui, E, sigma))
             Pi = interp1d(tb, Pv, kind=interp_type, fill_value=(Pv[0],Pv[-1]), axis=0, bounds_error=False)
 
             # Feedforward solution
             sf = dot(C(tf, xf).T,dot(F(xf),z(tf))).T.squeeze()
-            s = odeint(ds, sf, tb, args=(A, B, C, Q, R, xi, ui, Pi, z))
+            s = odeint(ds, sf, tb, args=(A, B, C, Q, R, xi, ui, Pi, z, E, sigma))
             si = interp1d(tb, s, kind=interp_type, fill_value=(s[0],s[-1]), axis=0, bounds_error=False)
 
             # Compute new state trajectory and control
-            Jold = J
             xold = x 
             x = odeint(dynamics, x0, t, args=(A, B, R, Pi, ui, si))
             u = compute_control(B, R, Pv, x, u, s, n, t)
             J = compute_cost(t, x, u, C, Q, R, F, z)
             converge = np.max(np.abs(np.array(x)-xold))
+            if np.isnan([J])[0]:
+                print("Cost could not be evaluated on current trajectory")
+                break
             # converge = np.abs(J-Jold)/J
 
         print("Current cost: {}".format(J))
@@ -249,21 +273,22 @@ def compute_cost(t, x, u, C, Q, R, F, z):
     return J0.squeeze() + trapz(integrand, t)
 
 
-def dP(p, t, A, B, C, Q, R, X, U):
+def dP(p, t, A, B, C, Q, R, X, U, E, sigma):
     """ Riccati equation """
-
+    
     x = X(t)
     u = U(t)
     a = A(t, x)
     b = B(t, x, u)
     c = C(t, x)
+    e = E(t,x)
     q = Q(t, x)
     r = R(t, x, u)
     s = dot(b, matrix_solve(r,b.T))
-    return (-dot(c.T,dot(q,c)) - dot(p,a) - dot(a.T,p) + dot(p,dot(s,p)))
+    return (-dot(c.T,dot(q,c)) - dot(p,a) - dot(a.T,p) + dot(p,dot(s,p))) - sigma*p.dot(e).dot(e.T).dot(p) # could try np.multi_dot here 
 
 
-def ds(s, t, A, B, C, Q, R, X, U, P, z):
+def ds(s, t, A, B, C, Q, R, X, U, P, z, E, sigma):
     """ Differential equation of the feedfoward term. """
     p = P(t)
     x = X(t)
@@ -271,10 +296,11 @@ def ds(s, t, A, B, C, Q, R, X, U, P, z):
     a = A(t, x)
     b = B(t, x, u)
     c = C(t, x)
+    e = E(t, x)
     r = R(t, x, u)
     q = Q(t, x)
     S = dot(b,matrix_solve(r,b.T))
-    return -dot((a - dot(S,p)).T,s) - dot(c.T,dot(q,z(t))).T.squeeze()
+    return -dot((a - dot(S,p)).T,s) - dot(c.T,dot(q,z(t))).T.squeeze() - sigma*p.dot(e).dot(e.T).dot(s)
 
 
 def dynamics(x, t, A, B, R, P, U, s):
@@ -447,7 +473,11 @@ def IP_z(t):
     return np.array([[sin(t)+cos(2*t-1)]])
 
 def IP_R(t, x, u):
-    return np.array([[1 + 200*np.exp(-t)]])
+    # return np.array([[1 + 200*np.exp(-t)]])
+    return np.array([[1]])
+
+def IP_E(t, x):
+    return np.diag([0., 1])
 
 def test_IP():
     import time
@@ -460,7 +490,7 @@ def test_IP():
     tf = 15
 
     t_init = time.time()
-    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda t,x: C, lambda t,x: Q, IP_R, lambda x: F, IP_z, m=1,  max_iter=50, tol=0.1)      # Time-varying R
+    x,u,K = ASRE(x0, tf, IP_A, IP_B, lambda t,x: C, lambda t,x: Q, IP_R, lambda x: F, IP_z, E=IP_E, sigma=0, m=1,  max_iter=50, tol=0.1)      # Time-varying R
     t_asre = -t_init + time.time()
 
     t = np.linspace(0,tf,u.size)
@@ -475,12 +505,41 @@ def test_IP():
     for gain in product(range(K.shape[1]),range(K.shape[2])):
         plt.plot(t[:-1],Kplot[gain][:-1], label='ASRE {}'.format(gain))
 
-   
+    plt.legend()
     print("ASRE: {} s".format(t_asre))
 
     plt.show()
 
+def cliff():
+    from ctrb import ctrb 
+
+    def A(t,x):
+        return np.array([[0, 0, 1, 0],[0,0,0,1], [0]*4, [0]*4])
+    def B(t,x,u):
+        return np.concatenate((np.zeros((2,2)), np.eye(2)), axis=0)
+    def C(t,x):
+        return np.eye(4)
+    def E(t,x):
+        return np.diag([1, 10, 0, 0])*0.0 # Kinda of like the standard deviation matrix 
+    def Q(t,x):
+        q = np.zeros((4,4))
+        # q[1,1] = 0.1/(x[1]**12 + 1e-6)
+        return q
+    def R(t,x,u):
+        return np.diag([1, 0.01])
+    def F(xf):
+        return np.diag([100, 100, 10, 10])
+    def z(t):
+        return np.array([10, 0, 0, 0])
+
+    # x0 = np.zeros((4,))
+    x0 = np.array([0., 0.1, 0, 0])
+
+    print("System is controllable? {}".format(ctrb(A(0,x0), B(0,x0,0))))
+
+    x,u,K = ASRE(x0, 3, A, B, C, Q, R, F, z, 2, E, 0)
 
 if __name__ == '__main__':
-    # test_IP() # Tests ASRE
-    SRP()     # Tests ASREC 
+    # cliff()
+    test_IP() # Tests ASRE
+    # SRP()     # Tests ASREC 
