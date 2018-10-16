@@ -10,7 +10,10 @@ def ctrb_mat(A, B):
     for _ in range(1, n):
         C.append(A.dot(C[-1]))
         
-    return np.array(C)   
+    if np.ndim(B) > 1:    
+        return np.hstack(C)   
+    else:
+        return np.array(C)
     
 def ctrb(A, B):
     """ Determines if (A,B) is controllable via rank condition """
