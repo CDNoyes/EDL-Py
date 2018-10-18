@@ -1,35 +1,41 @@
 import numpy as np
 from scipy.interpolate import interp1d 
 
-def RK4(fun, x0, iv, args=()):
-    """ Pure python implementation of a common
-        4th-order Runge Kutta integrator
-    """
+# TODO: now that a generalized step method exists, we can simply write two general solvers: fixed step and adaptive 
+
+
+# For SDE, we assume the function returns the time derivative first, and the wiener process coefficients second
+def EulerS(fun, x0, iv, args=()):
+    """ Euler-Maruyama method """
+
     x = [np.asarray(x0)]
+    n = len(x0)
     div = np.diff(iv)
-    T = RungeKutta4()
-    for t,dt in zip(iv, div):
-        # x.append(_rk4_step(fun, t, x[-1], dt, args))
-        x.append(_step(fun, t, x[-1], dt, args, T))
+    for t, dt in zip(iv, div):
+        dw = np.random.normal(scale=np.abs(dt)**0.5, size=n)
+        a, b = fun(x[-1], t, *args)
+        x.append(x[-1] + a*dt + np.dot(b, dw))
 
     return np.asarray(x)
 
 
-def _rk4_step(f, iv, x, h, args):
-    """ Takes a single 4th-order step """
-    k1 = f(x[:],       iv,       *args)
-    k2 = f(x+0.5*h*k1, iv+0.5*h, *args)
-    k3 = f(x+0.5*h*k2, iv+0.5*h, *args)
-    k4 = f(x+1.0*h*k3, iv+h,     *args)
 
-    return x + h*(k1 + 2*k2 + 2*k3 + k4)/6.0
+def _fixed_step_integrator(tableau):
+
+    def Integrator(fun, x0, iv, args=()):
+        x = [np.asarray(x0)]
+        div = np.diff(iv)
+        T = _RungeKutta4()
+        for t, dt in zip(iv, div):
+            x.append(_step(fun, t, x[-1], dt, args, tableau))
+
+        return np.asarray(x)
+    return Integrator 
 
 
 def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
 
-    
-
-    T = DOPRI45()
+    T = _DOPRI45()
     # Step through adaptively then output at the points in iv 
 
     s = np.sign(iv[-1]-iv[0])  # allows for decreasing stepsizes 
@@ -62,10 +68,9 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
         x.append(xc[0].squeeze())
 
     if len(iv) > 2: # interpolate solution onto desired timepoints 
-        x = interp1d(t, x, axis=0, kind='cubic')(iv)
-        return np.array(iv), x 
+        x = interp1d(t, x, axis=0, kind='linear')(iv)
+        return x 
     else:  # Otherwise just give the dense output 
-
         return np.array(t), np.array(x)
 
 
@@ -81,7 +86,7 @@ def _step(f, iv, x, h, args, tableau):
 
     # This allows for stepsize control with matrix valued differential equations 
     if np.ndim(tableau.b) > 1: 
-        x = np.expand_dims(x, -1) # This allows for proper broadcasting in the return function 
+        x = np.expand_dims(x, -1)  # This allows for proper broadcasting in the return function 
 
     return x + h*np.dot( np.moveaxis(k, 0, move_axis), tableau.b)
 
@@ -123,7 +128,7 @@ class Tableau:
         raise NotImplementedError 
 
 
-class DOPRI45(Tableau):
+class _DOPRI45(Tableau):
   
     @property 
     def c(self):
@@ -145,7 +150,7 @@ class DOPRI45(Tableau):
                 [35.0/384.0, 0.0, 500.0/1113.0, 125.0/192.0, -2187.0/6784.0, 11.0/84.0]]
                 
                 
-class RungeKutta4(Tableau):
+class _RungeKutta4(Tableau):
 
     @property
     def c(self):
@@ -163,24 +168,31 @@ class RungeKutta4(Tableau):
                  np.array([0.0, 0.0, 1.0]) ]
 
     
+class _Euler(Tableau):
+    @property
+    def c(self):
+        return [0]
 
-def test():
+    @property
+    def b(self):
+        return np.array([1]) 
+
+    @property
+    def a(self):
+        return [0]
+
+
+RK4 = _fixed_step_integrator(_RungeKutta4())
+Euler = _fixed_step_integrator(_Euler())
+
+
+def test_adaptive():
     import matplotlib.pyplot as plt 
 
     def dyn(x, t):
         return t*x 
 
-    x0 = np.eye(3)
-    x0 = np.random.random((3,3))
-    # x0 = np.array([1,2,3])
-    # print(_rk4_step(dyn, 1, x0, 0.5, ()))
-    # print(_step(dyn, 1, x0, 0.5, (), RungeKutta4()))
-    # x = _step(dyn, 1, x0, 0.5, (), DOPRI45())
-    # print(x)
-    # print(x[:,:,0])
-    # print(x[:,:,1])
-
-    
+    x0 = np.random.random((3,3))  
     # x0 = np.array([1,2,3])
 
     t = np.linspace(0, 5)[::-1]
@@ -194,5 +206,51 @@ def test():
     plt.show()
 
 
+def test_fixed_step():
+    """ Verifies use of the fixed step integrator interface """
+
+    import matplotlib.pyplot as plt 
+
+    def dyn(x, t):
+        return -t*x 
+
+    # x0 = np.random.random((3,3))  
+    x0 = np.array([1,2,3])
+
+    t = np.linspace(0, 5, 100)
+
+    xe = Euler(dyn, x0, t)
+    xrk4 = RK4(dyn, x0, t)
+
+
+    plt.plot(t, xe, label="Euler")
+    plt.plot(t, xrk4, 'o', label="RK4")
+    plt.legend()
+    plt.show()
+
+
+def test_stochastic():
+    import matplotlib.pyplot as plt 
+
+    def dyn(x, t):
+        return -t*x, np.diag(np.abs(x)**0.5)*0.09
+
+    # x0 = np.random.random((3,3))  
+    x0 = np.array([1,2,3])
+
+    t = np.linspace(0, 5, 100)
+    for i in range(100):
+        x = EulerS(dyn, x0, t)
+        if not i:
+            plt.plot(t, x, label="EM")
+        else:
+            plt.plot(t, x)
+
+    xd = Euler(lambda x,t: dyn(x,t)[0], x0, t)
+    plt.plot(t, xd, 'k--', label="Deterministic")
+    plt.legend()
+    plt.show()
+
 if __name__ == "__main__":
-    test()
+    # test_fixed_step()
+    test_stochastic()
