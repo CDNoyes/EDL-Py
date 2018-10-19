@@ -8,7 +8,7 @@ import pdb
 import DA as da 
 from submatrix import submatrix
 from ProjectedNewton import ProjectedNewton as solveQP
-from Regularize import AbsRegularize
+from Regularize import Regularize, AbsRegularize
 
 class DDP:
     """ 
@@ -18,21 +18,26 @@ class DDP:
     def __init__(self):
         pass 
     
-    def solve(self, x0, N, bounds, u=None, maxIter=10, tol=1e-6, verbose=True):  # TODO: This should be implemented in specific versions of DDP, this algorithm is specific to control-limited 
+    def solve(self, x0, N, u, bounds=None, maxIter=10, tol=1e-6, verbose=True):  # TODO: This should be implemented in specific versions of DDP, this algorithm is specific to control-limited 
         reg = 1   # initial regularization parameter 
         dreg = 1  # initial regularization update parameter 
         reg_factor = 1.6
-        gradient_tol = 1e-5
+        reg_min = 1e-6  # below this reg = 0 
+        gradient_tol = 1e-4
         objective_tol = 1e-7
 
+        no_bounds = bounds is None 
         reduction_ratio = []
-        self.bounds = np.asarray(bounds)
+        if bounds is None:
+            self.bounds = [-np.inf, np.inf]
+        else:
+            self.bounds = np.asarray(bounds)
         self.N = N 
         self.n = len(x0)
-        if self.bounds.ndim == 1:
+        if np.ndim(u) == 1:
             self.m = 1
         else:
-            self.m = self.bounds.shape[1]
+            self.m = len(u[0])
 
         self.xnames = ["x{}".format(i) for i in range(self.n)] 
         self.unames = ["u{}".format(i) for i in range(self.m)]
@@ -40,19 +45,19 @@ class DDP:
         xrows = list(range(self.n))
         urows = list(range(self.n, p))
 
+        if np.ndim(u) == 1:
+            u = u[:, None]
 
-        if u is None:
-            u = np.zeros((self.N, self.m)) # Initial guess
-        else:
-            if np.ndim(u) == 1:
-                u = u[:, None]
-        u = np.clip(u, *bounds)
-        u[-1] = 0 # Always 
+        if bounds is not None:    
+            u = np.clip(u, *bounds)
+        u[-1] = 0  # Always 
         
         J = []
-        for iter in range(maxIter):
+        success_iter = 0
+        total_iter = 0
+        while success_iter < maxIter:
             # Forward propagation
-            if not iter:
+            if not total_iter:
                 x = self.forward(x0, u)
             
             # Derivatives along trajectory
@@ -60,14 +65,9 @@ class DDP:
             Fg, Fh = Fd
             L, Lg, Lh = Ld
             LN, Mx, Mxx = self.Mayer(x[-1])
-
-            J.append(np.sum(L) + LN)
-            # if len(J) > 1:
-            #     if np.abs(J[-1]-J[-2]) < tol:
-            #         break
-
-
-
+            if not J:
+                J.append(np.sum(L) + LN)
+           
             # Final conditions on Value function derivs
             dV = [0, 0]
             Vx = Mx + Lg[-1][0:self.n]
@@ -85,14 +85,17 @@ class DDP:
                 Qux = submatrix(Qh, urows, xrows)
                 Quu = submatrix(Qh, urows, urows)
 
-                
+                # Different regularization methods 
+                # QuuP = AbsRegularize(Quu, shift=reg)
+                # QuuP = Regularize(Quu, reg)
+                QuuP = Quu + np.eye(self.m)*reg  # this is simple but avoids eigendecomp
+
                 # No control limits 
-                if False:
-                    k[i] = (-Qu/Quu)  # Shouldnt be any divide by zero error here 
-                    K[i] = (-Qux/Quu)
+                if bounds is None:
+                    k[i] = -np.linalg.solve(QuuP, Qu) #(-Qu/QuuP)  # Shouldnt be any divide by zero error here 
+                    K[i] = -np.linalg.solve(QuuP, Qux)
                 # Bounded controls:
                 else:
-                    QuuP = AbsRegularize(Quu, shift=reg)
                     k[i], Quuf = solveQP(k[i], QuuP, Qu, ([bounds[0]-u[i]], [bounds[1]-u[i]]), verbose=False)
                     K[i] = -np.linalg.pinv(Quuf) @ Qux  # Pinv is the same as inv when Quuf > 0, but also correctly handles clamped directions Quuf >= 0
                 
@@ -102,16 +105,43 @@ class DDP:
                 Vxx = 0.5*(Vxx + Vxx.T)
 
             # Forward correction
-            xnew, unew, Jnew, step, success = self.correct(x, u, k, K)  # Backtracking line search, simply looks to reduce cost
+            # xnew, unew, Jnew, step, success = self.correct(x, u, k, K)  # Backtracking line search, simply looks to reduce cost
+            xnew, unew, Jnew, step, success = self.full_correct(x, u, k, K)  # Backtracking line search, looks for best cost 
+            # xnew, unew, Jnew, step, success = self.da_correct(x, u, k, K)  # Opt based line search
+            total_iter += 1
             if success:
                 dreg = np.min((dreg/reg_factor, 1/reg_factor))
-                reg *= dreg * float(reg > 1e-8)
+                reg *= dreg * float(reg > reg_min)
                 x = xnew 
                 u = unew 
-                reg = np.clip(reg, 1e-8, 1e6)
+                reg = np.clip(reg, 0, 1e8)
+                J.append(Jnew)
+                dJ = J[-2]-J[-1]
+                success_iter += 1 
+
+                expected = -step*(dV[0] + step*dV[1])
+                g_norm = np.mean(np.max(np.abs(k)/(np.abs(u)+1), axis=1))
+                if g_norm < gradient_tol and reg < 1e-3:
+                    if verbose:
+                        print("Success: gradient norm less than tolerance with minimal regulation")
+                    break
+                reduction_ratio.append(dJ/expected)  # this is "z" in matlab implement 
+                if dJ < objective_tol and success_iter > 1:
+                    if verbose:
+                        print("Success: relative change in objective function smaller than tolerance")
+                    break
+                if expected < objective_tol/10:
+                    if verbose:
+                        print("Success: expected change in objective function smaller than tolerance")
+                    break
+
+                if verbose:
+                    if success_iter == 1 or not success_iter % 5:
+                        header_print()
+                    iter_print(success_iter, J[-2], dJ, expected, g_norm, reg)
             else:
                 dreg = np.maximum(dreg*reg_factor, reg_factor)
-                reg = np.maximum(reg*reg_factor, 1e-4) # minimum regulation 
+                reg = np.maximum(reg*reg_factor, reg_min)  # minimum regulation 
                 if reg > 1e8:
                     if verbose:
                         print("Maximum regulation achieved and step failed. Aborting.")
@@ -119,27 +149,6 @@ class DDP:
                 # if verbose:
                 #     print("No cost reduction achieved. Increasing regulation.")
                 continue 
-
-            expected = -step*(dV[0] + step*dV[1])
-            g_norm = np.mean(np.max(np.abs(k)/(np.abs(u)+1), axis=1))
-            if g_norm < gradient_tol and reg < 1e-3:
-                if verbose:
-                    print("Success: gradient norm less than tolerance with minimal regulation")
-                break
-            reduction_ratio.append((J[-1]-Jnew)/expected) # this is "z" in matlab implement 
-            if J[-1]-Jnew < objective_tol:
-                if verbose:
-                    print("Success: change in objective function smaller than tolerance")
-                break
-            if expected < objective_tol/10:
-                if verbose:
-                    print("Success: expected change in objective function smaller than tolerance")
-                break
-
-            if verbose:
-                if not iter or not iter % 5:
-                    header_print()
-                iter_print(iter, J[-1], J[-1]-Jnew, expected, g_norm, reg)
             
         plt.figure(1)    
         plt.plot(list(range(self.N)), x, label='Final')
@@ -161,7 +170,7 @@ class DDP:
         return x, u, K     
             
     def correct(self, x, u, k, K):
-        min_step = 1e-2
+        min_step = 1e-3
         step = 1
         J = self.evalCost(x, u)
         Jnew = J+1
@@ -170,9 +179,9 @@ class DDP:
             unew = []
             xnew = [x[0]]
             for i in range(self.N-1):
-                unew.append(np.clip(u[i] + step*k[i] + K[i]@(xnew[i]-x[i]), *self.bounds)) # This line search is actually essential to convergence 
+                unew.append(np.clip(u[i] + step*k[i] + K[i]@(xnew[i]-x[i]), *self.bounds))  # This line search is actually essential to convergence 
                 xnew.append(self.transition(xnew[i], unew[i], i))    
-            unew.append(unew[-1]) # Just so it has the correct number of elements   
+            unew.append(unew[-1])  # Just so it has the correct number of elements   
             Jnew = self.evalCost(np.array(xnew), np.array(unew).squeeze())
             if Jnew < J:
                 success = True 
@@ -183,8 +192,35 @@ class DDP:
         if np.ndim(u) == 1:
             u = u[:, None]
         return np.array(xnew), u, Jnew, step, success 
-        
-    # def da_correct(self):  #Make the stepsize a DA, and solve an optimization problem to find the next step 
+
+    def full_correct(self, x, u, k, K):
+        min_step = 1e-3
+        steps = np.logspace(-3, 0, 21)
+        J = self.evalCost(x, u)
+        Jnew = J+1 
+        step_opt = min_step
+        xopt = x[:] 
+        uopt = u[:] 
+        success = False 
+        for step in steps: 
+            unew = []
+            xnew = [x[0]]
+            for i in range(self.N-1):
+                unew.append(np.clip(u[i] + step*k[i] + K[i]@(xnew[i]-x[i]), *self.bounds))  # This line search is actually essential to convergence 
+                xnew.append(self.transition(xnew[i], unew[i], i))    
+            unew.append(unew[-1])  # Just so it has the correct number of elements   
+            Jnew = self.evalCost(np.array(xnew), np.array(unew).squeeze())
+            if Jnew < J:
+                J = Jnew 
+                step_opt = step 
+                success = True 
+                xopt = xnew[:]
+                uopt = unew[:]
+
+        u = np.array(uopt).squeeze()
+        if np.ndim(u) == 1:
+            u = u[:, None]
+        return np.asarray(xopt), u, J, step, success     
 
     def evalCost(self, x, u):
         L = [self.lagrange(xi, ui) for xi, ui in zip(x, u)]
@@ -267,7 +303,11 @@ def header_print():
 
 
 def iter_print(iter, cost, reduction, expected, gradient, regularization):
-    print("   {:<2}        {:<13.4g}{:<13.3g}{:<13.3g}{:<13.3g}{:<5.3g}".format(iter, cost, reduction, expected, gradient, np.log10(regularization)))
+    if regularization == 0:
+        L = -np.inf 
+    else:
+        L = np.log10(regularization)
+    print("   {:<2}        {:<13.4g}{:<13.3g}{:<13.3g}{:<13.3g}{:<5.3g}".format(iter, cost, reduction, expected, gradient, L))
 
 
 class Test(DDP):
@@ -331,17 +371,18 @@ if __name__ == "__main__":
     # plt.title("Optimal Swing Up Maneuver")
     # plt.show()
 
-
-    n = 10
-    m = 5
-    N = 1000
-    test = Linear(n, m, 0.01)
+    tf = 10 
+    n = 8
+    m = 2
+    N = 300
+    test = Linear(n, m, tf/(N-1))
     x0 = np.random.standard_normal((n,))
     # x0 = np.ones((n,))
     u0 = 0.1*np.random.standard_normal((N, m))
-    # u0 = np.ones((N,m))*0.01
+    # u0 = np.ones((N,m))*0.1
     bounds = np.ones((2, m))*0.6
     bounds[0] *= -1
-    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=150) 
+    # x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=15) 
+    x,u,K = test.solve(x0, N, bounds=None, u=u0, maxIter=15) 
 
     plt.show()
