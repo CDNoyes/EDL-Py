@@ -12,6 +12,74 @@ from itertools import product
 # ################################################################################################
 #                                State Dependent Riccati Equation                                #
 # ################################################################################################
+def SDRE(x, tf, A, B, C, Q, R, z, E=None, sigma=0, n_points=200, h=0):
+    """
+        Inputs:
+            x       -   current state
+            tf      -   solution horizon (independent variable need not be time, must be increasing)
+            A(t,x)  -   function returning SDC system matrix
+            B(t,x)  -   function returning SDC control matrix
+            C(t,x)  -   function returning SDC output matrix
+            Q(t,x)  -   function returning LQR tracking error matrix
+            R(t,x)  -   function returning LQR control weight matrix
+            z(t+h)  -   function returning the reference signal(s) at each value of the independent variable. Single step version can take a single value instead of function.
+
+        Outputs:
+            x     -   state vector at n_points
+            u     -   control history at n_points
+            K     -   time-varying feedback gains
+    """
+    from scipy.linalg import solve_continuous_are as care
+
+    T = np.linspace(0, tf, n_points)
+    dt = T[1]
+    X = [x]
+    U = [np.zeros(R(0,x).shape[0])]
+    K = []
+    n = len(x)
+
+    for iter, t in zip(range(n_points-1), T):
+        if not (iter)%np.ceil(n_points/10.):
+            print("Step {}".format(iter))
+
+        # Get current system approximation
+        a = A(t, x)
+        b = B(t, x)
+        c = C(t, x)
+        q = Q(t, x)
+        r = R(t, x)
+        S = dot(b, matrix_solve(r, b.T))
+        qc = dot(c.T, dot(q, c))
+
+        # Solve the CARE:
+        if E is None:
+            p = care(a, b, qc, r)
+        else:
+            e = E(t,x)
+            # N = np.linalg.cholesky(S - sigma*e@e.T + 1e-9*np.eye(2)) # This will fail if not positive definite, which bounds acceptable sigma values for a given (R,B,E) triple 
+            vals,vecs = np.linalg.eigh(S - sigma*e@e.T)
+            assert np.all(vals >= 0), "Must be positive semidefinite {}".format(vals)
+            N = vecs @ (vals**0.5)
+            N = np.expand_dims(N, -1)
+            p = care(a, N, qc, np.eye(r.shape[0]))
+
+        # Save the feedback gains
+        K.append(sdre_feedback(b, r, p))
+
+        # Solve the feedforward control:
+        s = -matrix_solve((a-dot(S, p)).T, dot(c.T, dot(q, z(t+h))))  # Can introduce a problem-dependent offset here as anticipatory control to reduce lag
+        u = sdre_control(x, b, r, p, s)
+        U.append(u)
+
+        # Step forward
+        x = odeint(sdre_dynamics, x, np.linspace(t,t+dt,3), args=(a, b, r, p, s))[-1]
+        X.append(x)
+
+    J = sdre_cost(T, X, U, C, Q, R, z)
+    print("Cost: {}".format(J))
+
+    return np.array(X), np.array(U), np.array(K)
+
 
 def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
     """ Version of SDRE from the Lunar Lander thesis with terminal constraints
@@ -52,7 +120,7 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
         V = integrateV(dt, c.T, a, b, Kall)
         P = integrateP(dt, b, r, V)
 
-        u = -(Kall[-1] - np.linalg.solve(r,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],V[-1].T))).dot(x) - np.linalg.solve(r,b.T.dot(V[-1])).dot(np.linalg.solve(P[-1],z))
+        u = -(Kall[-1] - np.linalg.solve(r, b.T.dot(V[-1])).dot(np.linalg.solve(P[-1], V[-1].T))).dot(x) - np.linalg.solve(r, b.T.dot(V[-1])).dot(np.linalg.solve(P[-1], z))
         if maxU is not None and np.linalg.norm(u) > maxU:
             u *= maxU/np.linalg.norm(u)
         if minU is not None and np.linalg.norm(u) < minU:
@@ -74,7 +142,6 @@ def sdrec_dynamics(x,t,a,b,u):
 def step(x, dt, u, a, b):
 
     return odeint(sdrec_dynamics,x,[0,dt],args=(a,b,u))[-1]
-    #dx = a*x + b*u
 
 
 def integrateP(dt, B, R, V):
@@ -124,77 +191,18 @@ def integrateV(dt, Vf, A, B, K):
 
     return np.array([v.reshape(Vshape) for v in V])
 
-def SDRE(x, tf, A, B, C, Q, R, z, n_points=200, h=0):
-    """
-        Inputs:
-            x     -   current state
-            tf    -   solution horizon (independent variable need not be time)
-            A(x)  -   function returning SDC system matrix
-            B(x)  -   function returning SDC control matrix
-            C(x)  -   function returning SDC output matrix
-            Q(x)  -   function returning LQR tracking error matrix
-            R(t)  -   function returning LQR control weight matrix
-            z(t)  -   function returning the reference signal(s) at each value of the independent variable. Single step version can take a single value instead of function.
 
-        Optional Inputs:
-            Qf   -    final state error matrix, also the final condition for the Riccati equation when solving a terminally constrained problem
-
-        Outputs:
-            x     -   state vector at n_points
-            u     -   control history at n_points
-            K     -   time-varying feedback gains
-    """
-    from scipy.linalg import solve_continuous_are as care
-
-    T = np.linspace(0, tf, n_points)
-    dt = tf/(n_points-1.0)
-    X = [x]
-    U = [np.zeros(R(x).shape[0])]
-    K = []
-    for iter, t in zip(range(n_points), T):
-        if not (iter)%np.ceil(n_points/10.):
-            print("Step {}".format(iter))
-
-        # Get current system approximation
-        a = A(x)
-        b = B(x)
-        c = C(x)
-        q = Q(x)
-        # r = R(x)
-        r = R(t)
-        S = dot(b, matrix_solve(r, b.T))
-        qc = dot(c.T, dot(q, c))
-
-        # Solve the CARE:
-        p = care(a, b, qc, r)
-
-        # Save the feedback gains
-        K.append(sdre_feedback(b,r,p))
-
-        # Solve the feedforward control:
-        s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t+h))))  # Can introduce a problem-dependent offset here as anticipatory control to reduce lag
-        u = sdre_control(x, b, r, p, s)
-        U.append(u)
-
-        # Step forward
-        x = odeint(sdre_dynamics, x, np.linspace(t,t+dt,3), args=(a, b, r, p, s))[-1]
-        X.append(x)
-
-    J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
-    print("Cost: {}".format(J))
-
-    return np.array(X), np.array(U), np.array(K)
 
 def sdre_step(x, t, A, B, C, Q, R, z, h=0, args=()):
     from scipy.linalg import solve_continuous_are as care
 
-    a = A(x)
+    a = A(t,x)
     n = a.shape[0]
-    b = B(x)
-    c = C(x)
-    q = Q(x)
-    r = R(x)
-    # r = R(t)
+    b = B(t,x)
+    c = C(t,x)
+    q = Q(t,x)
+    r = R(t,x)
+    
     S = dot(b, matrix_solve(r, b.T))
     qc = dot(c.T, dot(q, c))
 
@@ -219,12 +227,12 @@ def sdre_dynamics(x, t, a, b, r, p, s):
 
 def sdre_cost(t, x, u, C, Q, R, z):
     """ Estimation of the final cost in SDRE"""
-    e = z(t).flatten() - np.array([[dot(C(xi),xi)] for xi in x]).flatten()
-    integrand = np.array([dot(ei,dot(Q(xi),ei)) + dot(ui,dot(R(ti),ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
-    return trapz(integrand,t)
+    e = z(t).flatten() - np.array([[dot(C(ti,xi),xi)] for ti,xi in zip(t,x)]).flatten()
+    integrand = np.array([dot(ei, dot(Q(ti, xi), ei)) + dot(ui, dot(R(ti, xi), ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
+    return trapz(integrand, t)
 
 def sdre_feedback(b,r,p):
-    return dot(matrix_solve(r,b.T),p)
+    return dot(matrix_solve(r, b.T), p)
 
 
 
@@ -241,16 +249,16 @@ def replace_nan(x, replace=1.):
 
 
 # ############## SRP (TIME) ##############
-def SRP_A(x):
+def SRP_A(t,x):
     return np.array([[0,0,0,1,0,0],[0,0,0,0,1,0],[0,0,0,0,0,1],[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,-3.71*replace_nan(1/x[2],1),0,0,0]])
 
-def SRP_B(x):
+def SRP_B(t,x):
     return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)
 
-def SRP_Bu(x,u):
+def SRP_Bu(t,x):
     return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)
 
-def SRP_C(x):
+def SRP_C(t,x):
     return np.eye(6)
 
 def SRP(N=200):
@@ -336,55 +344,58 @@ def SRP(N=200):
  
 
 # ############## Inverted Pendulum ##############
-def IP_A(x):
+def IP_A(t,x):
     return np.array([[0,1],[4*4.905*replace_nan(sin(x[0])/x[0],1), -0.4]])
 
-def IP_B(x,u):
+def IP_B(t, x):
     return np.array([[0],[10]])
 
 def IP_z(t):
     return np.array([[sin(t)+cos(2*t-1)]])
 
-def IP_R(t):
+def IP_R(t,x):
     return np.array([[1 + 200*np.exp(-t)]])
+
+def IP_E(t, x):
+    return np.diag([0., 1])
 
 def test_IP():
     import time
-    R = np.array([10])
-    R.shape = (1,1)
     C = np.array([[1,0]])
     x0 = np.zeros((2)) + 1
     Q = np.array([[1.0e3]])
-    F = np.array([[1.0e1]])
     tf = 15
 
-    t_init = time.time()
-    x,u,K = SDRE(x0, tf, IP_A, lambda x: IP_B(x,0), lambda x: C, lambda x: Q, IP_R, IP_z, n_points=75,h=0.0)      # Time-varying R
-    t_sdre = -t_init + time.time()
+    # t_init = time.time()
+    for SIGMA in [-0.1, 0, 0.1, 0.2,]:
+        x,u,K = SDRE(x0, tf, IP_A, IP_B, lambda t,x: C, lambda t,x: Q, IP_R, IP_z, E=IP_E, sigma=SIGMA, n_points=175, h=0.11) 
+    # t_sdre = -t_init + time.time()
 
-    print("SDRE: {} s".format(t_sdre))
+    # print("SDRE: {} s".format(t_sdre))
+    # print(u.size)
 
-    t = np.linspace(0,tf,u.size)
-    plt.figure(1)
-    plt.plot(t,x[:,0],label='SDRE')
-    plt.plot(t, IP_z(t).squeeze(), label="Reference")
-    plt.title('Output history')
-    plt.figure(2)
-    plt.plot(t,u,label='SDRE')
-    plt.title('Control history')
-    plt.legend()
+        t = np.linspace(0,tf,u.size)
+        plt.figure(1)
+        plt.plot(t,x[:,0],label='\sigma = {}'.format(SIGMA))
+        plt.plot(t, IP_z(t).squeeze(), label="Reference")
+        plt.legend()
+        plt.title('Output history')
+        plt.figure(2)
+        plt.plot(t,u,label='\sigma = {}'.format(SIGMA))
+        plt.title('Control history')
+        plt.legend()
 
-    Kplot = np.transpose(K,(1,2,0))
-    plt.figure(3)
-    for gain in product(range(K.shape[1]),range(K.shape[2])):
-        plt.plot(t[:-1],Kplot[gain],label='SDRE {}'.format(gain))
-    plt.title('Feedback gains')
-    plt.legend()
+        Kplot = np.transpose(K,(1,2,0))
+        plt.figure(3)
+        for gain in product(range(K.shape[1]),range(K.shape[2])):
+            plt.plot(t[:-1],Kplot[gain],label='SDRE {}'.format(gain))
+        plt.title('Feedback gains')
+        plt.legend()
+
 
     plt.show()
 
 
 if __name__ == '__main__':
-    # test_IP()
-    SRP()
-    # SRP_alt()
+    test_IP()
+    # SRP()
