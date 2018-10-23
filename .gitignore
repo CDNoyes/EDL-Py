@@ -8,3 +8,5 @@
 *.pdf
 *.vscode
 *.ipynb_checkpoints
+*.bak
+data/*

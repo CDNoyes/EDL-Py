@@ -19,7 +19,7 @@ class DDP:
         pass 
     
     def solve(self, x0, N, u, bounds=None, maxIter=10, tol=1e-6, verbose=True):  # TODO: This should be implemented in specific versions of DDP, this algorithm is specific to control-limited 
-        reg = 1   # initial regularization parameter 
+        reg = 0   # initial regularization parameter 
         dreg = 1  # initial regularization update parameter 
         reg_factor = 1.6
         reg_min = 1e-6  # below this reg = 0 
