@@ -89,15 +89,6 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
     """
     n_points -= 1
 
-    if not callable(Q):
-        Qf = lambda x: Q
-    else:
-        Qf=Q
-    if not callable(R):
-        Rf = lambda x: R
-    else:
-        Rf=R
-
     T = np.linspace(0, tf, n_points)
     dt = tf/(n_points-1.0)
     X = [x]
@@ -108,26 +99,34 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
         if not (iter)%np.ceil(n_points/10.):
             print("Step {}".format(iter))
 
-        a = A(x)
-        b = B(x)
-        c = C(x)
-        q = Qf(x)
-        r = Rf(x)
+        a = A(t, x)
+        if iter:
+            b = B(t, x, U[-1])
+            r = R(t, x, U[-1])
 
-        S = DRE(t, tf, Sf, a,b,q,r,n_points-iter)
-        Kall = [sdre_feedback(b,r,s) for s in S]
+        else:
+            b = B(t, x, 0)
+            r = R(t, x, 0)
+        c = C(t, x)
+        q = Q(t, x)
+
+        S = DRE(t, tf, Sf, a, b, c, q, r, n_points-iter) # c.T.dot(Sf).dot(c)
+        Kall = [sdre_feedback(b, r, s) for s in S]
         K.append(Kall[-1])
         V = integrateV(dt, c.T, a, b, Kall)
         P = integrateP(dt, b, r, V)
+        
+        u = -(Kall[-1] - np.linalg.solve(r, b.T.dot(V[-1])).dot(np.linalg.solve(P[-1], V[-1].T))).dot(x) - np.linalg.solve(r, b.T.dot(V[-1])).dot(np.linalg.solve(P[-1], z)).squeeze()
 
-        u = -(Kall[-1] - np.linalg.solve(r, b.T.dot(V[-1])).dot(np.linalg.solve(P[-1], V[-1].T))).dot(x) - np.linalg.solve(r, b.T.dot(V[-1])).dot(np.linalg.solve(P[-1], z))
         if maxU is not None and np.linalg.norm(u) > maxU:
             u *= maxU/np.linalg.norm(u)
         if minU is not None and np.linalg.norm(u) < minU:
             u *= minU/np.linalg.norm(u)
+
         U.append(u)
 
-        x = step(x, dt, u, a, b)
+        bu = B(t, x, u)
+        x = step(x, dt, u, a, bu)
         X.append(x)
 
     # J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
@@ -163,17 +162,17 @@ def P_dynamics(P,T, B,R,V):
     return Pdot.flatten()
 
 
-def riccati_dynamics(S,T,A,B,Q,R):
+def riccati_dynamics(S,T,A,B,C,Q,R):
     n = int(np.sqrt(S.size))
     S.shape = (n,n) # Turn into a matrix
-    dS = A.T.dot(S) + S.dot(A) - S.dot(B).dot(np.linalg.solve(R,B.T.dot(S))) + Q
+    dS = A.T.dot(S) + S.dot(A) - S.dot(B).dot(np.linalg.solve(R,B.T.dot(S))) + Q # + C.T.dot(Q).dot(C)
 
     return dS.flatten()
 
-def DRE(tcurrent, tfinal, Sf, A,B,Q,R,nRemaining):
+def DRE(tcurrent, tfinal, Sf, A, B, C, Q, R, nRemaining):
     x0 = Sf.flatten()
     n = int(x0.size**0.5)
-    Svec = odeint(riccati_dynamics, x0, np.linspace(tcurrent, tfinal,nRemaining), args=(A,B,Q,R))
+    Svec = odeint(riccati_dynamics, x0, np.linspace(tcurrent, tfinal, nRemaining), args=(A,B,C,Q,R))
 
     S = [s.reshape((n,n)) for s in Svec]
     return np.array(S)

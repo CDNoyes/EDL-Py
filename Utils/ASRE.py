@@ -48,11 +48,11 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
             x = np.array([x0]*n_discretize)  # This is the standard approach, but it seems like it would be far superior to actually integrate the system using the initial control
 
         # Riccati equation for feedback solution
-        Pf = C.T.dot(F.dot(C))
-        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: C, Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T), E, sigma))[::-1]
+        Pf = F
+        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: np.eye(n), Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T), E, sigma))[::-1]
         K = asre_feedback(t, x, u, B, R, P)
         V = asre_integrateV(t, C.T, A, B, K, x, u)[::-1]
-        P = asre_integrateP(t, V, B, R, x, u)[::-1] # This P has nothing to do with the previous one 
+        P = asre_integrateP(t, V, B, R, x, u)[::-1]  # This P has nothing to do with the previous one 
 
         # Compute new state trajectory and control
         xold = x 
@@ -65,7 +65,7 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         x[-1] = x[-2]
         u[0] = u[1]
         u[-1] *= 0
-        J = compute_cost(t, x, u, lambda t,x: C, Q, R, lambda xf: F, lambda t: z)
+        J = asrec_cost(t, x, u, Q, R, lambda xf: F)
         converge = np.max(np.abs(np.array(x)-xold))
         print("Current cost: {}".format(J))
         print("Convergence criteria: {:.3g}\n".format(converge))
@@ -265,7 +265,14 @@ def compute_control(B,R,Pv,X,U,S,n,T):
     return np.array(u_new)
 
 
-def compute_cost(t, x, u, C, Q, R, F, z):
+def asrec_cost(t, x, u, Q, R, F):
+
+    integrand = np.array([dot(xi,dot(Q(ti,xi),xi)) + dot(ui,dot(R(ti,xi,ui),ui)) for ti,xi,ui in zip(t,x,u)]).flatten()
+    J0 = 0.5*dot(x[-1],dot(F(x[-1]),x[-1]))
+    return J0.squeeze() + trapz(integrand, t)
+
+
+def compute_cost(t, x, u, C, Q, R, F, z): # This is for ASRE 
     e = np.array([z(ti).squeeze() - dot(C(ti,xi),xi) for ti,xi in zip(t,x)]).squeeze()
 
     integrand = np.array([dot(ei,dot(Q(ti,xi),ei)) + dot(ui,dot(R(ti,xi,ui),ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
@@ -285,6 +292,7 @@ def dP(p, t, A, B, C, Q, R, X, U, E, sigma):
     q = Q(t, x)
     r = R(t, x, u)
     s = dot(b, matrix_solve(r,b.T))
+    # 
     return (-dot(c.T,dot(q,c)) - dot(p,a) - dot(a.T,p) + dot(p,dot(s,p))) - sigma*p.dot(e).dot(e.T).dot(p) # could try np.multi_dot here 
 
 
