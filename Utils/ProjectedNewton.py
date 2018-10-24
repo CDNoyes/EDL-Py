@@ -3,7 +3,8 @@
 import numpy as np
 from itertools import product 
 
-def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbose=False, check_hessian=False):
+
+def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=100, verbose=False, check_hessian=False):
     """
     Solves the quadratic problem:
     min F(x) = 0.5*x'*hessian*x + gradient'*x
@@ -22,7 +23,7 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
     Outputs:
         x           -   the converged solution, or the last iteration if max iterations is reached
         H           -   the Hessian with clamped directions set to 0 to prevent feedback in infeasible directions
-
+        f           -   the free directions 
 
     Reference: Control-limited Differential Dynamic Programming 
 
@@ -86,7 +87,8 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
         try:
             dx[f] = -np.linalg.solve(hff, gf)
         except np.linalg.LinAlgError:  # Singular case
-            dx[f] = -np.dot(np.linalg.pinv(hff), gf)
+            # dx[f] = -np.dot(np.linalg.pinv(hff), gf)
+            dx[f] = -np.linalg.lstsq(hff, gf, rcond=None)[0]
 
         alpha = _armijo(_fQuad(hessian, gradient), x, dx, g, xl, xu)
         x = np.clip(x+alpha*dx, xl, xu).squeeze()
@@ -105,15 +107,17 @@ def ProjectedNewton(x0, hessian, gradient, bounds, tol=1e-6, iter_max=10, verbos
     for pt in product(clamped, clamped):
         H[pt] = 0
     # H[clamped, :][:, clamped] = 0
-    return x, H
+    return x, H, f
 
 
 def _armijo(f, x, dx, g, xl, xu):
+    alpha_min = 1e-12 #/np.max(np.abs(g))
     gamma = 0.1
     c = 0.5
-    alpha = 2*np.max(xu-xl)
+    # alpha = 2*np.max(xu-xl)
+    alpha = 1 
     r = 0.5*gamma
-    while r < gamma:
+    while r < gamma and alpha > alpha_min:
         alpha *= c
         xa = np.clip(x+alpha*dx, xl, xu).squeeze()
         r = (f(x)-f(xa))/np.dot(g, (x-xa))
@@ -173,15 +177,15 @@ def test():
     for _ in range(N):
         H = (-1 + 2*np.random.random((n, n)))*30
         H = H + H.T
-        # H = Regularize(H, 0.1)
-        H = AbsRegularize(H)
+        H = Regularize(H, 0.1)
+        # H = AbsRegularize(H)
 
         g = (-1 + 2*np.random.random((n,)))*25
         x = (-1 + 2*np.random.random((n,)))*50
 
         bounds = [-3*np.ones((n,)), 5*np.ones((n,))]
         t0 = timer()
-        xo, _ = ProjectedNewton(x, H, g, bounds, verbose=False, iter_max=20, tol=1e-9)
+        xo, _, _ = ProjectedNewton(x, H, g, bounds, verbose=False, iter_max=50, tol=1e-6)
         tPN = timer()
         tsolve.append(tPN-t0)
         # print("\tProjNewton solver time: {:.5g} s".format(tPN-t0))
