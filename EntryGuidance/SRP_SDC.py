@@ -107,6 +107,9 @@ class Full:
     def C(self, t, x):  # trims off the mass state since we don't want to regulate it to zero, nor constrain it to a particular final value 
         return np.eye(7)[:-1]
 
+    def E(self, t, x):
+        return np.diag([0,0,0,1,1,1,0])
+
     def guess(self, x0, tf, N):
         x = np.array([np.linspace(xi, 1, N) for xi in x0[:6]]).T
 
@@ -277,7 +280,7 @@ if __name__ == "__main__":
 
     from PDPlot import Plot, Plots 
     from ASRE import ASRE, ASREC 
-    from SDRE import SDREC 
+    from SDRE import SDRE, SDREC 
 
     r0 = [-3200, 100, 2600]
     v0 = [600, 0, -265]
@@ -307,30 +310,38 @@ if __name__ == "__main__":
     df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
     df_list.append(df)
     labels.append("ASRE")
-    # Plot(df)
 
-
-    Q = lambda t,x: np.diag([1,1,1,10,10,10,0])*0
-    R = lambda t,x,u: np.eye(3)*1e-10
-    F = np.diag([1,1,1,10,10,10,0])*0
-    z = np.ones((6, 1)) 
-
-    # print("Running endpoint constrained SRP landing ")
-    t0 = time.time()
-    x,u,K = ASREC(x0, t, model.A, model.B, model.C(0,0), Q, R, F, z, model.m, max_iter=15, tol=1, guess=model.guess(x0, tf, N))
-    t1 = time.time()
+    x,u,K = ASRE(x0, tf, model.A, model.B, model.C, Q, R, F, z, model.m, E=model.E, sigma=1.5, max_iter=15, tol=1e-4, n_discretize=N, guess=model.guess(x0, tf, N))
+    # x,u,K = SDRE(x0, tf, model.A, model.B, model.C, Q, R, z, model.m, E=model.E, sigma=-0.1, n_points=N, h=0)
     XU = np.concatenate((x,u), axis=1)
 
     df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
     df_list.append(df)
-    labels.append("ASREC")
+    labels.append("Risk Sensitive ASRE")
+    # Plot(df)
+
+
+    # Q = lambda t,x: np.diag([1,1,1,10,10,10,0])*0
+    # R = lambda t,x,u: np.eye(3)*1e-10
+    # F = np.diag([1,1,1,10,10,10,0])*0
+    # z = np.ones((6, 1)) 
+
+    # # print("Running endpoint constrained SRP landing ")
+    # t0 = time.time()
+    # x,u,K = ASREC(x0, t, model.A, model.B, model.C(0,0), Q, R, F, z, model.m, max_iter=15, tol=1, guess=model.guess(x0, tf, N))
+    # t1 = time.time()
+    # XU = np.concatenate((x,u), axis=1)
+
+    # df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
+    # df_list.append(df)
+    # labels.append("ASREC")
 
     # t2 = time.time()
     # Q = lambda t,x: np.diag([0,0,0,0,0,0,0])
     # Qf = np.diag([0,0,0,0,0,0,0])
 
-    # x,u,K = SDREC(x0, tf, model.A, model.B, model.C, Q, R, Qf, z, n_points=N, minU=None, maxU=None)
-    # # x,u,K = SDREC(x0, tf, model.A, model.B, model.C, Q, R, Qf, z, n_points=N, minU=40*8500, maxU=70*8500)
+    # x,u,K = SDREC(x0, tf, model.A, model.B, model.C, Q, R, Qf, z, model.m, n_points=N, minU=None, maxU=None)
+    # # x,u,K = SDREC(x0, tf, model.A, model.B, model.C, Q, R, Qf, z, model.m, n_points=N, minU=40*8500, maxU=70*8500)
   
     # t3 = time.time()
     # XU = np.concatenate((x,u), axis=1)
@@ -339,22 +350,22 @@ if __name__ == "__main__":
     # df_list.append(df)
     # labels.append("SDREC")
 
-    model = MassLoss()
-    Q = lambda t,x: np.diag([0,0,0,0,0,0,0,1])*1e-4
-    Qf = np.diag([0,0,0,0,0,0,0,1])*1e-5
-    y0 = np.append(x0, 1)
-    t4 = time.time()
-    # x,u,K = SDREC(y0, tf, model.A, model.B, model.C, Q, R, Qf, z, n_points=N, minU=None, maxU=None)
-    # x,u,K = SDREC(y0, tf, model.A, model.B, model.C, Q, R, Qf, z, n_points=N, minU=40*8500, maxU=70*8500)
-    x,u,K = ASREC(y0, t, model.A, model.B, model.C(0,0), Q, R, Qf, z, model.m, max_iter=15, tol=1, guess=model.guess(x0, tf, N))
+    # model = MassLoss()
+    # Q = lambda t,x: np.diag([0,0,0,0,0,0,0,1])*1e-4
+    # Qf = np.diag([0,0,0,0,0,0,0,1])*1e-5
+    # y0 = np.append(x0, 1)
+    # t4 = time.time()
+    # # x,u,K = SDREC(y0, tf, model.A, model.B, model.C, Q, R, Qf, z, model.m, n_points=N, minU=None, maxU=None)
+    # # x,u,K = SDREC(y0, tf, model.A, model.B, model.C, Q, R, Qf, z, model.m, n_points=N, minU=40*8500, maxU=70*8500)
+    # x,u,K = ASREC(y0, t, model.A, model.B, model.C(0,0), Q, R, Qf, z, model.m, max_iter=15, tol=1, guess=model.guess(x0, tf, N))
 
-    t5 = time.time()
+    # t5 = time.time()
   
-    XU = np.concatenate((x[:,:7],u), axis=1)
+    # XU = np.concatenate((x[:,:7],u), axis=1)
 
-    df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
-    df_list.append(df)
-    labels.append("with mass loss")
+    # df = pd.DataFrame(XU, index=t, columns=['x','y','z','vx','vy','vz','mass','Tx','Ty','Tz'])
+    # df_list.append(df)
+    # labels.append("with mass loss")
 
 
 

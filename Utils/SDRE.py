@@ -12,7 +12,7 @@ from itertools import product
 # ################################################################################################
 #                                State Dependent Riccati Equation                                #
 # ################################################################################################
-def SDRE(x, tf, A, B, C, Q, R, z, E=None, sigma=0, n_points=200, h=0):
+def SDRE(x, tf, A, B, C, Q, R, z, m, E=None, sigma=0, n_points=200, h=0):
     """
         Inputs:
             x       -   current state
@@ -34,7 +34,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, E=None, sigma=0, n_points=200, h=0):
     T = np.linspace(0, tf, n_points)
     dt = T[1]
     X = [x]
-    U = [np.zeros(R(0,x).shape[0])]
+    U = [np.zeros((m,1))]
     K = []
     n = len(x)
 
@@ -44,10 +44,10 @@ def SDRE(x, tf, A, B, C, Q, R, z, E=None, sigma=0, n_points=200, h=0):
 
         # Get current system approximation
         a = A(t, x)
-        b = B(t, x)
+        b = B(t, x, U[-1])
         c = C(t, x)
         q = Q(t, x)
-        r = R(t, x)
+        r = R(t, x, U[-1])
         S = dot(b, matrix_solve(r, b.T))
         qc = dot(c.T, dot(q, c))
 
@@ -56,12 +56,10 @@ def SDRE(x, tf, A, B, C, Q, R, z, E=None, sigma=0, n_points=200, h=0):
             p = care(a, b, qc, r)
         else:
             e = E(t,x)
-            # N = np.linalg.cholesky(S - sigma*e@e.T + 1e-9*np.eye(2)) # This will fail if not positive definite, which bounds acceptable sigma values for a given (R,B,E) triple 
-            vals,vecs = np.linalg.eigh(S - sigma*e@e.T)
+            vals, vecs = np.linalg.eigh(S - sigma*e@e.T)
             assert np.all(vals >= 0), "Must be positive semidefinite {}".format(vals)
-            N = vecs @ (vals**0.5)
-            N = np.expand_dims(N, -1)
-            p = care(a, N, qc, np.eye(r.shape[0]))
+            N = vecs @ np.diag((vals**0.5)) @ vecs.T
+            p = care(a, N, qc, np.eye(n))
 
         # Save the feedback gains
         K.append(sdre_feedback(b, r, p))
@@ -81,7 +79,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, E=None, sigma=0, n_points=200, h=0):
     return np.array(X), np.array(U), np.array(K)
 
 
-def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
+def SDREC(x, tf, A, B, C, Q, R, Sf, z, m, n_points=100, minU=None, maxU=None):
     """ Version of SDRE from the Lunar Lander thesis with terminal constraints
         Assumes Q,R are functions of the state but may be constant matrices
         Sf is the final state weighting for non constrained states
@@ -105,12 +103,12 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, n_points=100, minU=None, maxU=None):
             r = R(t, x, U[-1])
 
         else:
-            b = B(t, x, 0)
-            r = R(t, x, 0)
+            b = B(t, x, np.zeros((m,1)))
+            r = R(t, x, np.zeros((m,1)))
         c = C(t, x)
         q = Q(t, x)
 
-        S = DRE(t, tf, Sf, a, b, c, q, r, n_points-iter) # c.T.dot(Sf).dot(c)
+        S = DRE(t, tf, Sf, a, b, c, q, r, n_points-iter) 
         Kall = [sdre_feedback(b, r, s) for s in S]
         K.append(Kall[-1])
         V = integrateV(dt, c.T, a, b, Kall)
@@ -227,7 +225,7 @@ def sdre_dynamics(x, t, a, b, r, p, s):
 def sdre_cost(t, x, u, C, Q, R, z):
     """ Estimation of the final cost in SDRE"""
     e = z(t).flatten() - np.array([[dot(C(ti,xi),xi)] for ti,xi in zip(t,x)]).flatten()
-    integrand = np.array([dot(ei, dot(Q(ti, xi), ei)) + dot(ui, dot(R(ti, xi), ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
+    integrand = np.array([dot(ei, dot(Q(ti, xi), ei)) + dot(ui, dot(R(ti, xi, ui), ui)) for ti,xi,ui,ei in zip(t,x,u,e)]).flatten()
     return trapz(integrand, t)
 
 def sdre_feedback(b,r,p):
@@ -346,14 +344,14 @@ def SRP(N=200):
 def IP_A(t,x):
     return np.array([[0,1],[4*4.905*replace_nan(sin(x[0])/x[0],1), -0.4]])
 
-def IP_B(t, x):
+def IP_B(t, x, u):
     return np.array([[0],[10]])
 
 def IP_z(t):
     return np.array([[sin(t)+cos(2*t-1)]])
 
-def IP_R(t,x):
-    return np.array([[1 + 200*np.exp(-t)]])
+def IP_R(t, x, u):
+    return np.array([[1 + 1*np.exp(-t)]])
 
 def IP_E(t, x):
     return np.diag([0., 1])
@@ -363,11 +361,11 @@ def test_IP():
     C = np.array([[1,0]])
     x0 = np.zeros((2)) + 1
     Q = np.array([[1.0e3]])
-    tf = 15
+    tf = 5
 
     # t_init = time.time()
     for SIGMA in [-0.1, 0, 0.1, 0.2,]:
-        x,u,K = SDRE(x0, tf, IP_A, IP_B, lambda t,x: C, lambda t,x: Q, IP_R, IP_z, E=IP_E, sigma=SIGMA, n_points=175, h=0.11) 
+        x,u,K = SDRE(x0, tf, IP_A, IP_B, lambda t,x: C, lambda t,x: Q, IP_R, IP_z, m=1, E=IP_E, sigma=SIGMA*50, n_points=175, h=0.11) 
     # t_sdre = -t_init + time.time()
 
     # print("SDRE: {} s".format(t_sdre))
@@ -387,7 +385,7 @@ def test_IP():
         Kplot = np.transpose(K,(1,2,0))
         plt.figure(3)
         for gain in product(range(K.shape[1]),range(K.shape[2])):
-            plt.plot(t[:-1],Kplot[gain],label='SDRE {}'.format(gain))
+            plt.plot(t[:-1],Kplot[gain],label='SDRE {}, sigma={}'.format(gain, SIGMA))
         plt.title('Feedback gains')
         plt.legend()
 
