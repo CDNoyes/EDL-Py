@@ -19,13 +19,11 @@ def EulerS(fun, x0, iv, args=()):
     return np.asarray(x)
 
 
-
 def _fixed_step_integrator(tableau):
 
     def Integrator(fun, x0, iv, args=()):
         x = [np.asarray(x0)]
         div = np.diff(iv)
-        T = _RungeKutta4()
         for t, dt in zip(iv, div):
             x.append(_step(fun, t, x[-1], dt, args, tableau))
 
@@ -129,7 +127,7 @@ class Tableau:
 
 
 class _DOPRI45(Tableau):
-  
+
     @property 
     def c(self):
         return [0.0, 0.2, 0.3, 0.8, 8/9, 1.0, 1.0]
@@ -169,6 +167,7 @@ class _RungeKutta4(Tableau):
 
     
 class _Euler(Tableau):
+
     @property
     def c(self):
         return [0]
@@ -198,7 +197,7 @@ def test_adaptive():
     t = np.linspace(0, 5)[::-1]
     x = RK4(dyn, x0, t)
     x.shape = (t.size, 9)
-    ty, y = RK45(dyn, x0, [t[0], t[-1]], tol=1e-3) # gets the adaptive steps
+    ty, y = RK45(dyn, x0, [t[0], t[-1]], tol=1e-3)  # gets the adaptive steps
     # ty, y = RK45(dyn, x0, t, tol=1e-5) # gets the fixed time points 
     y.shape = (ty.size, 9)
     plt.plot(t, x)
@@ -221,7 +220,6 @@ def test_fixed_step():
 
     xe = Euler(dyn, x0, t)
     xrk4 = RK4(dyn, x0, t)
-
 
     plt.plot(t, xe, label="Euler")
     plt.plot(t, xrk4, 'o', label="RK4")
