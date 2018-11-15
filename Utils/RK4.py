@@ -74,7 +74,7 @@ def RK45(fun, x0, iv, args=(), tol=1e-4, hmin=1e-6):
 
 def _step(f, iv, x, h, args, tableau):
     """ A general stepping method given a butcher tableau """
-    k = [ f(x[:], iv, *args) ]
+    k = [ f(x.copy(), iv, *args) ]
     move_axis = np.ndim(x)
     for ai, ci in zip(tableau.a[1:], tableau.c[1:]):
         dx = h*np.dot(np.moveaxis(k, 0, move_axis), ai)
@@ -231,21 +231,21 @@ def test_stochastic():
     import matplotlib.pyplot as plt 
 
     def dyn(x, t):
-        return -t*x, np.diag(np.abs(x)**0.5)*0.09
+        return -t*x, np.eye(3)*0.25 #np.diag(np.abs(x)**0.5)*0.09
 
     # x0 = np.random.random((3,3))  
     x0 = np.array([1,2,3])
-
+    alpha = 0.1 
     t = np.linspace(0, 5, 100)
     for i in range(100):
-        x = EulerS(dyn, x0, t)
+        x = EulerS(dyn, x0 + np.random.random((3,))*0.1-0.05, t)
         if not i:
-            plt.plot(t, x, label="EM")
+            plt.plot(t, x, 'k', alpha=alpha, label="EM Sample Paths")
         else:
-            plt.plot(t, x)
+            plt.plot(t, x, 'k', alpha=alpha)
 
     xd = Euler(lambda x,t: dyn(x,t)[0], x0, t)
-    plt.plot(t, xd, 'k--', label="Deterministic")
+    plt.plot(t, xd, 'r', label="Deterministic")
     plt.legend()
     plt.show()
 
