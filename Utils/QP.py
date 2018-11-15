@@ -6,7 +6,7 @@ import cvxpy as cvx
 
 def TRQP(g, H, T, delta, A=None, b=None, Aeq=None, beq=None):
     """ Trust Region Quadratic Program
-    min g'x + 0.5 x'H' subject to ||Tx|| < delta
+    min g'x + 0.5 x'Hx subject to ||Tx|| < delta
 
     Optionally Ax <= b and/or Aeq x ==  b
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     T = []
     print("ere")
     for _ in range(N):
-        Hed0nbaku!g = np.random.random(n)*2
+        g = np.random.random(n)*2
         A = np.random.random((n,n))*3
         b = np.random.random((n,))
         t0 = time.time()
