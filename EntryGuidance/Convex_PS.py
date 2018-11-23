@@ -44,7 +44,7 @@ class OCP:
         X = odeint(self.dynamics, x0, t, args=(u,))
         return np.asarray(X)
 
-    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=lambda it: 1e4, plot=False, solver='ECOS', linesearch=0.1, refine=True):
+    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=lambda it: 1e4, plot=False, solver='ECOS', linesearch=0.1, refine=True, verbose=False):
         """ 
         guess
         scaling - this is a vector scale factor used solely during mesh refinement to determine appropriate errors in each state 
@@ -88,7 +88,7 @@ class OCP:
             print("Iteration {}".format(it))
             try:
                 if solver.lower() == "ipopt":
-                    x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV_I(A, B, F, x_approx.T, u, mesh, penalty(it))
+                    x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV_I(A, B, F, x_approx.T, u, mesh, penalty(it), verbose)
                 else:
                     x_sol, u_sol, J_approx, v_sol, tsolve = self.LTV(A, B, F, x_approx.T, u, mesh, penalty(it), solver)
 
@@ -139,18 +139,18 @@ class OCP:
                         print("Relative change in cost function = {:.2f}%\n".format(rel_diff*100))
                     else:  # near zero cost so we use the absolute difference instead
                         rel_diff = np.abs(J_cvx[-1]-J_cvx[-2])
-                if refine and(rel_diff is None or rel_diff < 0.1) :  # check state convergence instead?
+                if refine and (rel_diff is None or rel_diff < 0.1):  # check state convergence instead?
                         # In contrast to NLP, we only refine after the solution converges on the current mesh
                         if it < iters-1:
                             current_size = mesh.times.size
                             if it%2 and False:
-                                _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0) # Control based refinement
+                                _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0)  # Control based refinement
                             else:
-                                refined = mesh.refine(x_approx.T, F, tol=1e-4, rho=1.5, scaling=scaling, verbose=False) # Dynamics based refinement for convergence check
+                                refined = mesh.refine(x_approx.T, F, tol=1e-4, rho=1.5, scaling=scaling, verbose=False)  # Dynamics based refinement for convergence check
                             if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
-                            if not refined : # or (v_sol <= 1e-6 and rel_diff < 0.02)
+                            if not refined and rel_diff is not None:  # or (v_sol <= 1e-6 and rel_diff < 0.02)
                                 print('Terminating with optimal solution.')
                                 break
                             t_u = t
@@ -232,15 +232,17 @@ class OCP:
             states.append(cvx.Problem(cvx.Minimize(cost), ode))
 
         # Mayer Cost, including penalty for virtual control
-        Phi = self.mayer(x[-1])
+        Phi = self.mayer(x[-1], u)
         if penalty is None:
             Penalty = 0
         else:
-            Penalty = cvx.Problem(cvx.Minimize(penalty*cvx.norm(cvx.vstack(*v), 'inf')))
+            Penalty = cvx.Problem(cvx.Minimize(penalty*cvx.norm(cvx.vstack(v), 'inf')))
 
         # sums problem objectives and concatenates constraints.
-        prob = sum(states) + Phi + Penalty
-        prob.constraints.extend(self.constraints(mesh.times, x, u, x_ref, u_ref))
+        C = self.constraints(mesh.times, x, u, x_ref, u_ref)
+        prob = sum(states) + Phi + Penalty + cvx.Problem(cvx.Minimize(0), C)
+        
+        # prob.constraints.extend(self.constraints(mesh.times, x, u, x_ref, u_ref))
 
         t1 = time.time()
         prob.solve(solver=solver)
@@ -252,9 +254,9 @@ class OCP:
         print("setup time:     {} s".format(np.around(t1-t0, 3)))
 
         try:
-            x_sol = np.array([xi.value.A for xi in x]).squeeze()
+            x_sol = np.array([xi.value for xi in x]).squeeze()
             u_sol = np.array([ui.value for ui in u]).squeeze()
-            v_sol = np.array([xi.value.A for xi in v]).squeeze()
+            v_sol = np.array([xi.value for xi in v]).squeeze()
             if penalty is not None:
                 penalty = np.linalg.norm(v_sol.flatten(), np.inf)
                 print("penalty value:  {}\n".format(penalty))
@@ -266,7 +268,7 @@ class OCP:
             print(e)
             return x_ref.T, u_ref, None, 0, 0
 
-    def LTV_I(self, A, B, f_ref, x_ref, u_ref, mesh, penalty, *args):
+    def LTV_I(self, A, B, f_ref, x_ref, u_ref, mesh, penalty, verbose=False, solve_num=3, *args):
         """ Solves a convex subproblem with IPOPT """
 
         from Utils import ipopt 
@@ -299,6 +301,7 @@ class OCP:
 
         # Constraints
         self.solver = solver 
+        self.solver.model.options.SOLVER = solve_num
         self.constraints(mesh.times, X0, U0, x_ref, u_ref)
 
         L = []
@@ -318,16 +321,17 @@ class OCP:
 
         t_prep = time.time()
 
-        solver.solve(verbose=False)  # For now, always print 
+        solver.solve(verbose=verbose) 
 
         t_solve = time.time()
         if True:
+            print("optimal value:       {}".format(np.around(solver.model.options.OBJFCNVAL, 3)))
             print("Pre-processing time: {:.3f} s".format(t_prep - t0))
             print("Solver time:         {:.3f} s".format(t_solve - t_prep))
             print("Total time:          {:.3f} s".format(t_solve - t0))
 
-        x_sol = solver.get_values(X0)
-        u_sol = solver.get_values(U0)
+        x_sol = solver.get_values(X0) + x_ref
+        u_sol = solver.get_values(U0) + u_ref
 
         return x_sol.T, u_sol, solver.model.options.OBJFCNVAL, 0, t_solve-t_prep
 
@@ -364,10 +368,12 @@ class TestClass(OCP):
         return np.moveaxis(A, -1, 0), np.moveaxis(B, -1, 0)
 
     def lagrange(self, t, x, u, *args):
+        # return np.array([ui**2 for ui in u])
         return np.array([cvx.abs(ui) for ui in u])
+        # return np.zeros_like(u)
 
-    def mayer(self, *args, **kwargs):
-        # return cvx.Problem(cvx.Minimize(0*cvx.norm(u,'inf')))
+    def mayer(self, xf, u, *args, **kwargs):
+        # return cvx.Problem(cvx.Minimize(cvx.norm(cvx.vstack(u), 'inf')))
         return 0
 
     def constraints(self, t, x, u, x_ref, u_ref):
@@ -380,13 +386,13 @@ class TestClass(OCP):
         trust_region = 4
         umax = 3
 
-        constr = []
+        constr = bc
         for ti, xr in enumerate(x_ref):
             # constr += [cvx.norm((x[t]-xr)) <= trust_region]   
             # constr += [cvx.quad_form(x[ti], np.eye(2)/trust_region**2) < 1]
-            constr += [cvx.norm(x[ti]-xr) < trust_region]  # Documentation recommends norms over quadratic forms
+            constr += [cvx.norm(x[ti]-xr) <= trust_region]  # Documentation recommends norms over quadratic forms
             constr += [cvx.abs(u[ti]) <= umax]  # Control constraints
-        return constr + bc
+        return constr
 
     def plot(self, T, U, X, J, ti, tcvx):
         for i, xux in enumerate(zip(T, U, X)):
@@ -427,12 +433,13 @@ class TestClass(OCP):
             plt.legend()
         plt.show()
 
-if __name__ == "__main__":
-    vdp = TestClass(mu=0.5, x0=[2, 2], xf=[0, 0], tf=8)
+def test():
+    tf = 3
+    vdp = TestClass(mu=0.25, x0=np.array([2., 2]), xf=np.array([0., 0]), tf=tf)
 
     guess = {}
     
-    t = np.linspace(0,3,20)
+    t = np.linspace(0, tf, 20)
     u = np.zeros_like(t)
     # x = np.array([np.linspace(vdp.x0[i],0,20) for i in [0,1]]).T #
     x = vdp.integrate(vdp.x0, 0, t)
@@ -440,4 +447,8 @@ if __name__ == "__main__":
     guess['control'] = u 
     guess['time'] = t 
     guess['mesh'] = [3]*4
-    vdp.solve(guess, max_iter=20, linesearch=False, plot=True)
+    vdp.solve(guess, max_iter=10, linesearch=False, plot=True)
+
+
+if __name__ == "__main__":
+    test()
