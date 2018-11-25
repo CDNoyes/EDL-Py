@@ -44,7 +44,7 @@ class OCP:
         X = odeint(self.dynamics, x0, t, args=(u,))
         return np.asarray(X)
 
-    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=lambda it: 1e4, plot=False, solver='ECOS', linesearch=0.1, refine=True, verbose=False):
+    def solve(self, guess, scaling=None, max_size=500, max_iter=20, penalty=lambda it: 1e4, plot=False, solver='ECOS', linesearch=0.1, refine=True, verbose=False, refine_tol=1e-3):
         """ 
         guess
         scaling - this is a vector scale factor used solely during mesh refinement to determine appropriate errors in each state 
@@ -146,7 +146,7 @@ class OCP:
                             if it%2 and False:
                                 _ = mesh.refine(u, np.zeros_like(u), tol=1e-2, rho=0)  # Control based refinement
                             else:
-                                refined = mesh.refine(x_approx.T, F, tol=1e-4, rho=1.5, scaling=scaling, verbose=False)  # Dynamics based refinement for convergence check
+                                refined = mesh.refine(x_approx.T, F, tol=refine_tol, rho=1.5, scaling=scaling, verbose=False)  # Dynamics based refinement for convergence check
                             if mesh.times.size > max_size:
                                 print("Terminating because maximum number of collocation points has been reached.")
                                 break
