@@ -23,7 +23,7 @@ def smooth_sat(y, b=5.522):
         return a/(1+pa.exp(-b*(y-c)))
 
 
-def symmetric_sat(x, bound=1, tuning_parameter=1e-3):
+def sqrt_sat(x, bound=1, tuning=1e-3):
     """ From Avvakumov et al,
         "Boundary value problem for ordinary differential equations
         with applications to optimal control"
@@ -31,10 +31,11 @@ def symmetric_sat(x, bound=1, tuning_parameter=1e-3):
         The smaller the tuning parameter is, the more tightly this will
          approximate the saturation function from [-bound, bound].
     """
-    return 0.5*bound*(pa.sqrt(tuning_parameter + (x/bound + 1)**2) -
-                      pa.sqrt(tuning_parameter + (x/bound - 1)**2))
+    return 0.5*bound*(pa.sqrt(tuning + (x/bound + 1)**2) -
+                      pa.sqrt(tuning + (x/bound - 1)**2))
 
-def another_sat(x, bound=1, tuning=10):
+
+def cosh_sat(x, bound=1, tuning=10):
     """Another saturation function, from 
     Saturated Robust Adaptive Control for Uncertain Nonlinear Systems using a new approximate model
     
@@ -49,13 +50,42 @@ def test():
     x = np.linspace(-1.2,1.2,500)
     y = np.clip(x,-1,1)
 
-    y1 = [symmetric_sat(xi, 1, 1e-3) for xi in x]
-    y2 = [another_sat(xi, 1, 20) for xi in x]
-    # y2 = another_sat(x, 1, 20)
+    y1 = [sqrt_sat(xi, 1, 1e-3) for xi in x]
+    y2 = [cosh_sat(xi, 1, 30) for xi in x]
 
     plt.plot(x, y, label="Saturation")
-    plt.plot(x, y1, label="Symmetric")
-    plt.plot(x, y2, label="Another")
+    plt.plot(x, y1, label="Sqrt")
+    plt.plot(x, y2, label="Cosh")
+    plt.legend()
+    plt.show()
+
+
+def compare_error():
+    """ Determines the settings needed to produce similar levels of error 
+    
+    Results: 
+        cosh with 200 : 1.7e-3 max error
+        sqrt with 1e-5: 1.6e-3 max error 
+    """
+    
+    from matplotlib import pyplot as plt 
+    
+    x = np.linspace(-1.5, 1.5, 20000)
+    y = np.clip(x, -1, 1)
+
+    ycosh = np.array([cosh_sat(xi, bound=1, tuning=200) for xi in x])
+    ysqrt = np.array([sqrt_sat(xi, bound=1, tuning=1e-5) for xi in x])
+
+    ecosh = np.abs(y-ycosh)
+    esqrt = np.abs(y-ysqrt)
+
+    print("Cosh: Mean Error = {}".format(ecosh.mean()))
+    print("Cosh: Max Error  = {}".format(ecosh.max()))
+    print("Sqrt: Mean Error = {}".format(esqrt.mean()))
+    print("Sqrt: Max Error  = {}".format(esqrt.max()))
+
+    plt.semilogy(x, ecosh, label='Cosh')
+    plt.semilogy(x, esqrt, label='Sqrt')
     plt.legend()
     plt.show()
 
@@ -72,9 +102,9 @@ def compare():
         z = da.make(x_exp, names, order)
 
 
-        # Each is a list of DA's.
-        y1 = [symmetric_sat(xi, 1, 1e-3) for xi in z]
-        y2 = [another_sat(xi, 1, 20) for xi in z]
+        #  Each is a list of DA's.
+        y1 = [sqrt_sat(xi, 1, 1e-5) for xi in z]
+        y2 = [cosh_sat(xi, 1, 200) for xi in z]
 
         #  Now we sample each one in a neighborhood and compute the error 
         x_eval = np.linspace(-0.1, 0.1, 101)
@@ -104,4 +134,5 @@ def compare():
 if __name__ == "__main__":
     # opt()
     # test()
-    compare()
+    compare_error()
+    # compare()

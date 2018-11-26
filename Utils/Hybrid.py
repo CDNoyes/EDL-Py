@@ -7,6 +7,7 @@ from scipy.interpolate import interp1d
 from RK4 import RK4
 import DA as da 
 
+
 def get_system_index(t, s):
     # Best solution, O(1), s must be sorted 
     return np.searchsorted(s, t, side="right")
