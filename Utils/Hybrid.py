@@ -1,12 +1,20 @@
 """ Utilities for working with hybrid systems """
 
-import numpy as np 
+import numpy as np
+import numba as nb
 from functools import partial 
 from scipy.interpolate import interp1d 
 
 from RK4 import RK4
 import DA as da 
 
+
+@nb.njit
+def get_system_index_numba(val, arr):
+    for idx in range(len(arr)):
+        if arr[idx] > val:
+            return idx
+    return -1 # len(arr)
 
 def get_system_index(t, s):
     # Best solution, O(1), s must be sorted 
@@ -19,7 +27,8 @@ def switched_system(x, t, f, s, *args):
         x_dot = f_i(x, t, *args)   for   s_i <= t < s_(i+1)
 
     """
-    i = get_system_index(t, s)
+    # i = get_system_index(t, s)
+    i = get_system_index_numba(t, s)
     return f[i](x, t, *args)
 
 
@@ -93,21 +102,21 @@ def Iteration(F, x0, s0, t ):
     # We actually only need to invert the STMs corresponding to t[j]
 
     # dxds = np.zeros((len(x0, len(s0))))
-    dxds = []
-    for n, switch in enumerate(s0):
-        df = get_df(F, x, t, switch, n)
-        j = np.argmin(np.abs(t-switch)) # nth switch corresponds most closely to t[j]
-        stmj = STM[j]
-        istmj = np.linalg.inv(stmj)
+    # dxds = []
+    # for n, switch in enumerate(s0):
+    #     df = get_df(F, x, t, switch, n)
+    #     j = np.argmin(np.abs(t-switch)) # nth switch corresponds most closely to t[j]
+    #     stmj = STM[j]
+    #     istmj = np.linalg.inv(stmj)
 
-        for ti, stmi in zip(t, STM): # The sensitivity dx/dsj is the sum over the sensitivity of xi to sj
-            if ti < t[j] # times before the current switching time are clearly not affected by changing the switching time
+    #     for ti, stmi in zip(t, STM): # The sensitivity dx/dsj is the sum over the sensitivity of xi to sj
+    #         if ti < t[j]: # times before the current switching time are clearly not affected by changing the switching time
+    #             pass 
+    #     STM_ti = STMf*np.linalg.inv(STMi)
+    #     dxdsi = STM1.dot(F[n](xf, t[-1]) - F[n+1](xf, t[-1]))
+    #     dxds.append(dxdsi)
 
-        STM_ti = STMf*np.linalg.inv(STMi)
-        dxdsi = STM1.dot(F[n](xf, t[-1]) - F[n+1](xf, t[-1]))
-        dxds.append(dxdsi)
-
-    dxds = np.array(dxds).T
+    # dxds = np.array(dxds).T
 
 
     return    
