@@ -61,7 +61,7 @@ def evaluate(da_array, da_vars, pts):
     for pt in pts:
         try:
             pt[0]
-        except IndexError:  # pt is a scalar
+        except (TypeError, IndexError):  # pt is a scalar
             pt = [pt]
         # eval_pt = {da_var:element for da_var,element in zip(delta,pt)} # This is probably slow since we're constructing a new dict every time
         eval_pt.update(zip(delta, pt))

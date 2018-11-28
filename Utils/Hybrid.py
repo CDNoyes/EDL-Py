@@ -96,7 +96,7 @@ def Iteration(F, x0, s0, t ):
     dxds = []
     for n, switch in enumerate(s0):
         df = get_df(F, x, t, switch, n)
-        j = np.argmin(np.abs(t-switch)) # nth switch corresponds most closely to t[j]
+        j = np.argmin(np.abs(t-switch))  # nth switch corresponds most closely to t[j]
         stmj = STM[j]
         istmj = np.linalg.inv(stmj)
 
