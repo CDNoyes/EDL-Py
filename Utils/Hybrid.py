@@ -1,12 +1,20 @@
 """ Utilities for working with hybrid systems """
 
-import numpy as np 
+import numpy as np
+import numba as nb
 from functools import partial 
 from scipy.interpolate import interp1d 
 
 from RK4 import RK4
 import DA as da 
 
+
+@nb.njit
+def get_system_index_numba(val, arr):
+    for idx in range(len(arr)):
+        if arr[idx] > val:
+            return idx
+    return -1 # len(arr)
 
 def get_system_index(t, s):
     # Best solution, O(1), s must be sorted 
@@ -19,7 +27,8 @@ def switched_system(x, t, f, s, *args):
         x_dot = f_i(x, t, *args)   for   s_i <= t < s_(i+1)
 
     """
-    i = get_system_index(t, s)
+    # i = get_system_index(t, s)
+    i = get_system_index_numba(t, s)
     return f[i](x, t, *args)
 
 
@@ -108,7 +117,6 @@ def Iteration(F, x0, s0, t ):
         dxds.append(dxdsi)
 
     dxds = np.array(dxds).T
-
 
     return    
 
