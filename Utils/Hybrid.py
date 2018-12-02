@@ -7,6 +7,17 @@ Algorithm:
     Compute the cost function's sensitivities = dJ/dx * dx/dsi
     Take a gradient descent step, clipping the steps so that switch times remain ordered. 
     if np.any(np.diff(s) < 0): use a smaller delta 
+
+Note: 
+I have tried using the switch times as optimization variables with a linear constraint to ensure they are sorted. 
+I have also tried using the durations as optimization variables which eliminates the need for a linear constraint,
+instead enforcing that each duration is non-negative is sufficient.
+
+For the 2d system with 3 switches, the optimization used 3x function evaluations
+when using durations as switches. It seems that despite the extra constraint,
+using switch times is more efficient. This may be related to the coupling that occurs
+when using durations instead. 
+
 """
 
 import numpy as np
@@ -42,10 +53,13 @@ def switched_system(x, t, f, s, *args):
     return f[i](x, t, *args)
 
 
-def Optimize(Objective, F, x0, s0, t ):
+def Optimize(Objective, F, x0, s0, t, constraints=[] ):
     assert len(F) == len(s0)+1, "Number of dynamics must be 1 greater than number of switches"
 
+    # m = len(s0)
     names = ["x{}".format(i) for i in range(len(x0))]
+    # d0 = switch_to_duration(s0)
+    # dsdd = np.tril(np.ones((m,m)))
 
     # Create a single callable function that returns objective and gradient 
     def obj(s):
@@ -57,7 +71,7 @@ def Optimize(Objective, F, x0, s0, t ):
         # Compute the objective and its gradient wrt to final state 
         xf = da.const(y[-1])
         yf = da.make(xf, names, 1, True)
-        J = Objective(yf)  # For now we assume the cost is of Mayer form 
+        J = Objective(yf)  # For now we assume the cost is of Mayer form; could yet be a function of the switch times 
         dJdx = da.gradient(J, names)
 
         # Compute sensitivity of final state to each switch time 
@@ -72,39 +86,35 @@ def Optimize(Objective, F, x0, s0, t ):
             dxdsi = STM.dot(F[i](x, si) - F[i+1](x, si))
             dxds.append(dxdsi)
 
-        dxds = np.array(dxds)
-        return J.constant_cf, np.squeeze(dJdx.dot(dxds.T))
+        dxds = np.array(dxds).T
+        return J.constant_cf, np.squeeze(dJdx.dot(dxds))
 
     # Write the well-orderedness constraint as a linear constraint As >= 0
-    A = (np.eye(3, k=1) - np.eye(3))[:2]
+    A = (np.eye(len(s0), k=1) - np.eye(len(s0)))[:-1]
     C = {"type": "ineq", "fun": lambda s: A.dot(s), "jac": lambda s: A}
-    sol = minimize(obj, s0, method="SLSQP", jac=True, bounds=[(0, None)]*len(s0), constraints=C) # TODO: Need to add positive constraint, and well-ordered constraint 
+    constraints.append(C)
+    sol = minimize(obj, s0, method="SLSQP", jac=True, bounds=[(0, None)]*len(s0), constraints=constraints)
 
     return sol
-
-# def test_objective(x, t):
-#     # Integrate forward, compute cost function
-#     L = 0.5*np.array([xi.dot(xi) for xi in x])
-#     J = np.trapz(L, t) 
-#     return J 
-
-def test_objective(xf):
-    # return 0.5*xf.dot(xf) # LQ
-    return xf[1]**2
 
 
 def test():
     import matplotlib.pyplot as plt 
+    import time 
+
+    def test_objective(xf):
+        # return 0.5*xf.dot(xf) # LQ
+        return xf[1]**2
 
     A1 = np.array([[-1, 0],[1, 2]])
     A2 = np.array([[1, 1],[1, -2]])
     
-    s = [0.3, 0.5, 0.7] # initial guess at switching times 
+    s = [0.1]#, 0.5, 0.7] # initial guess at switching times 
     s_opt = [0.518, 0.688, 0.791]
 
     f1 = lambda x, t: A1.dot(x)
     f2 = lambda x, t: A2.dot(x)
-    F = [f1, f2, f1, f2]
+    F = [f1, f2]#, f1, f2]
     dyn = lambda x, t: switched_system(x, t, F, s)
 
     x0 = np.array([1., 0.])
@@ -112,9 +122,13 @@ def test():
     t = np.linspace(0, tf, 500)
     x = RK4(dyn, x0, t)
 
+    t0 = time.time()
     sol = Optimize(test_objective, F, x0, s, t,)
+    t1 = time.time()
     print(sol)
-    xopt = RK4(switched_system, x0, t, (F, sol.x))
+    s_opt = sol.x
+    print("Optimal Switches {}".format(s_opt))
+    xopt = RK4(switched_system, x0, t, (F, s_opt))
 
     plt.plot(t, x, label="Guess")
     plt.plot(t, xopt, '--', label="Optimal")
@@ -140,8 +154,53 @@ def get_stm(dyn, x0, t, args):
     return [da.const(yi) for yi in y], y, [da.jacobian(yi, names) for yi in y]
 
 
+def switch_to_duration(s):
+    return np.diff(np.hstack(([0], s)))
+def duration_to_switch(d):
+    return np.cumsum(d)
 
 
+def Entry():
+    import sys 
+    sys.path.append("./")
+    from EntryGuidance.EntryEquations import Entry 
+    from EntryGuidance.InitialState import InitialState
+
+    # Just need to define the bank angles and get the entry dynamics set up appropriately 
+
+    model = Entry(DifferentialAlgebra=True)
+    def make_triple(u):
+        return [u,0,0]
+
+    F = [model.dynamics(make_triple(np.radians(u))) for u in [85, -85, 15]]
+    # F.append(lambda x,t: np.zeros((8,))) # zero dynamics to free the total tof 
+    # s0 = [20, 70, 135., 240]
+    s0 = [ 75, 145.]
+
+    # F = [model.dynamics(make_triple(np.radians(u))) for u in [-15, 85]]
+    # s0 = [50]
+
+    def entry_objective(xf):
+        """Optimize final altitude while hitting a target location """
+        h = (xf[0]-3397e3)/1000 
+        lon = xf[1]
+        lat = xf[2]
+        alpha = 0.
+        beta = 1e6
+        lat_target = 0
+        lon_target = 1 # TODO: fix this, doesnt matter if alpha is 0 though 
+        return -h + alpha*(lon-lon_target)**2 + beta*(lat-lat_target)**2
+
+    t = np.linspace(0, 360, 500)
+    x0 = InitialState()
+    C = {}
+    sol = Optimize(entry_objective, F, x0, s0, t,)
+    print(sol)
+    traj = RK4(switched_system, x0, t, (F, sol.x)).squeeze()
+    
+    print("Crossrange: {} km".format(traj[-1,2]*3397))
+    print("Altitude: {} km".format(traj[-1,0]/1000 - 3397))
+    print("Velocity: {} m/s".format(traj[-1,3]))
 # def Iteration(F, x0, s0, t ):
 #     x, xda, STM = get_stm(switched_system, x0, t, (F,s0))
 
@@ -174,4 +233,5 @@ def get_stm(dyn, x0, t, args):
     
 
 if __name__ == "__main__":
-    test()
+    # test()
+    Entry()
