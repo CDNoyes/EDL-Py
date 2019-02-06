@@ -151,32 +151,38 @@ class Controller1D(MemorizedController):
         plt.contour(X1/c, X2/c, S2, 0, colors='k', linestyles='dashed')
 
 
+class MemorizedGravityController(MemorizedController):
+
+    def set_gravity(self, g):
+        self.gravity = g 
+
+    def get_curves(self, state, alpha, eps):
+        x1, x2 = x
+
+        s = np.sign(x2)
+        c = (-s + 0.5*g/(1+s*g))/(1+s*g)
+        S1 = x1 - c*x2**2
+        S2 = x1 - 1/(1-alpha)*(c + 4/g)*x2**2 
+        return S1, S2 
+
+
 def controller_gravity(x, g):
     """ 1-D Fuel Optimal Feedback, accounting for a constant gravity acceleration 
         This is not memorized so chattering will occur, and does not guarantee zero overshoot 
+        It is a vectorized implementation for both states and gravitational constant 
     
     """
 
     x1, x2 = x
-    
-    c1 = (1 + 0.5*g/(1-g))/(1-g)
-    xa = x2**2 * c1
-    xb = (c1 + 4/g)*x2**2
-    
-    # for negative altitudes, a different set of checks must be used
-    c2 = (0.5*g/(1+g)-1)/(1+g)  # Used for non-physical cases, to complete the semi-global stabilization property 
-    xc = x2**2 * c2 
-    xd = (c2 + 4/g)*x2**2
-    
     u = np.zeros_like(x1)
-    n1 = np.logical_and(np.logical_and(x1 >= xa, x1 > xb), x2 <= 0) 
-    p1 = np.logical_and(np.logical_and(x1 <= xa, x1 < xb), x2 <= 0) 
 
-    n2 = np.logical_and(np.logical_and(x1 >= xc, x1 > xd), x2 >= 0) 
-    p2 = np.logical_and(np.logical_and(x1 <= xc, x1 < xd), x2 >= 0) 
+    s = np.sign(x2)
+    c = (-s + 0.5*g/(1+s*g))/(1+s*g)
+    S1 = x1 - c*x2**2
+    S2 = x1 - (c + 4/g)*x2**2 
 
-    n = np.logical_or(n1, n2)  # H1
-    p = np.logical_or(p1, p2)  # H3 
+    n = np.logical_and(S1 >= 0, S2 > 0)
+    p = np.logical_and(S1 <= 0, S2 < 0)
 
     u[n] = -1
     u[p] = 1
@@ -305,18 +311,21 @@ def test_mc():
 
 
 def test_gravity_controller():
-    g = 0.5  # this is scaled by umax, since u is bounded by 1, g must be less than 1
+    g = 0.25  # this is scaled by umax, since u is bounded by 1, g must be less than 1
 
     def dyn(x, t):
         # Vectorized dynamics that stop when the velocity becomes positive
         dx = np.zeros_like(x)
 
-        ix = np.logical_and(x[0] >= 0 , np.abs(x[0]) + np.abs(x[1]) > 0.01)
-        dx[0, ix] = x[1, ix]
         
         u = controller_gravity(x, g) # 5% uncertainty in gravity 
-        dx[1, ix] = u[ix] - g
-        # dx[1] = u - g
+        if 1:   # Use this for physical cases, i.e. x1 < 0  indicates a crash 
+            ix = np.logical_and(x[0] >= 0, np.abs(x[0]) + np.abs(x[1]) > 0.01)
+            dx[0, ix] = x[1, ix]
+            dx[1, ix] = u[ix] - g
+        else:       # Use this to demonstrate that the controller stabilizes any point 
+            dx[0] = x[1]
+            dx[1] = u - g
         return dx 
 
     import sys
@@ -325,27 +334,37 @@ def test_gravity_controller():
     import chaospy as cp 
 
     from Utils.RK4 import Euler 
-    t = np.linspace(0, 100, 1000)
+    t = np.linspace(0, 20, 1000)
     U1 = cp.Uniform(2, 5)
     # U2 = -U1/4.
-    U2 = cp.Uniform(-2, 1)
+    U2 = cp.Uniform(-2.5, 0)
     U = [U1, U2]
-    X0 = cp.J(*U).sample(50, 'L')
+    X0 = cp.J(*U).sample(500, 'S')
     X = Euler(dyn, X0, t, ) 
     for x in np.transpose(X, (2, 0, 1)):
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
         iterm = np.argmin(dx)
         x = x[:iterm]
         u = controller_gravity(x.T, g)
+        # if np.any(x.T[0] < 0):
+        if np.abs(x[-1,1]) > 0.1:
+            continue 
+        plt.plot(x.T[0], x.T[1], 'b')
 
-        plt.plot(x.T[0], x.T[1])
-    plt.plot(X0[0], X0[1], 'ko', label="Initial Condition")
-    plt.figure()
-    plt.plot(t[:iterm], u)
+    v0 = np.linspace(-2.3, 0, 500)
+    z0_min = 0.5*v0**2/(1-g)  # For constant mass system, (with constant max control) this is a necessary condition 
+    good = X0[0] - 0.5*X0[1]**2/(1-g) >= 0 
+    bad = np.logical_not(good)
+    plt.plot(X0[0][good], X0[1][good], 'ko', label="Initial Condition")
+    plt.plot(X0[0][bad], X0[1][bad], 'ro', label="Initial Condition doomed to fail")
+    plt.plot(z0_min, v0, 'k--', label='Separatrix') # the line that divides initial conditions that cannot land softly
+    plt.xlabel("Altitude")
+    plt.ylabel("Velocity")
+    plt.legend()
     plt.show()
 
 
 if __name__ == "__main__":
-    test()
+    # test()
     # test_mc()
-    # test_gravity_controller()
+    test_gravity_controller()
