@@ -68,7 +68,7 @@ class MemorizedController:
             eps = self.eps
             assert eps >= eps_min and eps <= eps_max, "Invalid choice of epsilon"
         
-        x1, x2 = state
+        x1, x2, _ = state
         S1, S2 = self.get_curves(state, alpha, eps)
         S = S1*S2
 
@@ -120,7 +120,7 @@ class Controller1D(MemorizedController):
     """ Provides a chatter-free, overshoot-free fuel optimal feedback control for planar, saturated double integrators """
 
     def get_curves(self, state, alpha, eps):
-        x1, x2 = state
+        x1, x2, _ = state
         S1 = x1 + x2*np.abs(x2)*(4+self.rho+eps)/(2*(self.rho+eps))
         S2 = x1 + x2*np.abs(x2)*0.5/(1-alpha)
         return S1, S2         
@@ -147,6 +147,7 @@ class Controller1D(MemorizedController):
         import matplotlib.pyplot as plt 
 
         c = 1000/4000
+        # c = 1
         x1 = np.linspace(0, 4200, 5000)
         x2 = np.linspace(0, -160, 4000)
         
@@ -177,7 +178,7 @@ class MemorizedGravityController(MemorizedController):
 
 def controller_fuel(x):
     """ The purely fuel optimal controller """
-    x1, x2 = x
+    x1, x2, _ = x
     m = 100
      
     a1 = x1 + m*x2*np.abs(x2)
@@ -188,9 +189,10 @@ def controller_fuel(x):
     eps = 1e-2
 
     u = np.zeros_like(x1)
-    u[b1>=eps] = -np.sign(a1[b1>=eps])
-    u[b2<=-eps] = -np.sign(a2[b2<=-eps])
+    u[b1 >= eps] = -np.sign(a1[b1 >= eps])
+    u[b2 <= -eps] = -np.sign(a2[b2 <= -eps])
     return u 
+
 
 def controller_gravity(x, g):
     """ 1-D Fuel Optimal Feedback, accounting for a constant gravity acceleration 
@@ -199,49 +201,38 @@ def controller_gravity(x, g):
     
     """
 
-    x1, x2 = x
+    x1, x2, _ = x
     u = np.zeros_like(x1)
 
-    if 0:
-        s = np.sign(x2)
-        c = (-s + 0.5*g/(1+s*g))/(1+s*g)
-        S1 = x1 - c*x2**2 
-        S2 = x1*g - (c*g + 4)*x2**2 # rewriting this way allows for g = 0 case to be handled 
-
-        n = np.logical_and(S1 >= 0, S2 > 0)
-        p = np.logical_and(S1 <= 0, S2 < 0)
-        u[n] = -1
-        u[p] = 1
-
-    else:
-        eps = 0.1
-        p = x1 - x2**2 * 0.5/(1-g) < eps
-        u[p] = 1 
+    eps = 0.1
+    p = x1 - x2**2 * 0.5/(1-g) < eps
+    u[p] = 1 
 
     return u
 
 
-def test():
+def controller_all(x, g, k, M):
+    """ 1D Fuel Optimal Feedback in constant gravity with mass loss 
+    """
+    x1, x2, m0 = x 
+    u = np.zeros_like(x1)
+
+    d = M/m0 
+
+    # Unclear whether I need current mass or original mass.
+    # For a long time, they coincide 
+
+    t2 = -m0/k/d * (d - g - np.sqrt((d-g)**2 - 2*d*k*x2/m0))
+    
+    p = x1 + x2*t2 - 0.5*g*t2**2 + M/k*(t2 + (m0/k - t2))*np.log(1-k*t2/m0) < 0
+    u[p] = 1
+    return u
+
+
+def example():
     """ Recreates the example from the paper: 
         Quasi Time Fuel Optimal Feedback Control 
-        of Perturbed Double Integrator   
-
-        In the absence of gravity and mass dynamics, 
-        the fuel optimal and quasi fuel optimal produce
-        nearly identical responses 
-
-        Even with mass dynamics, the solutions remain nearly identical
-
-        The uncertainty introduced by including gravity (even if constant)
-
-        Interestingly, using the fuel optimal controller with gravity, but setting
-        the value of gravity to nearly zero (singular at zero),
-        an even lower fuel cost is obtained, but with significant chattering
-        and a different trajectory through the state space 
-
-
-
-     
+        of Perturbed Double Integrator  
     """
     import sys
     import matplotlib.pyplot as plt 
@@ -249,15 +240,87 @@ def test():
 
     from Utils.RK4 import Euler 
     
+    p = 4000.
+    c = 1000/p
+    R = 1.738e6
+    k = .5 
+    mu = 4.887e12 
 
-    massloss = False
+    x0 = [4000, -120, 1050]  # pos vel mass 
+
+    rho = 1
+    controller_mfc = Controller1D(rho=rho, eps=2, alpha=0.4)
+
+    label = 'Quasi-Fuel Optimal'
+
+    def dyn(x, t,):
+        M = x[2]
+    
+        y = [x[0]*c, x[1]*c, M]
+        u = controller_mfc(y,)
+        dv = (((p+400*np.exp(-0.02*t))/M)*u - mu/(x[0] + R)**2)
+        
+        dM = -k*np.abs(u)
+        if x[0] <= 0.1:
+            return 0,0,0
+        else:
+            return x[1], dv, dM
+
+    tf = 70
+    t = np.linspace(0, tf, 10000)
+    x = Euler(dyn, x0, t, )
+    dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
+
+    iterm = np.argmin(dx)
+    u = controller_mfc.u_history[:iterm]
+
+    controller_mfc.plotS()
+    plt.figure(1)
+    plt.plot(x[:iterm, 0], x[:iterm, 1], label=label)
+    plt.title("Phase Portrait")
+    plt.xlabel('Altitude (m)')
+    plt.ylabel('Velocity (m/s)')
+
+    plt.figure(2)
+    plt.plot(t[:iterm], u, label=label)
+    plt.xlabel('Time (s)')
+    plt.ylabel("Throttle setting")
+
+    plt.figure(3)
+    plt.plot(t[:iterm], x[:iterm, 2], label=label)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Mass (kg)')
+
+    print("Time of flight = {:.2f} s\nFinal altitude = {:.3f} m\nFinal velocity = {:.3f} m/s\nFuel consumed = {:.1f} kg".format(t[iterm],x[iterm,0],x[iterm,1],x0[2]-x[iterm,2]))
+    J = np.sum(rho+np.abs(u))*t[1]
+    print("Objective = {:.1f}".format(J))
+    plt.show()
+
+
+def test():
+    """  Compares multiple controllers 
+
+        In the absence of gravity and mass dynamics, 
+        the fuel optimal and quasi fuel optimal produce
+        nearly identical responses 
+
+        Even with mass dynamics, the solutions remain nearly identical
+
+    """
+    import sys
+    import matplotlib.pyplot as plt 
+    sys.path.append('./')
+
+    from Utils.RK4 import Euler 
+    
+    massloss = True
     gravity = True
     nonlinear_gravity = False
 
     p = 4000.
     c = 1050/p
     R = 1.738e6
-    k = .5 * massloss 
+    k = 5.5 * massloss 
     mu = 4.887e12 * gravity 
 
     x0 = [4000, -120, 1050] # pos vel mass 
@@ -269,30 +332,30 @@ def test():
     if gravity:
         controller_g = lambda x: controller_gravity(x, c*mu/R**2)
     else:
-        controller_g = controller_fuel 
-        # controller_g = lambda x: controller_gravity(x, 0)
+        # controller_g = controller_fuel 
+        controller_g = lambda x: controller_gravity(x, 0)
 
-    labels = ['Quasi-Fuel Optimal', 'Fuel Optimal']
+    labels = ['Quasi-Fuel Optimal', 'Fuel Optimal', 'Mass Loss']
 
-    for controller_mfc, label in zip([controller_mem_gravity, controller_g], labels):
-
+    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, c*mu/R**2, k, x0[2])], labels):
+        print("\nnew controller")
         def dyn(x, t,):
             M = x[2]
         
-            u = controller_mfc(x[:-1]*c,)
+            y = [x[0]*c, x[1]*c, M]
+            u = controller_mfc(y,)
             dv = (((p+0*400*np.exp(-0.02*t))/M)*u - mu/(x[0]*nonlinear_gravity + R)**2)
             
             dM = -k*np.abs(u)
-            # if np.abs(x[0]) + np.abs(x[1]) < 1:
-            if x[0] <= 0:
+            if x[0] <= 0.1:
                 return 0,0,0
             else:
                 return x[1], dv, dM
 
-        tf = 100
+        tf = 70
         t = np.linspace(0, tf, 5000)
         x = Euler(dyn, x0, t, )
-
+        print("X shape = {}".format(x.shape))
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
 
         iterm = np.argmin(dx)
@@ -301,14 +364,24 @@ def test():
             controller_mfc.plotS()
         except:
             pass 
+        # plt.figure(1)
+        # plt.plot(x[:iterm, 0]*c, x[:iterm, 1]*c, label=label)
+        # plt.title("Scaled Phase Portrait")
+        # plt.xlabel('x1')
+        # plt.ylabel('x2')
+
         plt.figure(1)
         plt.plot(x[:iterm, 0], x[:iterm, 1], label=label)
         plt.title("Phase Portrait")
+        plt.xlabel('Altitude (m)')
+        plt.ylabel('Velocity (m/s)')
 
         try:
             u = controller_mfc.u_history[:iterm]
         except:
-            u = controller_mfc(c*x[:iterm, :-1].T)
+            y = x[:iterm, 0]*c, x[:iterm, 1]*c, x[:iterm, 2]
+            u = controller_mfc(y)
+
         plt.figure(2)
         plt.plot(t[:iterm], u, label=label)
         plt.xlabel('Time (s)')
@@ -319,9 +392,10 @@ def test():
         plt.xlabel('Time (s)')
         plt.ylabel('Mass (kg)')
 
-        print("Time of flight = {:.2f} s\nFinal altitude = {:.3f} m\nFinal velocity = {:.3f} m/s\nFuel consumed = {:.1f} kg".format(t[iterm],x[iterm,0],x[iterm,1],x0[2]-x[-1,2]))
+        print("Time of flight = {:.2f} s\nFinal altitude = {:.3f} m\nFinal velocity = {:.3f} m/s\nFuel consumed = {:.1f} kg".format(t[iterm],x[iterm,0],x[iterm,1],x0[2]-x[iterm,2]))
         J = np.sum(rho+np.abs(u))*t[1]
         print("Objective = {:.1f}".format(J))
+
     for i in range(1,4):
         plt.figure(i)
         plt.legend()
@@ -440,7 +514,61 @@ def test_gravity_controller():
     plt.show()
 
 
+
+def verify_eq():
+    # verify my formulae 
+
+    def get_state(x0, t, k, g):
+        " Analytical Approximation"
+        z0,v0,m0 = x0 
+        
+        m = m0 - k*t
+
+        v = v0 - g*t - m0/k*np.log(1-k*t/m0)
+        z = z0 + v0*t - 0.5*g*t**2 + m0/k*(t + (m0/k-t)*np.log(1-k*t/m0))
+
+        return np.array([z,v,m]).T
+
+    def get_state_true(x0, t, k, g):
+        m0 = x0[2]
+        
+        def dyn(x,t):
+            z,v,m = x
+            dz = v
+            dv = m0/m - g
+            dm = -k
+            return [dz, dv, dm]
+        return RK4(dyn, x0, t,)
+
+    v0 = -120
+    Tmax = 4000
+    m0 = 1050
+    gmax = 1.62
+    z0 = 3252.2
+
+    c = m0/Tmax 
+    z0 = z0*c
+    v0 = v0*c
+    g = gmax*c 
+    k = Tmax/(290*9.81)*c
+
+    t = np.linspace(0, 50, 1000)
+    X = get_state_true([z0,v0,m0], t, k, g)
+    X2 = get_state([z0,v0,m0], t, k, g)
+    X[:,:2] /=  c
+    X2[:,:2] /=  c
+    # plt.plot(t, X)
+    # plt.plot(t, X2, 'o-')
+    plt.semilogy(t, np.abs(X-X2))
+    plt.legend(('Alt','Vel','Mass'))
+    plt.title("Error between numerical integration and analytical solution")
+    plt.show()
+
+    t2 = -m0/k * (1 - g - np.sqrt((1-g)**2 - 2*k*v0/m0 ))
+    print(get_state_true([z0,v0,m0], np.linspace(0,t2), k, g)[-1]) # returns scaled vars 
+
 if __name__ == "__main__":
-    test()
+    example()
+    # test()
     # test_mc()
     # test_gravity_controller()
