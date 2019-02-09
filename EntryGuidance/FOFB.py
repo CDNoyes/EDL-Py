@@ -213,21 +213,37 @@ def controller_gravity(x, g):
 
 def controller_all(x, g, k, M):
     """ 1D Fuel Optimal Feedback in constant gravity with mass loss 
+        recovers the gravity controller when k goes to zero (cannot be exactly zero in computation)
+        and further the standard fuel optimal controller when g = 0
     """
     x1, x2, m0 = x 
     u = np.zeros_like(x1)
 
     d = M/m0 
 
-    # Unclear whether I need current mass or original mass.
-    # For a long time, they coincide 
-
     t2 = -m0/k/d * (d - g - np.sqrt((d-g)**2 - 2*d*k*x2/m0))
+    try:
+        t2 = max(0, t2)
+    except ValueError:
+        t2[t2<0] = 0
+    # print(t2)
     
-    p = x1 + x2*t2 - 0.5*g*t2**2 + M/k*(t2 + (m0/k - t2))*np.log(1-k*t2/m0) < 0
+    xf = get_state(x, t2, k, g, M)  # TODO: replace t2 with tf everywhere 
+    zf = xf[0]  # predicted altitude at 0 velocity 
+    p = zf < 0.25  # Scaled tolerance, 1/c meters 
     u[p] = 1
     return u
 
+
+def get_state(x0, t, k, g, M):
+    " Analytical Solution to EoM for u=1"
+    z0, v0, m0 = x0 
+    
+    m = m0 - k*t
+
+    v = v0 - g*t - M/k*np.log(1-k*t/m0)
+    z = z0 + v0*t - 0.5*g*t**2 + M/k*(t + (m0/k-t)*np.log(1-k*t/m0))
+    return [z,v,m]
 
 def example():
     """ Recreates the example from the paper: 
@@ -335,9 +351,9 @@ def test():
         # controller_g = controller_fuel 
         controller_g = lambda x: controller_gravity(x, 0)
 
-    labels = ['Quasi-Fuel Optimal', 'Fuel Optimal', 'Mass Loss']
+    labels = ['Quasi-Fuel Optimal', 'FO + gravity', 'FO + g + mass loss']
 
-    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, c*mu/R**2, k, x0[2])], labels):
+    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, c*mu/R**2, 0.001 + k*massloss, x0[2])], labels):
         print("\nnew controller")
         def dyn(x, t,):
             M = x[2]
@@ -353,7 +369,7 @@ def test():
                 return x[1], dv, dM
 
         tf = 70
-        t = np.linspace(0, tf, 5000)
+        t = np.linspace(0, tf, 10000)
         x = Euler(dyn, x0, t, )
         print("X shape = {}".format(x.shape))
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
@@ -516,6 +532,11 @@ def test_gravity_controller():
 
 
 def verify_eq():
+    import sys
+    import matplotlib.pyplot as plt 
+    sys.path.append('./')
+
+    from Utils.RK4 import RK4
     # verify my formulae 
 
     def get_state(x0, t, k, g):
@@ -568,7 +589,8 @@ def verify_eq():
     print(get_state_true([z0,v0,m0], np.linspace(0,t2), k, g)[-1]) # returns scaled vars 
 
 if __name__ == "__main__":
-    example()
-    # test()
+    # verify_eq()
+    # example()
+    test()
     # test_mc()
     # test_gravity_controller()
