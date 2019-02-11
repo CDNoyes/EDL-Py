@@ -146,8 +146,7 @@ class Controller1D(MemorizedController):
     def plotS(self):
         import matplotlib.pyplot as plt 
 
-        c = 1000/4000
-        # c = 1
+        c = 1050/4000
         x1 = np.linspace(0, 4200, 5000)
         x2 = np.linspace(0, -160, 4000)
         
@@ -161,7 +160,9 @@ class Controller1D(MemorizedController):
 
 
 class MemorizedGravityController(MemorizedController):
-
+    """ Implements a quasi-optimal controller accounting for both
+        constant gravitational acceleration and mass dynamics 
+    """
     def set_gravity(self, g):
         self.gravity = g 
 
@@ -215,22 +216,25 @@ def controller_all(x, g, k, M):
     """ 1D Fuel Optimal Feedback in constant gravity with mass loss 
         recovers the gravity controller when k goes to zero (cannot be exactly zero in computation)
         and further the standard fuel optimal controller when g = 0
+
+        TODO: Compare to open loop optimal from GPOPS 
+
     """
     x1, x2, m0 = x 
     u = np.zeros_like(x1)
 
     d = M/m0 
 
-    t2 = -m0/k/d * (d - g - np.sqrt((d-g)**2 - 2*d*k*x2/m0))
+    # Predicted time at 0 velocity based on second order Taylor expansion 
+    tf = -m0/k/d * (d - g - np.sqrt((d-g)**2 - 2*d*k*x2/m0)) 
     try:
-        t2 = max(0, t2)
+        tf = max(0, tf)
     except ValueError:
-        t2[t2<0] = 0
-    # print(t2)
+        tf[tf < 0] = 0
     
-    xf = get_state(x, t2, k, g, M)  # TODO: replace t2 with tf everywhere 
-    zf = xf[0]  # predicted altitude at 0 velocity 
-    p = zf < 0.25  # Scaled tolerance, 1/c meters 
+    xf = get_state(x, tf, k, g, M)  
+    zf = xf[0]      # predicted altitude at 0 velocity 
+    p = zf < 0.1  # Scaled tolerance, 1/c meters. Note, this is an easy way to control the final altitude at zero velocity 
     u[p] = 1
     return u
 
@@ -244,6 +248,7 @@ def get_state(x0, t, k, g, M):
     v = v0 - g*t - M/k*np.log(1-k*t/m0)
     z = z0 + v0*t - 0.5*g*t**2 + M/k*(t + (m0/k-t)*np.log(1-k*t/m0))
     return [z,v,m]
+
 
 def example():
     """ Recreates the example from the paper: 
@@ -332,6 +337,7 @@ def test():
     massloss = True
     gravity = True
     nonlinear_gravity = False
+    thrust_perturb = False
 
     p = 4000.
     c = 1050/p
@@ -341,7 +347,6 @@ def test():
 
     x0 = [4000, -120, 1050] # pos vel mass 
 
-    # controller_mfc = Controller1D(rho=1, eps=2, alpha=0.4)
     rho = 0
     controller_mem_gravity = Controller1D(rho=rho, eps=3, alpha=0.4)
     controller_mem_gravity.compute_params(F=1.62*c*gravity, G1=1, G2=1+massloss*(1050/(1050-20)-1), verbose=True)
@@ -353,14 +358,14 @@ def test():
 
     labels = ['Quasi-Fuel Optimal', 'FO + gravity', 'FO + g + mass loss']
 
-    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, c*mu/R**2, 0.001 + k*massloss, x0[2])], labels):
-        print("\nnew controller")
+    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, gravity*c*1.62 + 0.05*nonlinear_gravity, 0.000001 + k*massloss, x0[2])], labels):
+        print("\n{} controller:".format(label))
         def dyn(x, t,):
             M = x[2]
         
             y = [x[0]*c, x[1]*c, M]
             u = controller_mfc(y,)
-            dv = (((p+0*400*np.exp(-0.02*t))/M)*u - mu/(x[0]*nonlinear_gravity + R)**2)
+            dv = (((p+thrust_perturb*400*np.exp(-0.02*t))/M)*u - mu/(x[0]*nonlinear_gravity + R)**2)
             
             dM = -k*np.abs(u)
             if x[0] <= 0.1:
@@ -371,7 +376,6 @@ def test():
         tf = 70
         t = np.linspace(0, tf, 10000)
         x = Euler(dyn, x0, t, )
-        print("X shape = {}".format(x.shape))
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
 
         iterm = np.argmin(dx)
@@ -380,11 +384,6 @@ def test():
             controller_mfc.plotS()
         except:
             pass 
-        # plt.figure(1)
-        # plt.plot(x[:iterm, 0]*c, x[:iterm, 1]*c, label=label)
-        # plt.title("Scaled Phase Portrait")
-        # plt.xlabel('x1')
-        # plt.ylabel('x2')
 
         plt.figure(1)
         plt.plot(x[:iterm, 0], x[:iterm, 1], label=label)
@@ -408,9 +407,10 @@ def test():
         plt.xlabel('Time (s)')
         plt.ylabel('Mass (kg)')
 
-        print("Time of flight = {:.2f} s\nFinal altitude = {:.3f} m\nFinal velocity = {:.3f} m/s\nFuel consumed = {:.1f} kg".format(t[iterm],x[iterm,0],x[iterm,1],x0[2]-x[iterm,2]))
+        print("\tTime of flight = {:.2f} s\n\tFinal altitude = {:.3f} m\n\tFinal velocity = {:.3f} m/s\n\tFuel consumed = {:.1f} kg".format(t[iterm],x[iterm,0],x[iterm,1],x0[2]-x[iterm,2]))
         J = np.sum(rho+np.abs(u))*t[1]
-        print("Objective = {:.1f}".format(J))
+        print("\tObjective = {:.1f}".format(J))
+        print("\tVar[u] = {:.3f}".format(np.var(u)))
 
     for i in range(1,4):
         plt.figure(i)
