@@ -218,6 +218,7 @@ def controller_all(x, g, k, M):
         and further the standard fuel optimal controller when g = 0
 
         TODO: Compare to open loop optimal from GPOPS 
+        # verify switch time(s) in terms of costates 
 
     """
     x1, x2, m0 = x 
@@ -412,7 +413,7 @@ def test():
         print("\tObjective = {:.1f}".format(J))
         print("\tVar[u] = {:.3f}".format(np.var(u)))
 
-    for i in range(1,4):
+    for i in range(1, 4):
         plt.figure(i)
         plt.legend()
     plt.show()
@@ -540,25 +541,35 @@ def verify_eq():
     # verify my formulae 
 
     def get_state(x0, t, k, g):
-        " Analytical Approximation"
-        z0,v0,m0 = x0 
+        " Analytical "
+        z0,v0,m0,p0 = x0 
         
         m = m0 - k*t
 
         v = v0 - g*t - m0/k*np.log(1-k*t/m0)
         z = z0 + v0*t - 0.5*g*t**2 + m0/k*(t + (m0/k-t)*np.log(1-k*t/m0))
 
-        return np.array([z,v,m]).T
+        p1 = 0.035 
+        p2 = 0.1
+        C = -m0*p1 + k*p2
+        pm = p0 + m0*(C/m - C/m0 - p1*np.log(1-k*t/m0))/k**2  # Correct for u=1 or u = -1
+
+        return np.array([z,v,m, pm]).T
 
     def get_state_true(x0, t, k, g):
         m0 = x0[2]
         
         def dyn(x,t):
-            z,v,m = x
+            z,v,m,p = x
             dz = v
             dv = m0/m - g
             dm = -k
-            return [dz, dv, dm]
+
+            p1 = 0.035 
+            p2 = 0.1 - p1*t 
+            dpm = m0*p2/(m**2)
+            
+            return [dz, dv, dm, dpm]
         return RK4(dyn, x0, t,)
 
     v0 = -120
@@ -566,31 +577,31 @@ def verify_eq():
     m0 = 1050
     gmax = 1.62
     z0 = 3252.2
-
+    pm0 = 0.012 
     c = m0/Tmax 
     z0 = z0*c
     v0 = v0*c
     g = gmax*c 
     k = Tmax/(290*9.81)*c
 
-    t = np.linspace(0, 50, 1000)
-    X = get_state_true([z0,v0,m0], t, k, g)
-    X2 = get_state([z0,v0,m0], t, k, g)
-    X[:,:2] /=  c
-    X2[:,:2] /=  c
-    # plt.plot(t, X)
-    # plt.plot(t, X2, 'o-')
+    t = np.linspace(0, 45, 3000)
+    X = get_state_true([z0,v0,m0,pm0], t, k, g)
+    X2 = get_state([z0,v0,m0,pm0], t, k, g)
+    X[:,:2] /= c
+    X2[:,:2] /= c
+    # plt.plot(t, X[:,-1])
+    # plt.plot(t, X2[:,-1], 'o')
     plt.semilogy(t, np.abs(X-X2))
-    plt.legend(('Alt','Vel','Mass'))
+    plt.legend(('Alt','Vel','Mass','M Costate'))
     plt.title("Error between numerical integration and analytical solution")
     plt.show()
 
     t2 = -m0/k * (1 - g - np.sqrt((1-g)**2 - 2*k*v0/m0 ))
-    print(get_state_true([z0,v0,m0], np.linspace(0,t2), k, g)[-1]) # returns scaled vars 
+    print(get_state_true([z0,v0,m0,pm0], np.linspace(0,t2), k, g)[-1]) # returns scaled vars 
 
 if __name__ == "__main__":
-    # verify_eq()
+    verify_eq()
     # example()
-    test()
+    # test()
     # test_mc()
     # test_gravity_controller()
