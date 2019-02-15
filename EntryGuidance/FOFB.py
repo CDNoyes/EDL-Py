@@ -154,9 +154,12 @@ class Controller1D(MemorizedController):
         
         S1 = X1 + (4+self.rho+self.eps)/(2*self.rho+2*self.eps)*X2*np.abs(X2)
         S2 = X1 + 1/(2-2*self.alpha)*X2*np.abs(X2)
+        S3 = X1 + 1/(2)*X2*np.abs(X2)
+
         
         plt.contour(X1/c, X2/c, S1, 0, colors='k', linestyles='dashed')
         plt.contour(X1/c, X2/c, S2, 0, colors='k', linestyles='dashed')
+        plt.contour(X1/c, X2/c, S3, 0, colors='r', linestyles='dashed', label='alpha=0')
 
 
 class MemorizedGravityController(MemorizedController):
@@ -357,9 +360,9 @@ def test():
         # controller_g = controller_fuel 
         controller_g = lambda x: controller_gravity(x, 0)
 
-    labels = ['Quasi-Fuel Optimal', 'FO + gravity', 'FO + g + mass loss']
+    labels = ['Quasi-Fuel Optimal', 'FO', 'FO + gravity', 'FO + g + mass loss']
 
-    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, gravity*c*1.62 + 0.05*nonlinear_gravity, 0.000001 + k*massloss, x0[2])], labels):
+    for controller_mfc, label in zip([controller_mem_gravity, controller_fuel, controller_g, lambda x: controller_all(x, gravity*c*1.62 + 0.05*nonlinear_gravity, 0.000001 + k*massloss, x0[2])], labels):
         print("\n{} controller:".format(label))
         def dyn(x, t,):
             M = x[2]
@@ -375,7 +378,7 @@ def test():
                 return x[1], dv, dM
 
         tf = 70
-        t = np.linspace(0, tf, 10000)
+        t = np.linspace(0, tf, 100000)
         x = Euler(dyn, x0, t, )
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
 
@@ -600,8 +603,8 @@ def verify_eq():
     print(get_state_true([z0,v0,m0,pm0], np.linspace(0,t2), k, g)[-1]) # returns scaled vars 
 
 if __name__ == "__main__":
-    verify_eq()
+    # verify_eq()
     # example()
-    # test()
+    test()
     # test_mc()
     # test_gravity_controller()
