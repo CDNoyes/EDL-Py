@@ -80,7 +80,7 @@ class JBG(PoweredDescentGuidanceBase):
 
     def solve(self, du, dv, m0):
 
-        tf = (du**2 + dv**2)**0.5 / (self.Tmax/m0 - self.g) # Will be further when the true ToF is longer (lower thrust)
+        tf = (du**2 + dv**2)**0.5 / (self.Tmax/m0 - self.g)  # Will be further when the true ToF is longer (lower thrust)
         for _ in range(6):  
             mu = self.thrust_angle(tf, du, dv)
             tf = self.final_time(mu, du, dv, m0)
@@ -113,7 +113,7 @@ class JBG(PoweredDescentGuidanceBase):
         self.ignite()
         debug = self.debug 
         self.debug = False 
-        U0 = np.linspace(4, 700, 100)
+        U0 = np.linspace(400, 700, 100)
         V0 = np.linspace(-1, -250, 100)
         UV = np.array(list(product(U0, V0)))
         DR = []
@@ -138,9 +138,8 @@ class JBG(PoweredDescentGuidanceBase):
         # Mf = np.array(Mf)
         # keep = Mf <= total_prop_mass 
 
-        C = np.linalg.lstsq(UV, np.array([DR, H]).T)[0]
-        print(C)
-        D_approx = np.dot(UV, C).T
+        # C = np.linalg.lstsq(UV, np.array([DR, H]).T)[0]
+        # D_approx = np.dot(UV, C).T
 
         plt.figure(figsize=(14, 6))
         plt.subplot(1,2,1)
@@ -163,13 +162,13 @@ class JBG(PoweredDescentGuidanceBase):
         aD = np.arctan2(H, DR)
 
         L = np.polyfit(aV, Mu, 1)
-
-        plt.plot(np.degrees(aV), np.degrees(aD))
+        print("mu - fpa fit coeff: {}".format(L))
+        plt.plot(np.degrees(aV), np.degrees(aD), label="Glideslope Angle")  # i.e. between Altitude and Downrange
         plt.plot(np.degrees(aV), np.degrees(Mu), label="Optimal Thrust Angle")
         plt.plot(np.degrees(aV), np.degrees(np.polyval(L, aV)), label="Linear Fit to Optimal Thrust Angle")
-        plt.plot(np.degrees(aV), 180 + np.degrees(aV), label="180 + FPA")
+        plt.plot(np.degrees(aV), 180 + np.degrees(aV), 'o', label="180 + FPA")
         plt.xlabel("Flight Path Angle ")
-        plt.ylabel("Angle between Altitude and Downrange")
+        plt.ylabel("Angle ")
         plt.legend()
         # plt.plot(np.linalg.norm(UV, axis=1), Mf)
         # plt.plot(np.linalg.norm(UV, axis=1), np.linalg.norm(np.array([DR, H]))
@@ -232,5 +231,5 @@ def test_controller():
     plt.show()
 
 if __name__ == "__main__":
-    # test_plot()
-    test_controller()
+    test_plot()
+    # test_controller()
