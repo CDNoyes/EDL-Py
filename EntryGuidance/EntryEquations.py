@@ -1,13 +1,13 @@
 import autograd.numpy as np
 # import numpy as np
 
-from .EntryVehicle import EntryVehicle
-from .Planet import Planet
-from .Filter import FadingMemory
+from EntryVehicle import EntryVehicle
+from Planet import Planet
+from Filter import FadingMemory
 
-import sys
-from os import path
-sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+# import sys
+# from os import path
+# sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 
 
 class Entry(object):

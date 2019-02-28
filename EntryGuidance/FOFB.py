@@ -154,12 +154,14 @@ class Controller1D(MemorizedController):
         
         S1 = X1 + (4+self.rho+self.eps)/(2*self.rho+2*self.eps)*X2*np.abs(X2)
         S2 = X1 + 1/(2-2*self.alpha)*X2*np.abs(X2)
-        S3 = X1 + 1/(2)*X2*np.abs(X2)
+        # S3 = X1 + 1/(2)*X2*np.abs(X2)
+
+
 
         
         plt.contour(X1/c, X2/c, S1, 0, colors='k', linestyles='dashed')
         plt.contour(X1/c, X2/c, S2, 0, colors='k', linestyles='dashed')
-        plt.contour(X1/c, X2/c, S3, 0, colors='r', linestyles='dashed', label='alpha=0')
+        # plt.contour(X1/c, X2/c, S3, 0, colors='r', linestyles='dashed', label='alpha=0')
 
 
 class MemorizedGravityController(MemorizedController):
@@ -215,7 +217,7 @@ def controller_gravity(x, g):
     return u
 
 
-def controller_all(x, g, k, M):
+def controller_all(x, g, k, M, umin=0.):
     """ 1D Fuel Optimal Feedback in constant gravity with mass loss 
         recovers the gravity controller when k goes to zero (cannot be exactly zero in computation)
         and further the standard fuel optimal controller when g = 0
@@ -223,24 +225,60 @@ def controller_all(x, g, k, M):
         TODO: Compare to open loop optimal from GPOPS 
         # verify switch time(s) in terms of costates 
 
+        The paper "On the problem of optimal thrust programming for a lunar soft landing" 
+        is extremely similar. The primary difference is I used the natural log approximation
+        to find the final time, then I trigger ignition based on the real equations of motion.
+        In essence, I only approximated the velocity equation, then use the true position equation.
+        The paper approximates both position and velocity using the Taylor expansion of the natural log, and generates
+        an approximate switching curve that is simpler in nature. 
     """
     x1, x2, m0 = x 
-    u = np.zeros_like(x1)
+    u = np.zeros_like(x1) + umin 
 
     d = M/m0 
 
-    # Predicted time at 0 velocity based on second order Taylor expansion 
-    tf = -m0/k/d * (d - g - np.sqrt((d-g)**2 - 2*d*k*x2/m0)) 
+    # My solution
+    if 1:
+        # Predicted time at 0 velocity based on second order Taylor expansion 
+        tf = m0/k/d * (g - d + np.sqrt((d-g)**2 - 2*d*k*x2/m0)) 
+        try:
+            tf = max(0, tf)
+        except ValueError:
+            tf[tf < 0] = 0
+        
+        xf = get_state(x, tf, k, g, M)  
+        zf = xf[0]      # predicted altitude at 0 velocity 
+        p = zf < 0.1  # Scaled tolerance, 1/c meters. Note, this is an easy way to control the final altitude at zero velocity 
+
     try:
-        tf = max(0, tf)
-    except ValueError:
-        tf[tf < 0] = 0
-    
-    xf = get_state(x, tf, k, g, M)  
-    zf = xf[0]      # predicted altitude at 0 velocity 
-    p = zf < 0.1  # Scaled tolerance, 1/c meters. Note, this is an easy way to control the final altitude at zero velocity 
-    u[p] = 1
+        u[p] = 1
+    except TypeError:
+        if p:
+            u = 1 
     return u
+
+
+def draw(g, k, M):
+    import chaospy as cp
+    import matplotlib.pyplot as plt 
+
+    c = 1050/4000
+    # D = cp.J(cp.Uniform(0, 4200*c), cp.Uniform(-160*c, 0), cp.Normal(M, 0.0001))
+    # x = D.sample(10000, 'S')
+    # u = controller_all(x, g, k, M)
+
+    # plt.scatter(x[0]/c, x[1]/c, c=u)
+    x1 = np.linspace(0, 4200, 5000)
+    x2 = np.linspace(0, -160, 4000)
+    
+    X1, X2 = np.meshgrid(x1*c, x2*c)
+    d = 1
+    m0 = 1050
+    tf = -m0/k/d * (d - g - np.sqrt((d-g)**2 - 2*d*k*X2/m0)) 
+    
+    S1 = X1 + X2*tf - 0.5*g*tf**2 + M/k*(tf + (m0/k-tf)*np.log(1-k*tf/m0))
+    
+    plt.contour(X1/c, X2/c, S1, 0, colors='r', linestyles='dashed')
 
 
 def get_state(x0, t, k, g, M):
@@ -360,10 +398,11 @@ def test():
         # controller_g = controller_fuel 
         controller_g = lambda x: controller_gravity(x, 0)
 
-    labels = ['Quasi-Fuel Optimal', 'FO', 'FO + gravity', 'FO + g + mass loss']
+    labels = ['Quasi-Fuel Optimal', 'FO + gravity', 'FO + g + mass loss']
 
-    for controller_mfc, label in zip([controller_mem_gravity, controller_fuel, controller_g, lambda x: controller_all(x, gravity*c*1.62 + 0.05*nonlinear_gravity, 0.000001 + k*massloss, x0[2])], labels):
+    for controller_mfc, label in zip([controller_mem_gravity, controller_g, lambda x: controller_all(x, gravity*c*1.62 + 0.05*nonlinear_gravity, 0.000001 + k*massloss, x0[2])], labels):
         print("\n{} controller:".format(label))
+
         def dyn(x, t,):
             M = x[2]
         
@@ -373,12 +412,12 @@ def test():
             
             dM = -k*np.abs(u)
             if x[0] <= 0.1:
-                return 0,0,0
+                return 0,0,0 
             else:
                 return x[1], dv, dM
 
         tf = 70
-        t = np.linspace(0, tf, 100000)
+        t = np.linspace(0, tf, 10000)
         x = Euler(dyn, x0, t, )
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
 
@@ -419,6 +458,8 @@ def test():
     for i in range(1, 4):
         plt.figure(i)
         plt.legend()
+    plt.figure(1)
+    draw(gravity*c*1.62 + 0.05*nonlinear_gravity, 0.000001 + k*massloss, x0[2])
     plt.show()
 
 
@@ -433,9 +474,10 @@ def test_mc():
 
     from Utils.RK4 import Euler 
     
+    thrust_perturb=True
 
     p = 4000.
-    c = 1000/p
+    c = 1055/p
     R = 1.738e6
     k = .5 
     mu = 4.887e12
@@ -445,31 +487,35 @@ def test_mc():
     X0 = cp.J(*U).sample(50, 'L').T
     # x0 = [4000, -120, 1050] # pos vel mass 
 
-    controller_mfc = Controller1D(rho=1, eps=2, alpha=0.4)
-    controller_mfc.compute_params(F=1.62*c, G1=1.1*1000/1050, G2=1.1*1000/1000, verbose=True)
+    # controller_mfc = Controller1D(rho=1, eps=2, alpha=0.4)
+    # controller_mfc.compute_params(F=1.62*c, G1=1, G2=c*p/(950), verbose=True)
+    umin = 0.
+    controller_mfc = lambda x: controller_all(x, 1.62*c, k, 1050, umin)
 
     def dyn(x, t,):
-        crash = x[0] <= 0 
-
         M = x[2]
     
-        u = controller_mfc(x[:-1]*c,)
-        dv = (((p+400*np.exp(-0.02*t))/M)*u - 0*mu/(x[0] + R)**2)
+        y = [x[0]*c, x[1]*c, M]
+        u = controller_mfc(y,)
+        dv = (((p+thrust_perturb*400*np.exp(-0.02*t))/M)*u - mu/(x[0] + R)**2)
         
         dM = -k*np.abs(u)
-        if np.abs(x[0]) + np.abs(x[1]) < 1 or crash:
-            return 0,0,0
+        if x[0] <= 0.1:
+            return 0,0,0 
         else:
             return x[1], dv, dM
 
     tf = 100
     t = np.linspace(0, tf, 1000)
     plt.figure(1)
-    controller_mfc.plotS()
+    # controller_mfc.plotS()
 
     for x0 in X0:
         x = Euler(dyn, x0, t, )
-        controller_mfc.reset()
+        try:
+            controller_mfc.reset()
+        except:
+            pass 
         dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
 
         iterm = np.argmin(dx)
@@ -478,61 +524,6 @@ def test_mc():
         plt.title("Phase Portrait")
 
     plt.show()
-
-
-def test_gravity_controller():
-    g = 0.25  # this is scaled by umax, since u is bounded by 1, g must be less than 1
-
-    def dyn(x, t):
-        # Vectorized dynamics that stop when the velocity becomes positive
-        dx = np.zeros_like(x)
-
-        
-        u = controller_gravity(x, g) # 5% uncertainty in gravity 
-        if 1:   # Use this for physical cases, i.e. x1 < 0  indicates a crash 
-            ix = np.logical_and(x[0] >= 0, np.abs(x[0]) + np.abs(x[1]) > 0.01)
-            dx[0, ix] = x[1, ix]
-            dx[1, ix] = u[ix] - g
-        else:       # Use this to demonstrate that the controller stabilizes any point 
-            dx[0] = x[1]
-            dx[1] = u - g
-        return dx 
-
-    import sys
-    import matplotlib.pyplot as plt 
-    sys.path.append('./')
-    import chaospy as cp 
-
-    from Utils.RK4 import Euler 
-    t = np.linspace(0, 20, 1000)
-    U1 = cp.Uniform(2, 5)
-    # U2 = -U1/4.
-    U2 = cp.Uniform(-2.5, 0)
-    U = [U1, U2]
-    X0 = cp.J(*U).sample(500, 'S')
-    X = Euler(dyn, X0, t, ) 
-    for x in np.transpose(X, (2, 0, 1)):
-        dx = np.linalg.norm(np.diff(x, axis=0), axis=1)
-        iterm = np.argmin(dx)
-        x = x[:iterm]
-        u = controller_gravity(x.T, g)
-        # if np.any(x.T[0] < 0):
-        # if np.abs(x[-1,1]) > 0.1:
-        #     continue 
-        plt.plot(x.T[0], x.T[1], 'b')
-
-    v0 = np.linspace(-2.3, 0, 500)
-    z0_min = 0.5*v0**2/(1-g)  # For constant mass system, (with constant max control) this is a necessary condition 
-    good = X0[0] - 0.5*X0[1]**2/(1-g) >= 0 
-    bad = np.logical_not(good)
-    plt.plot(X0[0][good], X0[1][good], 'ko', label="Initial Condition")
-    plt.plot(X0[0][bad], X0[1][bad], 'ro', label="Initial Condition doomed to fail")
-    plt.plot(z0_min, v0, 'k--', label='Separatrix') # the line that divides initial conditions that cannot land softly
-    plt.xlabel("Altitude")
-    plt.ylabel("Velocity")
-    plt.legend()
-    plt.show()
-
 
 
 def verify_eq():
@@ -586,8 +577,9 @@ def verify_eq():
     v0 = v0*c
     g = gmax*c 
     k = Tmax/(290*9.81)*c
+    k = 0.0001
 
-    t = np.linspace(0, 45, 3000)
+    t = np.linspace(0, 45, 10000)
     X = get_state_true([z0,v0,m0,pm0], t, k, g)
     X2 = get_state([z0,v0,m0,pm0], t, k, g)
     X[:,:2] /= c
@@ -605,6 +597,6 @@ def verify_eq():
 if __name__ == "__main__":
     # verify_eq()
     # example()
-    test()
-    # test_mc()
+    # test()
+    test_mc()
     # test_gravity_controller()
