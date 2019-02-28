@@ -66,4 +66,4 @@ class EntryVehicle(object):
         return mass/self.area/self.aerodynamic_coefficients(Mach)[0]
 
 if __name__ == "__main__":
-    EntryVehicle().aerodynamic_coefficients(np.linspace(1,35,1e5))
+    EntryVehicle().aerodynamic_coefficients(np.linspace(1,35,100))

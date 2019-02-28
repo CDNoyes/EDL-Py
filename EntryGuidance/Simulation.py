@@ -1,9 +1,10 @@
 import sys
 from os import path
-sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+# sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+sys.path.append("./")
+sys.path.append("../")
 from Utils.RK4 import RK4
 from Utils import DA as da
-# from GUI.TrajectoryGUI import TrajectoryGUI
 
 import pandas as pd
 import numpy as np
@@ -14,9 +15,9 @@ from scipy.io import savemat, loadmat
 
 import logging
 from transitions import Machine, State
-from .EntryEquations import Entry, System
-from .Planet import Planet
-from .EntryVehicle import EntryVehicle
+from EntryEquations import Entry, System
+from Planet import Planet
+from EntryVehicle import EntryVehicle
 
 # Graphing specific imports
 from transitions.extensions import GraphMachine as MGraph
@@ -94,9 +95,8 @@ class Simulation(Machine):
 
         Machine.__init__(self, model='self', states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
-
-    def set_output(self, bool):
-        self.__output=bool
+    def set_output(self, boolean):
+        self.__output = boolean
 
     def integrate(self):
 
@@ -106,7 +106,6 @@ class Simulation(Machine):
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
         return True
-
 
     def __step(self):
         if self.edlModel.powered:
@@ -119,10 +118,10 @@ class Simulation(Machine):
             zeta = 0.       # yaw angle
 
         if self.__use_da:
-            X = RK4(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
+            X = RK4(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
         else:
-            X = odeint(self.edlModel.dynamics((sigma,throttle,mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
-        self.update(X,self.cycle.duration,np.asarray([sigma,throttle,mu]))
+            X = odeint(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
+        self.update(X, self.cycle.duration, np.asarray([sigma, throttle, mu]))
 
 
     def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10):
@@ -522,7 +521,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     # Altitude vs Velocity
     plt.figure(fignum)
     fignum += 1
-    plt.plot(history[:,3], edlModel.altitude(history[:,0],km=True), lw = 3)
+    plt.plot(history[:,3], edlModel.altitude(history[:,0], km=True), lw = 3)
     if plotEvents:
         for i in ie:
             if legend:
@@ -720,7 +719,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
 
 def SRP():
     """ Defines states and conditions for a trajectory from Pre-Entry through SRP-based EDL """
-    from .Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
+    from Triggers import AccelerationTrigger, VelocityTrigger, AltitudeTrigger, MassTrigger
     states = ['PreEntry','Entry','SRP']
     def combo(inputs):
         return (AltitudeTrigger(2)(inputs) or MassTrigger(6400)(inputs))
@@ -733,14 +732,14 @@ def SRP():
 
 def EntrySim(Vf=500):
     ''' Defines conditions for a simple one phase guided entry '''
-    from .Triggers import VelocityTrigger,AltitudeTrigger
+    from Triggers import VelocityTrigger,AltitudeTrigger
     states = ['Entry']
     trigger = [VelocityTrigger(Vf)]
     # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
 
 def TimedSim(time=30):
-    from .Triggers import TimeTrigger
+    from Triggers import TimeTrigger
     states = ['Entry']
     trigger = [TimeTrigger(time)]
     return {'states':states, 'conditions':trigger}
@@ -758,7 +757,7 @@ def testSim():
     return sim
 
 def testFullSim():
-    from .InitialState import InitialState
+    from InitialState import InitialState
     sim = Simulation(cycle=Cycle(1),output=True,**EntrySim())
     f = lambda **d: 0
     f2 = lambda **d: (1,2.88)
