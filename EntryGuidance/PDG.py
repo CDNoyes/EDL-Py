@@ -113,7 +113,7 @@ class JBG(PoweredDescentGuidanceBase):
         self.ignite()
         debug = self.debug 
         self.debug = False 
-        U0 = np.linspace(400, 700, 100)
+        U0 = np.linspace(4, 700, 100)
         V0 = np.linspace(-1, -250, 100)
         UV = np.array(list(product(U0, V0)))
         DR = []
@@ -140,16 +140,27 @@ class JBG(PoweredDescentGuidanceBase):
 
         # C = np.linalg.lstsq(UV, np.array([DR, H]).T)[0]
         # D_approx = np.dot(UV, C).T
+        aV = np.arctan2(UV.T[1], UV.T[0])
+        aD = np.arctan2(H, DR)
+
+        L = np.polyfit(aV, Mu, 1)
+        fpa = aV 
+        keep = np.degrees(fpa) > -25
+        
+        DR = np.array(DR)
+        Mf = np.array(Mf)
+        H = np.array(H)
 
         plt.figure(figsize=(14, 6))
+        plt.suptitle("Optimal Ignition Surface")
         plt.subplot(1,2,1)
-        plt.scatter(UV.T[0], UV.T[1], c=Mf)
+        plt.scatter(UV[keep, 0], UV[keep, 1], c=Mf[keep])
         plt.axis("equal")
         plt.xlabel("Horizontal Velocity at Ignition")
         plt.ylabel("Vertical Velocity at Ignition")
 
         plt.subplot(1,2,2)
-        plt.scatter(DR, H, c=Mf)
+        plt.scatter(DR[keep], H[keep], c=Mf[keep])
         cbar = plt.colorbar()
         cbar.set_label('Prop Used', rotation=270)
         # plt.scatter(D_approx[0], D_approx[1], c='k')
@@ -158,17 +169,14 @@ class JBG(PoweredDescentGuidanceBase):
         plt.axis("equal")
 
         plt.figure()
-        aV = np.arctan2(UV.T[1], UV.T[0])
-        aD = np.arctan2(H, DR)
 
-        L = np.polyfit(aV, Mu, 1)
         print("mu - fpa fit coeff: {}".format(L))
         plt.plot(np.degrees(aV), np.degrees(aD), label="Glideslope Angle")  # i.e. between Altitude and Downrange
-        plt.plot(np.degrees(aV), np.degrees(Mu), label="Optimal Thrust Angle")
+        plt.plot(np.degrees(aV), np.degrees(Mu), label="Optimal Thrust Angle $\mu$")
         plt.plot(np.degrees(aV), np.degrees(np.polyval(L, aV)), label="Linear Fit to Optimal Thrust Angle")
-        plt.plot(np.degrees(aV), 180 + np.degrees(aV), 'o', label="180 + FPA")
-        plt.xlabel("Flight Path Angle ")
-        plt.ylabel("Angle ")
+        # plt.plot(np.degrees(aV), 180 + np.degrees(aV), 'o', label="180 + FPA")
+        plt.xlabel("Ignition Flight Path Angle (deg)")
+        plt.ylabel("Angle (deg)")
         plt.legend()
         # plt.plot(np.linalg.norm(UV, axis=1), Mf)
         # plt.plot(np.linalg.norm(UV, axis=1), np.linalg.norm(np.array([DR, H]))
