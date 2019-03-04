@@ -33,8 +33,6 @@ class Solver:
         """
         DX = D.dot(X)
 
-    
-
         for a, x, b, u, dx in zip(A, X, B, U, DX):
             Eqs = a.dot(x) + b.dot(u) - dx
             for Eq in Eqs:
@@ -65,7 +63,7 @@ def test():
     print(x)
 
 
-    obj = lambda x: (x[0]-1)**4 + (x[1]-1)**4 + solver.model.sqrt(x[0])
+    obj = lambda x: (x[0]-1)**4 - (x[1]-1)**4 + solver.model.sqrt(x[0])
     f = [lambda x: 1-x[0]**2-x[1]**2, lambda x: x[0]**2+x[1]**2-2]
 
     solver.Obj(obj(x))
@@ -80,7 +78,7 @@ def test():
 
     print('x1: ' + str(v[0]))
     print('x2: ' + str(v[1]))
-
+    print('Obj: {}'.format(solver.model.options.OBJFCNVAL))
 
     
 if __name__ == "__main__":
