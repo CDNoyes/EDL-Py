@@ -135,7 +135,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         dl1 = 0
         dl2 = -cg[i]*l1 + 2*dref[i]/vref[i]*l2 - c1[i]*l3 -sg[i]*l4
         dl3 = vref[i]*sg[i]*l1 + 3.71*cg[i]*l2 + c2[i]*l3 - vref[i]*cg[i]*l4
-        dl4 = -dref[i]/hs*l2 + l3*(liftv[i]/vref[i]/hs) + vref[i]*cg[i]/rref[i]
+        dl4 = -dref[i]/hs*l2 + l3*(liftv[i]/vref[i]/hs + vref[i]*cg[i]/rref[i]**2)
         dl5 = -dref[i]/vref[i]*l3
     
         l1 -= dt*dl1
