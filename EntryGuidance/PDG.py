@@ -113,9 +113,16 @@ class JBG(PoweredDescentGuidanceBase):
         self.ignite()
         debug = self.debug 
         self.debug = False 
-        U0 = np.linspace(4, 700, 100)
-        V0 = np.linspace(-1, -250, 100)
-        UV = np.array(list(product(U0, V0)))
+        if 10:  # Full surface, with different magnitude and direction of init velocity
+            U0 = np.linspace(4, 700, 100)
+            V0 = np.linspace(-1, -250, 100)
+            UV = np.array(list(product(U0, V0)))
+        else:
+            Vmag = 10000
+            fpa = np.linspace(-30, 0, 500)
+            U0 = np.cos(np.radians(fpa))*Vmag
+            V0 = np.sin(np.radians(fpa))*Vmag
+            UV = np.array([U0, V0]).T
         DR = []
         H = []
         Mf = []
@@ -145,21 +152,21 @@ class JBG(PoweredDescentGuidanceBase):
 
         L = np.polyfit(aV, Mu, 1)
         fpa = aV 
-        keep = np.degrees(fpa) > -25
+        keep = np.degrees(fpa) > -50
         
         DR = np.array(DR)
         Mf = np.array(Mf)
         H = np.array(H)
 
-        plt.figure(figsize=(14, 6))
+        plt.figure(figsize=(14, 10))
         plt.suptitle("Optimal Ignition Surface")
-        plt.subplot(1,2,1)
+        plt.subplot(2,2,1)
         plt.scatter(UV[keep, 0], UV[keep, 1], c=Mf[keep])
         plt.axis("equal")
         plt.xlabel("Horizontal Velocity at Ignition")
         plt.ylabel("Vertical Velocity at Ignition")
 
-        plt.subplot(1,2,2)
+        plt.subplot(2,2,2)
         plt.scatter(DR[keep], H[keep], c=Mf[keep])
         cbar = plt.colorbar()
         cbar.set_label('Prop Used', rotation=270)
@@ -168,10 +175,19 @@ class JBG(PoweredDescentGuidanceBase):
         plt.ylabel("Optimal Altitude")
         plt.axis("equal")
 
+        plt.subplot(2,2,4)
+        plt.scatter(DR[keep], H[keep], c=np.linalg.norm(UV, axis=1)[keep])
+        cbar = plt.colorbar()
+        cbar.set_label('Init Vel', rotation=270)
+        # plt.scatter(D_approx[0], D_approx[1], c='k')
+        plt.xlabel("Optimal Horizontal Distance")
+        plt.ylabel("Optimal Altitude")
+        plt.axis("equal")
+
         plt.figure()
 
         print("mu - fpa fit coeff: {}".format(L))
-        plt.plot(np.degrees(aV), np.degrees(aD), label="Glideslope Angle")  # i.e. between Altitude and Downrange
+        # plt.plot(np.degrees(aV), np.degrees(aD), label="Optimal Glideslope Angle")  # i.e. between Altitude and Downrange
         plt.plot(np.degrees(aV), np.degrees(Mu), label="Optimal Thrust Angle $\mu$")
         plt.plot(np.degrees(aV), np.degrees(np.polyval(L, aV)), label="Linear Fit to Optimal Thrust Angle")
         # plt.plot(np.degrees(aV), 180 + np.degrees(aV), 'o', label="180 + FPA")
@@ -181,6 +197,13 @@ class JBG(PoweredDescentGuidanceBase):
         # plt.plot(np.linalg.norm(UV, axis=1), Mf)
         # plt.plot(np.linalg.norm(UV, axis=1), np.linalg.norm(np.array([DR, H]))
 
+        plt.figure()
+        plt.scatter(np.degrees(aV)[keep], np.abs(np.degrees(Mu)-np.degrees(np.polyval(L, aV)))[keep], c=np.linalg.norm(UV, axis=1)[keep])
+        # plt.scatter(np.degrees(aV)[keep], np.asarray(np.degrees(Mu)-np.degrees(np.polyval(L, aV)))[keep], c=np.linalg.norm(UV, axis=1)[keep])
+        plt.xlabel("Ignition Flight Path Angle (deg)")
+        plt.ylabel("Pitch Angle Error, |True-Fit| (deg)")
+        cbar = plt.colorbar(orientation='horizontal')
+        cbar.set_label('Ignition Velocity (m/s)', rotation=0, )
 
         tf_approx1 = np.polyfit(np.linalg.norm(UV, axis=1), Tf, 1)
         tf_approx2 = np.polyfit(np.linalg.norm(UV, axis=1), Tf, 2)
