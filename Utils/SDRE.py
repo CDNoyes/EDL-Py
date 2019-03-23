@@ -79,7 +79,7 @@ def SDRE(x, tf, A, B, C, Q, R, z, m, E=None, sigma=0, n_points=200, h=0):
     return np.array(X), np.array(U), np.array(K)
 
 
-def SDREC(x, tf, A, B, C, Q, R, Sf, z, m, n_points=100, minU=None, maxU=None):
+def SDREC(x, tf, A, B, C, Q, R, Sf, z, m, n_points=100, minU=None, maxU=None, verbose=True):
     """ Version of SDRE from the Lunar Lander thesis with terminal constraints
         Assumes Q,R are functions of the state but may be constant matrices
         Sf is the final state weighting for non constrained states
@@ -94,7 +94,7 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, m, n_points=100, minU=None, maxU=None):
     K = []
 
     for iter, t in zip(range(n_points), T):
-        if not (iter)%np.ceil(n_points/10.):
+        if not (iter)%np.ceil(n_points/10.) and verbose:
             print("Step {}".format(iter))
 
         a = A(t, x)
@@ -252,7 +252,7 @@ def SRP_A(t,x):
 def SRP_B(t,x):
     return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)
 
-def SRP_Bu(t,x):
+def SRP_Bu(t,x,u):
     return np.concatenate((np.zeros((3,3)),np.eye(3)),axis=0)
 
 def SRP_C(t,x):
@@ -268,15 +268,15 @@ def SRP(N=200):
     x0 = np.array([-3200., 400, 2600, 625., -60, -270.])
     tf = 15
     r = np.zeros((6,))
-    R = lambda x: np.eye(3)
+    R = lambda t,x,u: np.eye(3)
     # R = lambda x: np.diag([replace_nan(1/np.abs(x[i]),1) for i in range(3)])
-    Q = lambda x: np.zeros((6,6))
+    Q = lambda t,x: np.zeros((6,6))
     S = np.zeros((6,6))
 
     from functools import partial
     solvers = [
-               partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=N, maxU=70, minU=40),
-               partial(SDREC, tf=tf, A=SRP_A, B=SRP_B, C=SRP_C, Q=Q, R=R, Sf=S, z=r, n_points=N, maxU=None, minU=None),
+               partial(SDREC, tf=tf, A=SRP_A, B=SRP_Bu, C=SRP_C, Q=Q, R=R, Sf=S, z=r, m=1, n_points=N, maxU=70, minU=40),
+               partial(SDREC, tf=tf, A=SRP_A, B=SRP_Bu, C=SRP_C, Q=Q, R=R, Sf=S, z=r, m=1, n_points=N, maxU=None, minU=None),
               ]
     labels = ['SDRE', 'SDRE (No Control Limits)']
 
@@ -394,5 +394,5 @@ def test_IP():
 
 
 if __name__ == '__main__':
-    test_IP()
-    # SRP()
+    # test_IP()
+    SRP()
