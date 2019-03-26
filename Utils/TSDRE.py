@@ -172,9 +172,55 @@ def example1():
 
     plt.show()
 
+
+def example2():
+    import sys 
+    sys.path.append("./EntryGuidance/SDC")
+    from ScalarSystems import PolySystem 
+
+    sys = PolySystem(0, 0, 0)
+
+    def nl_constraint(x):
+        return x**3-33/8*x**2+7/8*x-5*np.sin(x)+147/32, 3*x**2-33/4*x + 7/8-5*np.cos(x)
+
+    problem = {'tf': 1, 'Q': [[0]], "R": [[1]], 'constraint': nl_constraint}
+
+    controller = TSDRE()
+    N = 30
+    t = np.linspace(0, problem['tf'], N)  # These are the times at which control is updated 
+    dt = np.diff(t)[0]
+
+    for x0 in [-1]:
+
+        X = [np.array([x0])]
+        U = []
+        Nu = []
+        tc = 0 
+
+        for i in range(N-1):
+            u = controller(tc, X[-1], sys, problem)
+            delta = min(dt, t[-1]-tc)
+            xi = RK4(sys.dynamics(u), X[-1], np.linspace(tc, tc+delta, 2))  # Ten steps per control update 
+            X.append(xi[-1])
+            U.append(u)
+            Nu.append(controller.cache)
+            tc += delta
+
+        U.append(U[-1])
+
+        plt.figure(1)
+        plt.plot(t, X)
+        plt.xlabel("Time")
+        plt.title('X(tf) = {:.4f}'.format(X[-1][0]))
+
+        # plt.figure(2)
+        # plt.plot(t, U)
+        # plt.xlabel("Time")
+
+    plt.show()
 def test():
-    example1()
-    # example2()
+    # example1()
+    example2()
     # example3()
 
 if __name__ == "__main__":
