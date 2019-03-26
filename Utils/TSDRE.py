@@ -6,28 +6,8 @@ Implementation of the terminal controller from
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d 
-# from scipy.integrate import odeint
-# from functools import partial
-# from itertools import product
 
 from RK4 import RK4
-
-class TerminalManifold:
-    """ A generic terminal manifold class defining an implicit constraint
-        h(x(tf)) = 0
-    """
-    def __init__(self,):
-        pass 
-
-    def __call__(self, xf):
-        return self.constraint(x), self.gradient(x)
-
-    def constraint(self, x):
-        raise NotImplementedError
-
-    def gradient(self, x):
-        raise NotImplementedError
-
 
 
 class TSDRE:
@@ -38,7 +18,6 @@ class TSDRE:
 
         self.cache = None 
 
-    # def __call__(self, ):
 
     def __call__(self, tc, x0, model, problem):
         """ 
@@ -65,10 +44,6 @@ class TSDRE:
         A, B, _, D = model(tc, x0)  
         c, C = problem['constraint'](x0)
 
-        # for thing in [A,B,C,D, Q, Ri]:
-        #     print(np.shape(thing))
-
-
         # Compute gain matrices 
         S0 = RK4(dS0, np.zeros((n, n)), tb, args=(A, B, Q, Ri))[::-1]
         S0i = interp1d(t, S0, axis=0, bounds_error=False, fill_value=(S0[0], S0[-1]))
@@ -88,10 +63,8 @@ class TSDRE:
         self.cache = nu 
         return control(x0, B, Ri, S0[0], S1[0], P0[0], nu)
 
-
     # def solve(self, model, problem):
         # """ Calls __call__ method and integrates the resulting solution till tf """
-
 
 
 def control(x, B, Ri, S0, S1, P0, nu):
@@ -127,24 +100,28 @@ def dV1(V, t, A, B, D, Q, Ri, P0, S1):
     return np.atleast_1d(-P0(t).dot(D - B.dot(Ri).dot(B.T.dot(S1(t)))))
 
 
-def example1():
+# Example/Demonstration Code 
+def pt_constraint(xf):
+    return xf, np.array([1])
+
+
+def nl_constraint(x):
+    return x**3-33./8.*x**2+7./8.*x-5.*np.sin(x)+147./32, 3.*x**2-33./4*x + 7./8-5.*np.cos(x)
+   
+
+def example(x0s, abc, constraint, N=50, plot_control=False, plot_contour=True):
+    """ Generic scalar example for different polynomial systems, initial conditions, and terminal constraints. """
     import sys 
     sys.path.append("./EntryGuidance/SDC")
     from ScalarSystems import PolySystem 
 
-    sys = PolySystem(0, 1, 0)
-
-    def pt_constraint(xf):
-        return xf, np.array([1])
-
-    problem = {'tf': 1, 'Q': [[0]], "R": [[1]], 'constraint': pt_constraint}
-
+    sys = PolySystem(*abc)
+    problem = {'tf': 1, 'Q': [[0]], "R": [[1]], 'constraint': constraint}
     controller = TSDRE()
-    N = 20
-    t = np.linspace(0, problem['tf'], N)  # These are the times at which control is updated 
+    t = np.linspace(0, problem['tf'], N)  # These are the N-1 times at which control is updated, and tf 
     dt = np.diff(t)[0]
 
-    for x0 in [-1.5, -0.5, 1, 2]:
+    for x0 in x0s:
 
         X = [np.array([x0])]
         U = []
@@ -153,8 +130,11 @@ def example1():
 
         for i in range(N-1):
             u = controller(tc, X[-1], sys, problem)
+            if 1:
+                B = x0**3 + 5
+                u = np.clip(u, -B, B)  # Optional saturation effects
             delta = min(dt, t[-1]-tc)
-            xi = RK4(sys.dynamics(u), X[-1], np.linspace(tc, tc+delta, 2))  # Ten steps per control update 
+            xi = RK4(sys.dynamics(u), X[-1], np.linspace(tc, tc+delta, 3))  # _ steps per control update 
             X.append(xi[-1])
             U.append(u)
             Nu.append(controller.cache)
@@ -163,65 +143,29 @@ def example1():
         U.append(U[-1])
 
         plt.figure(1)
-        plt.plot(t, X)
+        plt.plot(t, X, label='X(tf) = {:.4f}'.format(X[-1][0]))
         plt.xlabel("Time")
-
-        plt.figure(2)
-        plt.plot(t, U)
-        plt.xlabel("Time")
-
-    plt.show()
-
-
-def example2():
-    import sys 
-    sys.path.append("./EntryGuidance/SDC")
-    from ScalarSystems import PolySystem 
-
-    sys = PolySystem(0, 0, 0)
-
-    def nl_constraint(x):
-        return x**3-33/8*x**2+7/8*x-5*np.sin(x)+147/32, 3*x**2-33/4*x + 7/8-5*np.cos(x)
-
-    problem = {'tf': 1, 'Q': [[0]], "R": [[1]], 'constraint': nl_constraint}
-
-    controller = TSDRE()
-    N = 30
-    t = np.linspace(0, problem['tf'], N)  # These are the times at which control is updated 
-    dt = np.diff(t)[0]
-
-    for x0 in [-1]:
-
-        X = [np.array([x0])]
-        U = []
-        Nu = []
-        tc = 0 
-
-        for i in range(N-1):
-            u = controller(tc, X[-1], sys, problem)
-            delta = min(dt, t[-1]-tc)
-            xi = RK4(sys.dynamics(u), X[-1], np.linspace(tc, tc+delta, 2))  # Ten steps per control update 
-            X.append(xi[-1])
-            U.append(u)
-            Nu.append(controller.cache)
-            tc += delta
-
-        U.append(U[-1])
-
+        if plot_control:
+            plt.figure(2)
+            plt.plot(t, U)
+            plt.xlabel("Time")
+            plt.ylabel("Control")
+    
+    if plot_contour:
         plt.figure(1)
-        plt.plot(t, X)
-        plt.xlabel("Time")
-        plt.title('X(tf) = {:.4f}'.format(X[-1][0]))
+        z = np.linspace(-1.5, max(np.abs(x0s).max()+1,3.5), 5000)
+        T, Z = np.meshgrid(np.linspace(0.99, 1.0, 3), z)
+        C = constraint(np.array(Z))[0]
+        plt.contour(T, Z, C, np.linspace(-1, 1, 101)*0.2, colors='k')  # Constraint, shown with thicker resolution
 
-        # plt.figure(2)
-        # plt.plot(t, U)
-        # plt.xlabel("Time")
-
+    plt.legend()
     plt.show()
+
+
 def test():
-    # example1()
-    example2()
-    # example3()
+    example([-1.5, -0.5, 1, 2], [0,1,0], pt_constraint, N=20, plot_contour=False)  # ex1 from reference 
+    example([-1, 0, 2, 4], [0,0,0], nl_constraint, 20)  # ex2 from reference with add'l initial conditions
+    # example([-1, 0, 4], [1, 0, -0.1], nl_constraint, 30)  
 
 if __name__ == "__main__":
     test()
