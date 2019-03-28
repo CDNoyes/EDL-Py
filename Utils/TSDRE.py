@@ -216,18 +216,22 @@ def test2d():
     def constraint(x): 
         # return (x[0] - x[1]**2)**2, np.array([2*x[0]-2*x[1]**2, -4*x[0]*x[1] + 4*x[1]**3]).T
         # return (x[0] - x[1]**2), np.array([np.ones_like(x[0]), -2*x[1]]).T
-        # return x[0]**2 + x[1]**2 - 10, np.array([2*x[0], 2*x[1]]).T  # This one doesn't work well for some reason, perhaps the lack of linear terms
+        # return x[0]**2 + x[1]**2 - 10, np.array([2*x[0], 2*x[1]])  # This one doesn't work well for some reason, perhaps the lack of linear terms
         # return x[0]**2 + x[1]**2 + 2*x[0]*x[1]- 10, np.array([2*x[0]+2*x[1], 2*x[0]+2*x[1]]).T  
         # return x[0] + 0.1*x[0]**2 + x[1] + 0.1*x[1]**2 - 3, np.array([1+0.2*x[0], 1+0.2*x[1]]).T
-        # return x[0], np.array([1, 0]).T
+        return x[0]-np.tan(x[1])*x[1]-0.1*x[1]**2, np.array([np.ones_like(x[0]), -0.2*x[1]-np.tan(x[1])-x[1]/(np.cos(x[1])**2)]).T
+        # return x[1]**2 - 1, np.array([0, 2*x[1]]).T  # two vertical lines 
+        # return x[0]**2 - 1, np.array([2*x[0], 0]).T  # two horizontal lines 
+        # return x**2 - 1, np.diag(2*x)  # four isolated points 
         # return x[0]-x[1], np.array([1, -1]).T
         # return np.cos(x[0]), np.array([-np.sin(x[0]), 0]).T  # This one works impressively well 
         # return np.cos(x[0])+np.sin(x[1]), np.array([-np.sin(x[0]), np.cos(x[1])]).T  # This one works impressively well 
         # return x[1]*np.cos(x[0])-1, np.array([-np.sin(x[0])*x[1], np.cos(x[0])]).T 
 
-        return x - np.array([1,0]), np.eye(2)  # A 2d terminal constraint!!
+        # return x - np.array([1,0], ndmin=np.ndim(x)).T, np.eye(2)  # 2 linear point constraints!!
+        # return np.array([x[0]+x[1], x[0]-x[1]]), np.array([[1,1],[1,-1]])  # Two linear constraints whose intersection is a single point!!
 
-    problem = {'tf': tf, 'Q': np.eye(2)*0, "R": [[1]], 'constraint': constraint}
+    problem = {'tf': tf, 'Q': np.eye(2)*0., "R": [[1]], 'constraint': constraint}
     model = TerminalManifold()
     controller = TSDRE()
 
@@ -246,7 +250,7 @@ def test2d():
         for i in range(N-1):
             u = controller(tc, X[-1], model, problem)
             if 0:
-                B = 6
+                B = 2.
                 u = np.clip(u, -B, B)  # Optional saturation effects
             delta = min(dt, t[-1]-tc)
             xi = RK4(model.dynamics(u), X[-1], np.linspace(tc, tc+delta, 3))  # _ integration steps per control update 
@@ -269,26 +273,34 @@ def test2d():
     XMC = np.array(XMC)
     Nuf = np.array(Nuf).squeeze()
     print(XMC.shape)  # M samples, N points, n states
-    c = (Nuf - Nuf.min())/Nuf.max()
-    # d = {'x' : XMC[:,-1,1].squeeze(), 'y': XMC[:,-1,0].squeeze(), 'nu': Nuf.squeeze()}
-    # df = pd.DataFrame(data=d)
     plt.figure(2)
-    # df.plot(kind='scatter', x='x', y='y', c='nu')
-    # plt.scatter(XMC[:,0,1], XMC[:,0,0], c=c.squeeze(), label='Initial State')  # Initial
+    # plt.scatter(XMC[:,0,1], XMC[:,0,0], c=Nuf, label='Initial State')  # Initial
     plt.scatter(XMC[:,0,1], XMC[:,0,0], c='g', label='Initial State')  # Initial
     plt.scatter(XMC[:,-1,1], XMC[:,-1,0], marker='o', label="Final State", c='r')  # Final
     for traj in XMC:
         plt.plot(traj.T[1], traj.T[0], 'b', alpha=0.2)
         
 
-    if 0:
-        x = np.linspace(0, 15, 500)
-        y = np.linspace(-10,10, 600)
+    if 1:
+        xmin = XMC[:,:,0].min()-1
+        xmax = XMC[:,:,0].max()+1
+        x = np.linspace(xmin, xmax, 500)
+
+        ymin = XMC[:,:,1].min()-1
+        ymax = XMC[:,:,1].max()+1
+        y = np.linspace(ymin, ymax, 600)
         XY = np.meshgrid(x,y)
         Z = constraint(XY)[0]
-        ctr = plt.contour(XY[1], XY[0], Z, [0], colors='k')
+        if Z.ndim == 2:
+            ctr = plt.contour(XY[1], XY[0], Z, [0], colors='k')
+            label = ""
+        else:
+            ctr = plt.contour(XY[1], XY[0], Z[0], [0], colors='k')
+            plt.contour(XY[1], XY[0], Z[1], [0], colors='m')
+            label = "s"
+
         h = ctr.legend_elements()[0][0]
-        plt.legend([h], ["Terminal Manifold"])
+        plt.legend([h], ["Terminal Manifold"+label])
     plt.title("Phase Portrait")
     plt.xlabel('v')
     plt.ylabel('x')
