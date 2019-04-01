@@ -17,7 +17,7 @@ class SpacecraftDynamics:
         Else, state = [attitude, velocity]
     """
 
-    def __init__(self, inertia, kinematics=True):
+    def __init__(self, inertia, kinematics=False):
         # Verify inertia input 
         self.__inertia(inertia)
 
@@ -31,12 +31,10 @@ class SpacecraftDynamics:
             self.__dynamics = self.__dynamics_angular
             self.__states = ["w1", "w2", "w3"]
 
-
     def dynamics(self, u):
         return lambda x, t: self.__dynamics(x, t, u)
 
     def __dynamics_angular(self, w, t):
-        # w_dot = np.zeros_like(w)
         wJw = np.cross(w, self.inertia.dot(w))  # Could compare performance with constructing temporary omega matrix, and using dot instead of cross
         # wJw = np.dot([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[1], w[0], 0]], self.inertia.dot(w))
         return self.invertia_inverse.dot(u - wJw)
@@ -61,5 +59,5 @@ def test():
 
 
     w0 = [-0.4, 0.8, 2]
-    J = [86.24, 85.07]
+    J = [86.24, 85.07, 113.59]
     sc = SpacecraftDynamics(J, kinematics=False)
