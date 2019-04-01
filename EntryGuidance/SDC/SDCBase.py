@@ -34,7 +34,7 @@ class SDCBase(abc.ABC):
         raise NotImplementedError
 
     def C(self, t, x):  
-        raise NotImplementedError
+        return np.eye(self.n)
 
     def D(self, t):
         """ Affine terms """

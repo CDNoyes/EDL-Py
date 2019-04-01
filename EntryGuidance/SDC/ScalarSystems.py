@@ -17,6 +17,7 @@ class PolySystem(SDCBase):
     def n(self):
         return 1
     
+    @property
     def m(self):
         return 1
 
