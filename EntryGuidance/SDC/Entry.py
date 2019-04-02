@@ -43,16 +43,20 @@ class Energy(SDCBase):
         # wa = [0.3, 0, 0.3, 0.4]
         wa = [0.7, 0, 0.2, 0.1]
         wb = [0.5, 0, 0.5, 0]
-        self.w = np.array( [ wa,
-                    wb,
-                    wa,
-                    wb ])
+        self.w = np.array([wa, wb, wa, wb])
         self.model = model 
         self.mass = entry_mass
 
     def set_weights(self, w):
-        assert np.allclose(np.sum(sdc_model.w, axis=1), np.ones((4))), "Row weights must sum to 1"   
+        assert np.allclose(np.sum(self.w, axis=1), np.ones((4))), "Row weights must sum to 1"   
         self.w = w 
+
+    def randomize_weights(self):
+        r = np.random.random((4, 4))
+        r[:, 1] = 0
+        r[(1, 3), 3] = 0
+        T = np.sum(r, axis=1)
+        self.set_weights(r/T[:, None]) 
 
     def A(self, t, x):
         h, s, v, fpa = x
@@ -112,7 +116,7 @@ def verify():
     print(x0[idx])
 
     sdc_model = Energy(model, x0[-1])
-    assert np.allclose(np.sum(sdc_model.w, axis=1), np.ones((4))), "Row weights must sum to 1"      
+    sdc_model.randomize_weights()
     sigma = 0.1 
 
     dx = model.dynamics([sigma, 0, 0])(x0, 0)  # truth 
@@ -124,6 +128,7 @@ def verify():
     dx_sdc = sdc_model.dynamics(np.cos(sigma))(x0_sdc, 0)
 
     print(dx_sdc)
+
 
 if __name__ == "__main__":
 
