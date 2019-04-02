@@ -5,14 +5,7 @@
 
 import numpy as np 
 from SDCBase import SDCBase
-
-
-def replace_nan(x, replace):
-    """ A useful method for SDC factorizations. """
-    if np.isfinite(x):
-        return x
-    else:
-        return replace
+from replace import replace 
 
 
 class Energy(SDCBase):
@@ -67,8 +60,8 @@ class Energy(SDCBase):
         sg = np.sin(fpa)/D
         cg = np.cos(fpa)/D
 
-        sg_over_fpa = replace_nan(np.sin(fpa)/fpa, 1)/D 
-        cgm1_over_fpa = replace_nan((np.cos(fpa)-1)/fpa, 0)/D
+        sg_over_fpa = replace(np.sin(fpa)/fpa, 1)/D 
+        cgm1_over_fpa = replace((np.cos(fpa)-1)/fpa, 0)/D
 
         df = (1/r-g/v**2)
 
@@ -113,7 +106,7 @@ def verify():
     x0 = model.scale(x0)
 
     idx = [0, 6, 3, 4]  # grabs the longitudinal states in the correct order 
-    print(x0[idx])
+    print("Longitudinal state: {}".format(x0[idx]))
 
     sdc_model = Energy(model, x0[-1])
     sdc_model.randomize_weights()
@@ -121,13 +114,13 @@ def verify():
 
     dx = model.dynamics([sigma, 0, 0])(x0, 0)  # truth 
 
-    print(-dx[idx])
+    print("True derivatives:   {}".format(-dx[idx]))
 
     x0_sdc = x0[idx]
     x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
     dx_sdc = sdc_model.dynamics(np.cos(sigma))(x0_sdc, 0)
 
-    print(dx_sdc)
+    print("SDC derivatives:    {}".format(dx_sdc))
 
 
 if __name__ == "__main__":
