@@ -56,9 +56,9 @@ class Energy(SDCBase):
 
     def A(self, t, x):
         h, s, v, fpa = x
-        r = self.model.radius(h)
-        g = self.model.gravity(r)           
-        L, D = self.model.aeroforces(r, v, self.mass)
+        r = self.model.radius(h*self.model.dist_scale)/self.model.dist_scale    # nd radius
+        g = self.model.gravity(r)                                               # nd gravity 
+        D = self.model.aeroforces(r*self.model.dist_scale, v*self.model.vel_scale, self.mass)[1]/self.model.acc_scale
 
         sg = np.sin(fpa)/D
         cg = np.cos(fpa)/D
@@ -84,9 +84,8 @@ class Energy(SDCBase):
 
     def B(self, t, x):
         h, s, v, fpa = x
-        r = self.model.radius(h)
-        g = self.model.gravity(r)           # approximate as constant for now
-        L, D = self.model.aeroforces(r, v, self.mass)
+        r = self.model.radius(h*self.model.dist_scale) 
+        L, D = self.model.aeroforces(r, v*self.model.vel_scale, self.mass) # dont need to scale since we use their ratio anyway 
         return np.array([0, 0, 0, L/D/v**2])
 
     def C(self, t, x):  
@@ -106,9 +105,11 @@ def verify():
     from InitialState import InitialState
 
     x0 = InitialState(rtg=0, r=15e3 + 3397e3)
-    model = Entry(Energy=True)
+    model = Entry(Energy=True, Scale=True)
+    x0 = model.scale(x0)
 
     idx = [0, 6, 3, 4]  # grabs the longitudinal states in the correct order 
+    print(x0[idx])
 
     sdc_model = Energy(model, x0[-1])
     assert np.allclose(np.sum(sdc_model.w, axis=1), np.ones((4))), "Row weights must sum to 1"      
@@ -119,7 +120,7 @@ def verify():
     print(-dx[idx])
 
     x0_sdc = x0[idx]
-    x0_sdc[0] = model.altitude(x0_sdc[0])
+    x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
     dx_sdc = sdc_model.dynamics(np.cos(sigma))(x0_sdc, 0)
 
     print(dx_sdc)
