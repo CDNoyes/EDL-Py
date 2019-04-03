@@ -126,9 +126,11 @@ def SDREC(x, tf, A, B, C, Q, R, Sf, z, m, n_points=100, minU=None, maxU=None, ve
         bu = B(t, x, u)
         x = step(x, dt, u, a, bu)
         X.append(x)
-
-    # J = sdre_cost(T, X[:-1], U[:-1], C, Q, R, z)
-    # print "Cost: {}".format(J)
+    if verbose:
+        integrand = np.array([dot(xi, dot(Q(ti, xi), xi)) + dot(ui, dot(R(ti, xi, ui), ui)) for ti,xi,ui in zip(T, X, U)])
+        xf = X[-1]
+        J = trapz(integrand, T) + dot(xf, dot(Sf, xf))
+        print("Cost: {}".format(J))
     U.append(u)
     K.append(K[-1])
     return np.array(X), np.array(U), np.array(K)
@@ -190,15 +192,15 @@ def integrateV(dt, Vf, A, B, K):
 
 
 
-def sdre_step(x, t, A, B, C, Q, R, z, h=0, args=()):
+def sdre_step(x, t, model, Q, R, z):
     from scipy.linalg import solve_continuous_are as care
 
-    a = A(t,x)
-    n = a.shape[0]
-    b = B(t,x)
-    c = C(t,x)
-    q = Q(t,x)
-    r = R(t,x)
+    a = model.A(t, x)
+    n = model.n 
+    b = model.B(t, x)
+    c = model.C(t, x)
+    q = Q(x)
+    r = R(x)
     
     S = dot(b, matrix_solve(r, b.T))
     qc = dot(c.T, dot(q, c))
@@ -207,7 +209,7 @@ def sdre_step(x, t, A, B, C, Q, R, z, h=0, args=()):
     p = care(a, b, qc, r)
 
     # Solve the feedforward control:
-    s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z(t+h))))
+    s = -matrix_solve((a-dot(S,p)).T, dot(c.T,dot(q,z)))
     # for val in [x,b,r,p,s]:
         # print val.shape
     u = sdre_control(x[0:n], b, r, p, s)
