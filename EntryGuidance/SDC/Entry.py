@@ -5,7 +5,73 @@
 
 import numpy as np 
 from SDCBase import SDCBase
-from replace import replace 
+from replace import safe_divide
+
+
+class Range(SDCBase):
+    """
+    x = [h, v, fpa]
+        u = cos(sigma)
+
+    w = [0,  0,  1]
+        [w1, w2, 1]
+        [w1, w2, 0]
+    """ 
+    @property
+    def n(self):
+        """ State dimension """
+        return 3
+
+    @property
+    def m(self):
+        """ Control dimension """
+        return 3
+
+    def set_weights(self, w):
+        # assert np.allclose(np.sum(self.w, axis=1), np.ones((4))), "Row weights must sum to 1"   
+        self.w = w 
+
+    def randomize_weights(self):
+        r = np.random.random((2, 2))
+        w = np.zeros((3,3))
+        w[0:2,2] = 1
+        T = np.sum(r, axis=1)
+        w[1:3,0:2] = r/T[:, None] 
+        self.set_weights(w) 
+
+
+    def __init__(self, model, entry_mass):
+        # Default weights:
+        w = np.zeros((3,3))
+        w[0:2,2] = 1
+        w[1:3,0:2] = 0.5 
+        self.w = w 
+        # self.randomize_weights()
+        self.model = model 
+        self.mass = entry_mass
+
+    def A(self, t, x):
+        h, v, fpa = x
+        r = self.model.radius(h*self.model.dist_scale)/self.model.dist_scale    # nd radius
+        g = self.model.gravity(r)                                               # nd gravity 
+        D = self.model.aeroforces(r*self.model.dist_scale, v*self.model.vel_scale, self.mass)[1]/self.model.acc_scale
+
+        tg_over_fpa = safe_divide(np.tan(fpa), fpa, 1)
+
+        vp = -(D/v/np.cos(fpa))
+        df = (1/r-g/v**2)
+
+        Ah = [0, 0, tg_over_fpa]
+        Av = [vp/h, vp/v, -g/v*tg_over_fpa]  # This is not the only possibility 
+        Af = [df/h, df/v, 0]
+        M = np.array([Ah, Av, Af]) * self.w  # Apply the weights 
+        return M 
+
+    def B(self, t, x):
+        h, v, fpa = x
+        r = self.model.radius(h*self.model.dist_scale) 
+        L = self.model.aeroforces(r, v*self.model.vel_scale, self.mass)[0]/self.model.acc_scale
+        return np.array([0, 0, L/np.cos(fpa)/v**2])
 
 
 class Energy(SDCBase):
@@ -60,8 +126,10 @@ class Energy(SDCBase):
         sg = np.sin(fpa)/D
         cg = np.cos(fpa)/D
 
-        sg_over_fpa = replace(np.sin(fpa)/fpa, 1)/D 
-        cgm1_over_fpa = replace((np.cos(fpa)-1)/fpa, 0)/D
+        # sg_over_fpa = replace(np.sin(fpa)/fpa, 1)/D 
+        sg_over_fpa = safe_divide(np.sin(fpa), fpa, 1)/D
+        # cgm1_over_fpa = replace((np.cos(fpa)-1)/fpa, 0)/D
+        cgm1_over_fpa = safe_divide(np.cos(fpa)-1, fpa, 0)/D
 
         df = (1/r-g/v**2)
 
@@ -89,7 +157,7 @@ class Energy(SDCBase):
         return np.eye(4)
 
 
-def verify():
+def verify_energy():
     # Compare true dynamics and SDC factorization
     # Some sign differences must be accounted for:
     # True are wrt energy, SDC wrt energy loss (so opposing in sign)
@@ -101,16 +169,17 @@ def verify():
     from EntryEquations import Entry
     from InitialState import InitialState
 
-    x0 = InitialState(rtg=0, r=15e3 + 3397e3)
+    x0 = InitialState(rtg=0, r=15e3 + 3397e3, fpa=0)
     model = Entry(Energy=True, Scale=True)
     x0 = model.scale(x0)
 
     idx = [0, 6, 3, 4]  # grabs the longitudinal states in the correct order 
+    print("\nEnergy Model: \n")
     print("Longitudinal state: {}".format(x0[idx]))
 
     sdc_model = Energy(model, x0[-1])
     sdc_model.randomize_weights()
-    sigma = 0.1 
+    sigma = 0.2
 
     dx = model.dynamics([sigma, 0, 0])(x0, 0)  # truth 
 
@@ -123,8 +192,43 @@ def verify():
     print("SDC derivatives:    {}".format(dx_sdc))
 
 
+def verify_range():
+    # Compare true dynamics and SDC factorization
+    # Some sign differences must be accounted for:
+    # True has rtg, SDC has range flown 
+
+    import sys 
+    sys.path.append("./Utils")
+    sys.path.append("./EntryGuidance")
+
+    from EntryEquations import Entry
+    from InitialState import InitialState
+
+    x0 = InitialState(rtg=0, r=15e3 + 3397e3)
+    model = Entry(Scale=True)
+    x0 = model.scale(x0)
+
+    idx = [0, 3, 4]  # grabs the longitudinal states in the correct order 
+    print("\nRange Model: \n")
+    print("Longitudinal state: {}".format(x0[idx]))
+
+    sdc_model = Range(model, x0[-1])
+    sigma = 0.2
+
+    dx = model.dynamics([sigma, 0, 0])(x0, 0)  # truth 
+
+    print("True derivatives:   {}".format(dx[idx]/-dx[6]))
+
+    x0_sdc = x0[idx]
+    x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
+    dx_sdc = sdc_model.dynamics(np.cos(sigma))(x0_sdc, 0)
+
+    print("SDC derivatives:    {}".format(dx_sdc))
+
+
 if __name__ == "__main__":
 
-    verify()
+    verify_energy()
+    verify_range()
 
 
