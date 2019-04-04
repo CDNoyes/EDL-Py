@@ -71,7 +71,7 @@ class Range(SDCBase):
         h, v, fpa = x
         r = self.model.radius(h*self.model.dist_scale) 
         L = self.model.aeroforces(r, v*self.model.vel_scale, self.mass)[0]/self.model.acc_scale
-        return np.array([0, 0, L/np.cos(fpa)/v**2])
+        return np.array([[0, 0, L/np.cos(fpa)/v**2]]).T
 
 
 class Energy(SDCBase):
@@ -151,7 +151,7 @@ class Energy(SDCBase):
         h, s, v, fpa = x
         r = self.model.radius(h*self.model.dist_scale) 
         L, D = self.model.aeroforces(r, v*self.model.vel_scale, self.mass) # dont need to scale since we use their ratio anyway 
-        return np.array([0, 0, 0, L/D/v**2])
+        return np.array([[0, 0, 0, L/D/v**2]]).T
 
     def C(self, t, x):  
         return np.eye(4)
@@ -187,7 +187,7 @@ def verify_energy():
 
     x0_sdc = x0[idx]
     x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
-    dx_sdc = sdc_model.dynamics(np.cos(sigma))(x0_sdc, 0)
+    dx_sdc = sdc_model.dynamics([np.cos(sigma)])(x0_sdc, 0)
 
     print("SDC derivatives:    {}".format(dx_sdc))
 
@@ -221,14 +221,91 @@ def verify_range():
 
     x0_sdc = x0[idx]
     x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
-    dx_sdc = sdc_model.dynamics(np.cos(sigma))(x0_sdc, 0)
+    dx_sdc = sdc_model.dynamics([np.cos(sigma)])(x0_sdc, 0)
 
     print("SDC derivatives:    {}".format(dx_sdc))
 
+
+def test_range():
+    from scipy.integrate import trapz 
+    from matplotlib import pyplot as plt 
+    import sys 
+    sys.path.append("./Utils")
+    sys.path.append("./EntryGuidance")
+
+    from EntryEquations import Entry
+    from InitialState import InitialState
+    from RK4 import RK4
+    from TSDRE import TSDRE 
+
+    x0 = InitialState()
+    model = Entry(Scale=False)
+    x0 = model.scale(x0)
+
+    idx = [0, 3, 4]  # grabs the longitudinal states in the correct order 
+    x0_sdc = x0[idx]
+    x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
+
+
+    sdc_model = Range(model, x0[-1])   
+    controller = TSDRE()
+    def altitude_constraint(h):
+        def constraint(x):
+            return x[0]-h, np.array([1, 0, 0])
+        return constraint 
+
+    problem = {'tf': 815e3, 'Q': lambda y: np.diag([0, 0, 0.001]), 'R': lambda x: [[1]], 'constraint': altitude_constraint(8e3)}
+
+    X = [x0_sdc]
+    U = []
+    problem['Q'](X[0])
+    N = 200
+    S = np.linspace(0, problem['tf'], N)
+
+    for i in range(N-1):
+        # u = 0.5
+        u = controller(S[i], X[-1], sdc_model, problem)
+        if 1:
+            u = np.clip(u, 0, 10)  # Optional saturation effects
+        xi = RK4(sdc_model.dynamics(u), X[-1], np.linspace(S[i], S[i+1], 3))  # _ steps per control update 
+        X.append(xi[-1])
+        U.append(u)
+    U.append(U[-1])
+    u = np.array(U)
+    x = np.array(X).T
+    # keep = x[0]/1000 > 6 # min altitude 
+    keep = x[0] > -1e6 
+    h,v,fpa = x[:,keep] 
+    s = S[keep]/1000 
+
+    print("Final Altitude = {:.2f} km".format(h[-1]/1000))
+    # print("Final Altitude = {:.2f} km".format(h[-1]/1000))
+    print("Final Velocity = {:.1f} km".format(v[-1]))
+    # J = trapz(x=t, y=u.squeeze()**2)
+    plt.figure(1)
+    plt.plot(s, h/1000)
+    plt.xlabel("Range flown (km)")
+    plt.ylabel("Altitude (km)")
+    plt.figure(2)
+    plt.plot(s, v)
+    plt.xlabel("Range flown (km)")
+    plt.ylabel("Velocity (m/s)")
+    plt.figure(3)
+    plt.plot(s, np.degrees(fpa))
+    plt.xlabel("Range flown (km)")
+    plt.ylabel("FPA")
+
+    plt.figure(4)
+    plt.plot(s, U)
+    plt.xlabel("Time")
+    plt.ylabel("Control")
+
+    plt.show()
 
 if __name__ == "__main__":
 
     verify_energy()
     verify_range()
+    test_range()
 
 
