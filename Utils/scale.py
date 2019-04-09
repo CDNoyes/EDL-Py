@@ -1,7 +1,8 @@
-import numpy as np 
+import numpy as np
+
 
 def normalize(X):
-    """ Transforms data into zero-mean, unit variance
+    """ Transforms data into uncoupled zero-mean, unit variance
         
         Commonly used in machine learning pre-processing.
 
@@ -12,6 +13,7 @@ def normalize(X):
     T = eigenscale(X)
 
     return T.dot(X-m)
+
 
 def eigenscale(X):
     """ Performs scaling of variables based on eigensystem of covariance
@@ -30,14 +32,15 @@ def eigenscale(X):
     T = np.array([vec/val for val, vec in zip(np.sqrt(vals), vecs)])
     return T
 
+
 def test():
-    import matplotlib.pyplot as plt 
+    import matplotlib.pyplot as plt
 
     m = [10, -3]
-    C = np.diag([0.01, 1000]) # Use variables with very different scales 
+    C = np.diag([0.01, 1000])  # Use variables with very different scales
     X = np.random.multivariate_normal(mean=m, cov=C, size=1000).T
 
-    ms = np.mean(X, axis=1)[:,None]
+    ms = np.mean(X, axis=1)[:, None]
     
     Y = normalize(X)
 
@@ -54,4 +57,3 @@ def test():
 
 if __name__ == "__main__":
     test()
-        
