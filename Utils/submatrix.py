@@ -1,5 +1,8 @@
 import numpy as np
 
+def submatrices(V, rows, cols=None):
+    """ Performs submatrix operation on each matrix in the list V """
+    return np.array([submatrix(M, rows, cols) for M in V])
 
 def submatrix(M, rows, cols=None):
     """ From a matrix M returns the elements M[rows,cols] """
