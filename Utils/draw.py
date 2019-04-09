@@ -15,9 +15,10 @@ def trajectory1d(x, y, V, nstd=3, plot_kws={'label': 'mean'}, fill_kws={'alpha':
     plt.legend()
 
 
-def trajectory2d(X, Y, C, confidence_intervals=[0.95], plot_kws={'label': 'mean'}, downsample=1, fignum=1):
+def trajectory2d(X, Y, C, confidence_intervals=[0.95], plot_kws={'label': 'mean'}, downsample=1, fignum=None):
     """ Plots the 2d state trajectory with covariance ellipses """
-    
+    if fignum is None:
+        plt.gcf().number
     for x, y, P in zip(X[::downsample], Y[::downsample], C[::downsample]):
         cov([x, y], P, ci=confidence_intervals, fignum=fignum, show=False, legend=False)
 
