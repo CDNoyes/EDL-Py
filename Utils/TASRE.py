@@ -1,7 +1,10 @@
 """
-Implementation of the terminal controller from
-    Near Optimal Finite-Time Terminal Controllers for Space Trajectories 
-    via SDRE-based Approach Using Dynamic Programming 
+Implementation of a terminal controller
+based on ASRE iterations 
+
+First iteration is a forward integration of the model with TSDRE 
+Successive iterations use previous history to generate system matrices for backward integrations 
+
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,11 +12,14 @@ from scipy.interpolate import interp1d
 
 try:
     from RK4 import RK4
+    from TSDRE import TSDRE 
+
 except ModuleNotFoundError:
     from Utils.RK4 import RK4
+    from Utils.TSDRE import TSDRE 
 
 
-class TSDRE:
+class TASRE:
     """ Takes an SDC-factorized class and solves
         terminally constrained optimal control problems
     """
@@ -82,8 +88,6 @@ class TSDRE:
             self.previous = U 
         return U
 
-    # def solve(self, model, problem):
-        # """ Calls __call__ method and integrates the resulting solution till tf """
 
 
 def control(x, B, Ri, S0, S1, P0, nu):
@@ -207,8 +211,7 @@ def test2d():
     x0_mc[:, 0] = 6 + 6*x0_mc[:, 0]
     x0_mc[:, 1] = -5 + 10*x0_mc[:, 1]
 
-    # Dynamics for demonstrating a 2d system with various terminal manifolds
-    class TerminalManifold(SDCBase):  
+    class TerminalManifold(SDCBase): # Dynamics for demonstrating a 2d system with various terminal manifolds 
         @property
         def n(self):
             """ State dimension """
@@ -220,10 +223,10 @@ def test2d():
             return 1
         
         def A(self, t, x):
-            return np.array([[0, 1], [0, -a*np.sqrt(1e-5+x[1]**2)]])
+            return np.array([[0,1],[0, -a*np.sqrt(1e-5+x[1]**2)]])
 
         def B(self, t, x):
-            return np.array([[0], [1]])
+            return np.array([[0],[1]])
         
         def C(self, *args):
             return np.eye(2)
