@@ -1,13 +1,8 @@
 import autograd.numpy as np
 # import numpy as np
 
-from EntryVehicle import EntryVehicle
-from Planet import Planet
-from Filter import FadingMemory
-
-# import sys
-# from os import path
-# sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+from EntryGuidance.EntryVehicle import EntryVehicle
+from EntryGuidance.Planet import Planet
 
 
 class Entry(object):
@@ -20,9 +15,9 @@ class Entry(object):
         self.powered = Powered
         self.drag_ratio = 1
         self.lift_ratio = 1
-        self.nx = 8 # [r,lon,lat,v,gamma,psi,s,m]
-        self.nu = 3 # bank command, throttle, thrust angle
-        self.__jacobian = None # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
+        self.nx = 8  # [r,lon,lat,v,gamma,psi,s,m]
+        self.nu = 3  # bank command, throttle, thrust angle
+        self.__jacobian = None  # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
         self.__jacobianb = None
         self._da = DifferentialAlgebra
         self.planet._da = DifferentialAlgebra
@@ -110,7 +105,8 @@ class Entry(object):
         dv = -D - g*sin(gamma)
         dgamma = L/v*cos(sigma) + cos(gamma)*(v/r - g/v)
         dpsi = -L*sin(sigma)/v/cos(gamma) - v*cos(gamma)*cos(psi)*tan(phi)/r
-        ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)/self.dist_scale
+        # ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)/self.dist_scale
+        ds = v*cos(gamma)
         dm = np.zeros_like(dh)
 
         if self.use_energy:
@@ -289,15 +285,14 @@ class Entry(object):
     def aeroforces(self, r, v, m):
         """  Returns the aerodynamic forces acting on the vehicle at a given radius, velocity and mass. """
 
-        g = self.planet.mu/r**2
         h = r - self.planet.radius
-        rho,a = self.planet.atmosphere(h)
+        rho, a = self.planet.atmosphere(h)
         M = v/a
-        cD,cL = self.vehicle.aerodynamic_coefficients(M)
+        cD, cL = self.vehicle.aerodynamic_coefficients(M)
         f = 0.5*rho*self.vehicle.area*v**2/m
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
-        return L,D
+        return L, D
 
     def gravity(self, r):
         """ Returns gravitational acceleration at a given planet radius based on quadratic model 
@@ -313,8 +308,8 @@ class Entry(object):
 def EDL(InputSample=np.zeros(4), **kwargs):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
 
-    CD,CL,rho0,sh = InputSample
-    return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD ,CL=CL), **kwargs)
+    CD, CL, rho0, sh = InputSample
+    return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL), **kwargs)
 
 
 
@@ -372,6 +367,8 @@ class System(object):
                                        ) )
 
     def __filterUpdate(self,x,t):
+        from EntryGuidance.Filter import FadingMemory
+
         """ Computes the derivatives of the aerodynamic ratios. """
         RL = x[16]
         RD = x[17]
