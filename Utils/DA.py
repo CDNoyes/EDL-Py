@@ -202,6 +202,7 @@ def coeff(da, da_vars, index):
     # # TODO: If da.symbol_set is ordered differently than da_vars, the matrix indices needs to be permuted
     # return C
 
+
 def compute_jacobian(function, expansion_point, args=()):
     x = make(expansion_point, ["x{}".format(i) for i in range(len(expansion_point))], 1, True)
     y = function(x, *args)
@@ -240,10 +241,10 @@ def clip(x, lower, upper):
     """
 
     if isinstance(x, dual):
-        from Utils.smooth_sat import symmetric_sat
+        from Utils.smooth_sat import cosh_sat as saturate
         m = (lower+upper)*0.5
         r = (upper-lower)*0.5
-        return m + symmetric_sat(x-m, r)
+        return m + saturate(x-m, r)
     else:
         try:
             x[0]  # Iterable?
