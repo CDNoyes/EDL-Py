@@ -143,7 +143,7 @@ class Entry(object):
         ds = 0
         dm = 0
 
-        return self.__entry_3dof(x, t, control_fun) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
+        return self.__entry_3dof(x, t, u) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
 
     def __thrust_3dof(self, x, u):
         if self._da:
