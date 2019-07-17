@@ -57,11 +57,11 @@ class Simulation(Machine):
                 print("Simulation using default guidance cycle.")
             cycle = Cycle()
 
-        self.__conditions = conditions
-        self.__states = states
-        self.__output = output
-        self.__find_transitions = find_transitions
-        self.__use_da = use_da
+        self._conditions = conditions
+        self._states = states
+        self._output = output
+        self._find_transitions = find_transitions
+        self._use_da = use_da
 
         self.cycle = cycle          # The guidance cycle governing the simulation. Data logging and control updates occur every cycle.duration seconds while trigger checking happens 10x per cycle
         self.time = 0.0             # Current simulation time
@@ -96,12 +96,12 @@ class Simulation(Machine):
         Machine.__init__(self, model='self', states=states, initial=states[0], transitions=transitions, auto_transitions=False, after_state_change='printState')
 
     def set_output(self, boolean):
-        self.__output = boolean
+        self._output = boolean
 
     def integrate(self):
 
-        while not self.__conditions[self.index](da.const_dict(self.triggerInput)):
-            if self.__output and not (len(self.history)-1*self.cycle.rate)%int(10*self.cycle.rate):
+        while not self._conditions[self.index](da.const_dict(self.triggerInput)):
+            if self._output and not (len(self.history)-1*self.cycle.rate)%int(10*self.cycle.rate):
                 print("current simulation time = {} s".format(int(self.time))) # Should define a pretty print function and call that here
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
@@ -117,7 +117,7 @@ class Simulation(Machine):
             mu = 0.         # pitch angle
             zeta = 0.       # yaw angle
 
-        if self.__use_da:
+        if self._use_da:
             X = RK4(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
         else:
             X = odeint(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
@@ -137,14 +137,14 @@ class Simulation(Machine):
         self.fullEDL = FullEDL
         if self.fullEDL:
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
-            if self.__output:
+            if self._output:
                 print("L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD))
-                print ("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7])))
+                print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7])))
 
         else:
-            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self.__use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL))
+            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
-            if self.__output:
+            if self._output:
                 print("L/D: {:.2f}".format(self.edlModel.vehicle.LoD))
                 print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
@@ -156,17 +156,17 @@ class Simulation(Machine):
         self.control_history.append(self.u)                     # So that the control history has the same length as the data;
         self.control_history = np.vstack(self.control_history[1:])
         self.simulations += 1
-        if not self.simulations%10:
+        if not self.simulations % 10:
             print("{} simulations complete.".format(self.simulations))
         # print self.x[0]
         return self.postProcess()
 
 
-    def update(self,x,dt,u):
+    def update(self, x, dt, u):
         if len(x.shape) == 1:
             self.x = x
         else:
-            self.x = x[-1,:]
+            self.x = x[-1, :]
 
         if u is not None:
             self.u = u
@@ -179,15 +179,15 @@ class Simulation(Machine):
 
 
     def printState(self):
-        #find nearest endpoint here - the trigger was met in the last ten steps
-        if self.__find_transitions:
+        #  find nearest endpoint here - the trigger was met in the last ten steps
+        if self._find_transitions:
             self.findTransition()
-        if self.__output:
-            print('Transitioning from state {} to {} because the following condition was met:'.format(self.__states[self.index],self.state))
-            print(self.__conditions[self.index].dump())
+        if self._output:
+            print('Transitioning from state {} to {} because the following condition was met:'.format(self._states[self.index], self.state))
+            print(self._conditions[self.index].dump())
             for key,value in self.triggerInput.items():
-                if not key in ('vehicle','current_state'):
-                    print('{} : {}\n'.format(key,value))
+                if key not in ('vehicle', 'current_state', 'planet'):
+                    print('{} : {}\n'.format(key, value))
         self.index += 1
         self.ie.append(len(self.history)-1)
 
@@ -274,11 +274,11 @@ class Simulation(Machine):
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
 
         if self.fullEDL:
-            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self.__states, self.ie, fignum=1, legend=legend, plotEnergy=plotEnergy)
+            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self._states, self.ie, fignum=1, legend=legend, plotEnergy=plotEnergy)
             if compare:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, legend=legend, plotEnergy=False)  # Use same fignum for comparisons, set fignum > figures for new ones
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self._states, self.ie, fignum=1, legend=legend, plotEnergy=False)  # Use same fignum for comparisons, set fignum > figures for new ones
             # else:
-                # fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=fignum, label="Navigated ")
+                # fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self._states, self.ie, fignum=fignum, label="Navigated ")
             plt.figure(fignum)
             plt.plot(self.times, self.history[:,16],label='Lift')
             plt.plot(self.times, self.history[:,17], label='Drag')
@@ -287,7 +287,7 @@ class Simulation(Machine):
             plt.title('Aerodynamic Filter Ratios')
 
         else:
-            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self.__states, self.ie, fignum=1, plotEnergy=plotEnergy, legend=legend)
+            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self._states, self.ie, fignum=1, plotEnergy=plotEnergy, legend=legend)
 
 
     def show(self):
@@ -296,7 +296,7 @@ class Simulation(Machine):
 
 
     def postProcess(self):
-        if self.__use_da:
+        if self._use_da:
             from Utils.DA import degrees, radians
         else:
             from numpy import degrees, radians
@@ -352,7 +352,7 @@ class Simulation(Machine):
             energy = self.edlModel.energy(r,v,Normalized=False)
 
             h = [self.edlModel.altitude(R,km=True) for R in r]
-            if self.__use_da:
+            if self._use_da:
                 L,D = np.array([self.edlModel.aeroforces(ri,vi,mi) for ri,vi,mi in zip(r,v,m)]).T
             else:
                 L,D = self.edlModel.aeroforces(r,v,m)
@@ -368,9 +368,9 @@ class Simulation(Machine):
             The only exception is the .simuations member whose purpose to record the number of times
             'run' has been used for data reporting in e.g. Monte Carlo simulations.
         """
-        if self.__output:
+        if self._output:
             print("Resetting simulation states.\n")
-        self.set_state(self.__states[0])
+        self.set_state(self._states[0])
         self.time = 0.0
         self.times = []
         self.index = 0
@@ -483,14 +483,18 @@ class Simulation(Machine):
             self.x = self.history[i]
             self.u = self.control_history[i]
             self.triggerInput = self.getDict()
-            if not self.__conditions[self.index](self.triggerInput): # Interpolate between i and i+1 states
+            if self._use_da:
+                trigger_input = da.const_dict(self.triggerInput)
+            else:
+                trigger_input = self.triggerInput
+            if not self._conditions[self.index](trigger_input): # Interpolate between i and i+1 states
                 for j in np.linspace(0.01,0.99,20): # The number of points used here will determine the accuracy of the final state
                     # Find a better state:
                     self.time = ((1-j)*self.times[i] + j*self.times[i+1])
                     self.x = ((1-j)*self.history[i] + j*self.history[i+1])
                     self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
                     self.triggerInput = self.getDict()
-                    if self.__conditions[self.index](self.triggerInput):
+                    if self._conditions[self.index](trigger_input):
                         break
 
 
@@ -505,7 +509,7 @@ class Simulation(Machine):
                 self.times.append(self.time)
 
                 return
-        if self.__output:
+        if self._output:
             print("No better endpoint found")
         return
 
