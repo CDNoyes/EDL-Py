@@ -2,7 +2,7 @@
 
 from numpy import radians, array, copy
 
-def InitialState(full_state=False, **kwargs):
+def InitialState(full_state=False, vehicle='MSL', **kwargs):
     ''' A simple method to use a consistent nominal initial state across all programs. '''
 
 
@@ -41,7 +41,7 @@ def InitialState(full_state=False, **kwargs):
                                                       5505.0,   radians(-14.15), radians(4.99),
                                                       905.65*1e3, 2804)
 
-    elif True: # MSL-like numbers but heading directly east
+    elif 'msl' in vehicle.lower(): # MSL-like numbers but heading directly east
             r0, theta0, phi0, v0, gamma0, psi0, s0, m0 = (3540.0e3, radians(0), radians(0),
                                                           5505.0,   radians(-14.15), radians(0),
                                                           905.65*1e3, 2804)
