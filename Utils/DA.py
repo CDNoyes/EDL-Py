@@ -13,6 +13,35 @@ except:
 dual = (gd, gdv)
 
 
+def interp(xnew, x, y):
+    """ Linearly interpolates DA variables
+    
+        Assumes x is sorted and increasing 
+        xnew need not be sorted 
+    
+    """
+    x = np.asarray(x)
+    ynew = np.zeros_like(xnew, dtype=type(y[0]))
+
+    for i,xn in enumerate(xnew):
+
+        if xn <= x[0]:
+            ynew[i] = y[0]
+            continue
+        elif xn >= x[-1]:
+            ynew[i] = y[-1]
+            continue
+
+        idx = (np.abs(xn - x)).argmin()
+        if xnew[idx] >= xn:
+            upper = idx 
+            lower = upper - 1
+        else:
+            lower = idx 
+            upper = lower + 1
+        ynew[i] = y[lower] + (xn-x[lower])*(y[upper]-y[lower])/(x[upper] - x[lower])
+    return ynew 
+
 def odeint(fun, x0, iv, args=(), min_order=4, max_order=40, tol=1e-3):
 
     x_collect = [x0]
@@ -244,7 +273,7 @@ def clip(x, lower, upper):
         from Utils.smooth_sat import cosh_sat as saturate
         m = (lower+upper)*0.5
         r = (upper-lower)*0.5
-        return m + saturate(x-m, r)
+        return m + saturate(x-m, r, tuning=200)
     else:
         try:
             x[0]  # Iterable?
