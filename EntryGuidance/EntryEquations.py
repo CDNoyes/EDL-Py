@@ -1,5 +1,4 @@
-import autograd.numpy as np
-# import numpy as np
+import numpy as np
 
 from EntryGuidance.EntryVehicle import EntryVehicle
 from EntryGuidance.Planet import Planet
@@ -82,8 +81,7 @@ class Entry(object):
         if self._da:
             from pyaudi import sin, cos, tan
         else:
-            # from numpy import sin, cos, tan
-            from autograd.numpy import sin, cos, tan
+            from numpy import sin, cos, tan
 
         r,theta,phi,v,gamma,psi,s,m = x
         sigma, throttle, mu = u
@@ -124,8 +122,7 @@ class Entry(object):
         if self._da:
             from pyaudi import sin, cos, tan
         else:
-            # from numpy import sin, cos, tan
-            from autograd.numpy import sin, cos, tan
+            from numpy import sin, cos, tan
 
         r,theta,phi,v,gamma,psi,s,m = x
 
@@ -263,16 +260,6 @@ class Entry(object):
             J = da.jacobian(f, vars)
             self.DA(da_setting)
             return J
-
-    def _jacobian_ad(self, x, u):
-        """ Jacobian computed via autograd """
-        from autograd import jacobian
-        grad = jacobian(self.__dynamics(), argnum=0)
-        state = np.concatenate((x,u))
-        if self.use_velocity:
-            state = np.concatenate((x[:-1],u,x[-1,None]))
-
-        return grad(state)
 
     def __dynamics(self):
         ''' Used in jacobian. Returns an object callable with a single combined state '''
