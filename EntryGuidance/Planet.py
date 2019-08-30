@@ -77,7 +77,7 @@ class Planet:
                 rho = rho[0]
 
         else:
-            from autograd.numpy import exp
+            from numpy import exp
             #Density computation:
             rho = self.rho0*exp(-h/self.scaleHeight)
 

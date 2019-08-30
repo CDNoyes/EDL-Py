@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 
 def controller(velocity, lift, drag, fpa, rangeToGo, bank, heading, latitude, longitude, energy, reference, bounds, get_heading, heading_error=0.06, use_energy=False, use_drag_rate=False, use_lateral=True, **kwargs):
 
-    multi = not isinstance(reference,dict) # Determine if we're using a single reference
+    multi = not isinstance(reference, dict) # Determine if we're using a single reference
     if multi:
         N = len(reference)
         refs = reference
@@ -91,6 +91,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     l1 = 1.0                  # s
     l2 = 0.0                  # v
     l3 = 0.0                  # gamma
+    # l3 = (radius[-1]-edl.planet.radius)*sin(fpa[-1])**2     # gamma
     l4 = -1.0/tan(fpa[-1])    # h
     l5 = 0.0                  # u
     
@@ -99,7 +100,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     hs = edl.planet.scaleHeight
     akm = 1000.0
 
-    tfine = np.linspace(time[-1],time[0],1000) # backwards
+    tfine = np.linspace(time[-1], time[0], 10000) # backwards
     dt = tfine[-2]
     rtogo = interp1d(time, rtgo)(tfine) 
     vref  = interp1d(time, vel)(tfine)
@@ -112,11 +113,14 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     
     gamma = interp1d(time, fpa)(tfine)
 
+    # g = 3.71
+    g = edl.gravity(rref)
+
     liftv = lodref*dref
     sg = sin(gamma)
     cg = cos(gamma)
-    c1 = liftv/vref**2 + cg/rref + 3.71*cg/vref**2
-    c2 = (vref/rref - 3.71/vref)*sg
+    c1 = liftv/vref**2 + cg/rref + g*cg/vref**2
+    c2 = (vref/rref - g/vref)*sg
     f1 = []
     f2 = []
     f3 = []
@@ -127,15 +131,16 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         
         f1.append(-hs/dref[i]*l4/akm) 
         if use_drag_rate:
-            f2.append(l3/(-cg[i]*dref[i]*(vref[i]/hs + 2*3.71/vref[i]))/akm)
+            f2.append(l3/(-cg[i]*dref[i]*(vref[i]/hs + 2*g/vref[i]))/akm)
         else:
             f2.append(l3/(vref[i]*cg[i]*akm))
         f3.append(l5/akm)
         
         dl1 = 0
-        dl2 = -cg[i]*l1 + 2*dref[i]/vref[i]*l2 - c1[i]*l3 -sg[i]*l4
-        dl3 = vref[i]*sg[i]*l1 + 3.71*cg[i]*l2 + c2[i]*l3 - vref[i]*cg[i]*l4
-        dl4 = -dref[i]/hs*l2 + l3*(liftv[i]/vref[i]/hs + vref[i]*cg[i]/rref[i]**2)
+        dl2 = -cg[i]*l1 + 2*dref[i]/vref[i]*l2 - c1[i]*l3 - sg[i]*l4
+        dl3 = vref[i]*sg[i]*l1 + g[i]*cg[i]*l2 + c2[i]*l3 - vref[i]*cg[i]*l4
+        # dl4 = -dref[i]/hs*l2 + l3*(liftv[i]/vref[i]/hs + vref[i]*cg[i]/rref[i]**2) # original 
+        dl4 = (-dref[i]/hs - 2*g[i]/rref[i])*l2 + l3*(liftv[i]/vref[i]/hs + vref[i]*cg[i]/rref[i]**2 - cg[i]*2*g[i]/rref[i]/vref[i])  # my mod 
         dl5 = -dref[i]/vref[i]*l3
     
         l1 -= dt*dl1
@@ -143,7 +148,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
         l3 -= dt*dl3
         l4 -= dt*dl4
         l5 -= dt*dl5
-        L.append([l1,l2,l3,l4,l5]) # This is just to keep them for plotting
+        L.append([l1, l2, l3, l4, l5])  # This is just to keep them for plotting
         
     # import matplotlib.pyplot as plt
     # plt.figure()
@@ -152,13 +157,16 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     # plt.plot(eref[0:iv],f3[0:iv],label='u')
     # plt.legend(loc='best')
     # plt.show()
+
     # build the output dictionary
     if use_energy:
         vi = eref[0:iv]
     else:
         vi = vref[0:iv]
         
-    f3[f3<0.01] = 0.01
+    f3 = np.array(f3)  
+    f3[f3<0.01] = 0.01  # Assuming f3 is positive!!!
+
     data = { 'F1'     : interp1d(vi,f1[:iv], fill_value=(f1[0],f1[iv]), assume_sorted=True, bounds_error=False),
              'F2'     : interp1d(vi,f2[:iv], fill_value=(f2[0],f2[iv]), assume_sorted=True, bounds_error=False),
              'F3'     : interp1d(vi,f3[:iv], fill_value=(f3[0],f3[iv]), assume_sorted=True, bounds_error=False),
@@ -169,7 +177,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
              'LOD'    : interp1d(vi,lodref[:iv], fill_value=(lodref[0],lodref[iv]), assume_sorted=True, bounds_error=False),
              'U'      : interp1d(vi,uref,fill_value=(uref[0],uref[-1]), assume_sorted=True, bounds_error=False),
              'K'      : 1,
-             'L'      : np.array(L[:iv]), # These last two are not used by the controller 
+             'L'      : np.array(L[:iv]),  # These last two are not used by the controller 
              'IV'     : vi 
             }
              
@@ -291,11 +299,11 @@ def compare():
     keep = V < gainz['IV'][-1]
     
     STM = np.array([da.jacobian(da_state[[0,3,4,6]],vars) for da_state in da_sim.history]) # The stm trajectory 
-    print STM[-1,:,[0,3,4,6]]
+    print( STM[-1,:,[0,3,4,6]])
     # print STM[0].shape
     # print STM[-1,:8].shape
     STMi = np.array([np.dot(STM[-1,:,[0,3,4,6]].T, np.linalg.inv(stmi[:,[0,3,4,6]])) for stmi in STM]) # The stagewise transitions, i.e. from one time step to the final state 
-    print STMi[-1]
+    print( STMi[-1])
     # plot(V[keep], STMi[keep,3,3],'--',label='s, stm')
     # plot(V[keep], STMi[keep,3,1],'--',label='v, stm')
     # plot(V[keep], STMi[keep,3,2],'--',label='fpa, stm')
@@ -383,7 +391,7 @@ def ctrb():
     ctrb_set = []
     count = 0
     for a,b in zip(np.sin(theta),np.cos(theta)):
-        print "Direction {}/{}".format(count,len(theta))
+        print ("Direction {}/{}".format(count,len(theta)))
         count += 1
         iter = 0
         scale = 0.5
@@ -393,7 +401,7 @@ def ctrb():
         rtg_final = rtg_limit-1
         while np.abs(rtg_final) < rtg_limit:
             scale += 0.5
-            print "Iteration: {}".format(iter)
+            print( "Iteration: {}".format(iter))
             iter += 1
             if not perturb_params:
                 dv = 100*a*scale
@@ -409,8 +417,8 @@ def ctrb():
             output = sim.run(x0_full, controls, sample, FullEDL=True)
             rtg_final = sim.x[6]
             
-        print "Bracketing completed in {} iterations".format(iter)    
-        print "Upper bound in dir [{},{}] = {}".format(a,b,scale)
+        print( "Bracketing completed in {} iterations".format(iter)    )
+        print( "Upper bound in dir [{},{}] = {}".format(a,b,scale))
 
         
         # Now we refine it until s_max-s_min < tol
@@ -446,23 +454,23 @@ def ctrb():
             diff = scale_max-scale_min
         
         if perturb_params:
-            print "Refining terminated in {} iterations".format(iter)    
-            print "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max)
+            print( "Refining terminated in {} iterations".format(iter)    )
+            print( "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max))
             if perturb_atm:
-                print "delta rho0 = {}".format(sample[2]) 
-                print "delta hs = {}".format(sample[3])     
+                print( "delta rho0 = {}".format(sample[2]) )
+                print( "delta hs = {}".format(sample[3])     )
 
             else:
-                print "delta Cd = {}".format(sample[0]) 
-                print "delta Cl = {}".format(sample[1])     
-            print "\n"
+                print( "delta Cd = {}".format(sample[0]) )
+                print( "delta Cl = {}".format(sample[1])     )
+            print( "\n")
             ctrb_set.append(sample)
         else:
-            print "Refining terminated in {} iterations".format(iter)    
-            print "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max)
-            print "delta V0 = {}".format(dv) 
-            print "delta efpa = {}".format(dfpa)     
-            print "\n"
+            print( "Refining terminated in {} iterations".format(iter)    )
+            print( "S max in dir [{},{}] is between [{},{}]".format(a,b,scale_min,scale_max))
+            print( "delta V0 = {}".format(dv) )
+            print( "delta efpa = {}".format(dfpa)   )  
+            print( "\n")
             ctrb_set.append([dv,dfpa])
     
 
