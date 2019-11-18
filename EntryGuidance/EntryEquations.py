@@ -9,12 +9,16 @@ class Entry(object):
 
     def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Altitude=False, DifferentialAlgebra=False, Scale=False):
 
+
+        # TODO: Simplify while generalizing the independent variable. By default it should be time, but it could accept an argument which
+        # is a function that computes the derivative wrt to the independent variable. Then energy, velocity, altitude, etc could all be used 
+
         self.planet = PlanetModel
         self.vehicle = VehicleModel
         self.powered = Powered
         self.drag_ratio = 1
         self.lift_ratio = 1
-        self.nx = 8  # [r,lon,lat,v,gamma,psi,s,m]
+        self.nx = 7  # [r,lon,lat,v,gamma,psi,m]
         self.nu = 3  # bank command, throttle, thrust angle
         self.__jacobian = None  # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
         self.__jacobianb = None
@@ -28,14 +32,14 @@ class Entry(object):
             self.time_scale = np.sqrt(self.dist_scale/self.acc_scale)
             self.vel_scale = np.sqrt(self.dist_scale*self.acc_scale)
             self.mass_scale = 1
-            self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, self.dist_scale, 1])
+            self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, 1])
 
         else:  # No scaling
             self.dist_scale = 1
             self.acc_scale = 1
             self.time_scale = 1
             self.vel_scale = 1
-            self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, self.dist_scale, 1])
+            self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, 1])
 
         if Coriolis:
             self.dyn_model = self.__entry_vinhs
@@ -83,7 +87,7 @@ class Entry(object):
         else:
             from numpy import sin, cos, tan
 
-        r,theta,phi,v,gamma,psi,s,m = x
+        r,theta,phi,v,gamma,psi,m = x
         sigma, throttle, mu = u
 
         h = r - self.planet.radius/self.dist_scale
@@ -104,7 +108,7 @@ class Entry(object):
         dgamma = L/v*cos(sigma) + cos(gamma)*(v/r - g/v)
         dpsi = -L*sin(sigma)/v/cos(gamma) - v*cos(gamma)*cos(psi)*tan(phi)/r
         # ds = -v/r*self.planet.radius*cos(gamma)*cos(psi)/self.dist_scale
-        ds = v*cos(gamma)
+        # ds = v*cos(gamma)
         dm = np.zeros_like(dh)
 
         if self.use_energy:
@@ -113,9 +117,9 @@ class Entry(object):
             else:
                 self.dE = (-v*D)[:, None].T
         if self.use_altitude:
-            self.dE = np.tile(dh, (8,))
+            self.dE = np.tile(dh, (self.nx,))
 
-        return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
+        return np.array([dh, dtheta, dphi, dv, dgamma, dpsi, dm])/self.dE
 
     # 3DOF, Rotating Planet Model - Highest fidelity
     def __entry_vinhs(self, x, t, u):
@@ -133,25 +137,25 @@ class Entry(object):
         dv = 0
         dgamma = 2*self.planet.omega*cos(psi)*cos(phi)
         dpsi = 2*self.planet.omega(tan(gamma)*cos(phi)*sin(psi)-sin(phi))
-        ds = 0
+        # ds = 0
         dm = 0
 
-        return self.__entry_3dof(x, t, u) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi, ds, dm])/self.dE
+        return self.__entry_3dof(x, t, u) + np.array([dh, dtheta, dphi, dv, dgamma, dpsi, dm])/self.dE
 
     def __thrust_3dof(self, x, u):
         if self._da:
             from pyaudi import sin, cos, tan
         else:
             from numpy import sin, cos, tan
-        r,theta,phi,v,gamma,psi,s,m = x
+        r,theta,phi,v,gamma,psi,m = x
         sigma,throttle,thrustAngle = u
 
-        return np.array([0,0,0,self.vehicle.ThrustApplied*throttle*cos(sigma)*cos(thrustAngle-gamma)/m, self.vehicle.ThrustApplied*throttle*sin(thrustAngle-gamma)/(m*v), self.vehicle.ThrustApplied*throttle*cos(thrustAngle-gamma)*sin(sigma)/(cos(gamma)*m*v**2), 0, self.vehicle.mdot(throttle)])/self.dE
+        return np.array([0,0,0,self.vehicle.ThrustApplied*throttle*cos(sigma)*cos(thrustAngle-gamma)/m, self.vehicle.ThrustApplied*throttle*sin(thrustAngle-gamma)/(m*v), self.vehicle.ThrustApplied*throttle*cos(thrustAngle-gamma)*sin(sigma)/(cos(gamma)*m*v**2), self.vehicle.mdot(throttle)])/self.dE
 
     def _bank(self, x):
         """ Internal function used for jacobian of bank rate """
 
-        r, theta, phi, v, gamma, psi, s, m, sigma, T, mu, sigma_dot = x
+        r, theta, phi, v, gamma, psi, m, sigma, T, mu, sigma_dot = x
 
         if self.use_energy:
             h = r - self.planet.radius/self.dist_scale
@@ -168,7 +172,7 @@ class Entry(object):
     def bank_jacobian(self, x, u, sigma_dot):
         # Superior DA approach - much faster
         from Utils import DA as da
-        vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu','bank_rate']
+        vars = ['r','theta','phi','v','fpa','psi','m','bank','T','mu','bank_rate']
         X = np.concatenate((x,u))
         X = np.append(X, sigma_dot)
         X = da.make(X, vars, 1, array=True)
@@ -243,7 +247,7 @@ class Entry(object):
         self.DA(True)
 
         from Utils import DA as da
-        vars = ['r','theta','phi','v','fpa','psi','s','m','bank','T','mu']
+        vars = ['r','theta','phi','v','fpa','psi','m','bank','T','mu']
         if vectorized:
             xu = np.concatenate((x.T, u.T))
         else:

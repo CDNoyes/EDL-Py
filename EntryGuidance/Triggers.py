@@ -26,7 +26,7 @@ class VelocityTrigger(Trigger):
     def __Trigger(self, velocity, **kwargs):
         return velocity <= self.__vt
 
-    def __init__(self,velTrigger):
+    def __init__(self, velTrigger):
         self.__vt = velTrigger
         super(VelocityTrigger,self).__init__(self.__Trigger, 'Velocity <= {} m/s'.format(velTrigger))
 
@@ -35,7 +35,7 @@ class AltitudeTrigger(Trigger):
     def __Trigger(self, altitude, **kwargs):
         return altitude <= self.__at
 
-    def __init__(self,altTrigger):
+    def __init__(self, altTrigger):
         self.__at = altTrigger*1000 # Assumed that the trigger is defined in km while the input from the sim will definitely be in meters
         super(AltitudeTrigger,self).__init__(self.__Trigger, 'Altitude <= {} km'.format(altTrigger))
 
@@ -120,7 +120,7 @@ class SRPTrigger(Trigger):
         # self.__bools = Bools
 
 
-def Parachute(alt,vel):
+def Parachute(alt, vel):
     '''
         Checks if the parachute should be deployed based on whether or not the current altitude (in km) and velocity (in m/s)
         satisfy the parachute's constraints on Mach number and dynamic pressure.
