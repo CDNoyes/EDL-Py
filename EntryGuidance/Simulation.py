@@ -198,28 +198,28 @@ class Simulation(Machine):
 
             d =  {
                   'time'            : self.time,
-                  'altitude'        : self.edlModel.nav.altitude(self.x[8]),
-                  'longitude'       : self.x[9],
-                  'latitude'        : self.x[10],
-                  'velocity'        : self.x[11],
-                  'fpa'             : self.x[12],
-                  'heading'         : self.x[13],
-                  'rangeToGo'       : self.x[14],
-                  'mass'            : self.x[15],
+                  'altitude'        : self.edlModel.nav.altitude(self.x[7]),
+                  'longitude'       : self.x[8],
+                  'latitude'        : self.x[9],
+                  'velocity'        : self.x[10],
+                  'fpa'             : self.x[11],
+                  'heading'         : self.x[12],
+                #   'rangeToGo'       : self.x[14], # has to be computed 
+                  'mass'            : self.x[13],
                   'drag'            : D[0],
                   'lift'            : L[0],
                   'vehicle'         : self.edlModel.nav.vehicle,
                   'planet'          : self.edlModel.nav.planet,
-                  'current_state'   : self.x[8:16],
-                  'aero_ratios'     : self.x[16:18],
-                  'bank'            : self.x[18], # Should this be the current command or the current state?
+                  'current_state'   : self.x[7:14],
+                  'aero_ratios'     : self.x[14:16],
+                  'bank'            : self.x[16], # Should this be the current command or the current state?
                   'energy'          : self.edlModel.nav.energy(self.x[8],self.x[11],Normalized=False), # Estimated energy
                   }
 
 
         else:
-            L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[7])
-
+            L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[6])
+            rtg = 0 # TODO: Compute this 
 
             d =  {
                   'time'            : self.time,
@@ -229,8 +229,8 @@ class Simulation(Machine):
                   'velocity'        : self.x[3],
                   'fpa'             : self.x[4],
                   'heading'         : self.x[5],
-                  'rangeToGo'       : self.x[6],
-                  'mass'            : self.x[7],
+                  'rangeToGo'       : rtg,
+                  'mass'            : self.x[6],
                   'drag'            : D,
                   'lift'            : L,
                   'vehicle'         : self.edlModel.vehicle,
@@ -274,14 +274,14 @@ class Simulation(Machine):
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
 
         if self.fullEDL:
-            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:8], self.history[:,18], plotEvents, self._states, self.ie, fignum=1, legend=legend, plotEnergy=plotEnergy)
+            fignum = simPlot(self.edlModel.truth, self.times, self.history[:,0:7], self.history[:,16], plotEvents, self._states, self.ie, fignum=1, legend=legend, plotEnergy=plotEnergy)
             if compare:
-                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self._states, self.ie, fignum=1, legend=legend, plotEnergy=False)  # Use same fignum for comparisons, set fignum > figures for new ones
+                fignum = simPlot(self.edlModel.nav, self.times, self.history[:,7:14], self.control_history[:,0], plotEvents, self._states, self.ie, fignum=1, legend=legend, plotEnergy=False)  # Use same fignum for comparisons, set fignum > figures for new ones
             # else:
                 # fignum = simPlot(self.edlModel.nav, self.times, self.history[:,8:16], self.control_history[:,0], plotEvents, self._states, self.ie, fignum=fignum, label="Navigated ")
             plt.figure(fignum)
-            plt.plot(self.times, self.history[:,16],label='Lift')
-            plt.plot(self.times, self.history[:,17], label='Drag')
+            plt.plot(self.times, self.history[:,14],label='Lift')
+            plt.plot(self.times, self.history[:,15], label='Drag')
             if legend:
                 plt.legend(loc='best')
             plt.title('Aerodynamic Filter Ratios')
@@ -309,11 +309,11 @@ class Simulation(Machine):
 
             r,theta,phi = self.history[:,0], degrees(self.history[:,1]), degrees(self.history[:,2])
             v,gamma,psi = self.history[:,3], degrees(self.history[:,4]), degrees(self.history[:,5])
-            s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
+            m           = self.history[:,7]
 
             r_nav,theta_nav,phi_nav = self.history[:,8], degrees(self.history[:,9]), degrees(self.history[:,10])
             v_nav,gamma_nav,psi_nav = self.history[:,11], degrees(self.history[:,12]), degrees(self.history[:,13])
-            s_nav, m_nav         = (self.history[0,14]-self.history[:,14])/1000, self.history[:,15]
+            m_nav                   = self.history[:,15]
 
             RL,RD = self.history[:,16], self.history[:,17]
 
@@ -345,13 +345,13 @@ class Simulation(Machine):
 
             r,theta,phi = self.history[:,0], degrees(self.history[:,1]), degrees(self.history[:,2])
             v,gamma,psi = self.history[:,3], degrees(self.history[:,4]), degrees(self.history[:,5])
-            s,m         = (self.history[0,6]-self.history[:,6])/1000, self.history[:,7]
+            m           = self.history[:,7]
 
             x0 = self.history[0,:]
             range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=radians(lon),latc=radians(lat),km=True) for lon,lat in zip(theta,phi)]
-            energy = self.edlModel.energy(r,v,Normalized=False)
+            energy = self.edlModel.energy(r, v, Normalized=False)
 
-            h = [self.edlModel.altitude(R,km=True) for R in r]
+            h = [self.edlModel.altitude(R, km=True) for R in r]
             if self._use_da:
                 L,D = np.array([self.edlModel.aeroforces(ri,vi,mi) for ri,vi,mi in zip(r,v,m)]).T
             else:
@@ -488,7 +488,7 @@ class Simulation(Machine):
             else:
                 trigger_input = self.triggerInput
             if not self._conditions[self.index](trigger_input): # Interpolate between i and i+1 states
-                for j in np.linspace(0.01,0.99,20): # The number of points used here will determine the accuracy of the final state
+                for j in np.linspace(0.01,0.99,50): # The number of points used here will determine the accuracy of the final state
                     # Find a better state:
                     self.time = ((1-j)*self.times[i] + j*self.times[i+1])
                     self.x = ((1-j)*self.history[i] + j*self.history[i+1])
