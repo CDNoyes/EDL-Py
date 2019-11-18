@@ -21,7 +21,12 @@ def interp(xnew, x, y):
     
     """
     x = np.asarray(x)
-    ynew = np.zeros_like(xnew, dtype=type(y[0]))
+    if x[-1] <= x[0]:
+        print("Warning: da.interp, x array is not increasing")
+        return None 
+    shape = [len(xnew)]
+    shape.extend(np.shape(y[0])) # This allows y to be a nd 
+    ynew = np.zeros(shape, dtype=type(gd))
 
     for i,xn in enumerate(xnew):
 
@@ -33,7 +38,7 @@ def interp(xnew, x, y):
             continue
 
         idx = (np.abs(xn - x)).argmin()
-        if xnew[idx] >= xn:
+        if x[idx] >= xn:
             upper = idx 
             lower = upper - 1
         else:
