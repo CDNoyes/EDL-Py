@@ -139,14 +139,14 @@ class Simulation(Machine):
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
             if self._output:
                 print("L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7])))
+                print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[6])))
 
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
             if self._output:
                 print("L/D: {:.2f}".format(self.edlModel.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7])))
+                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -219,7 +219,7 @@ class Simulation(Machine):
 
         else:
             L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[6])
-            rtg = 0 # TODO: Compute this 
+            rtg = self.x[2]*self.edlModel.planet.radius #self.edlModel.planet.range() # TODO: Compute this 
 
             d =  {
                   'time'            : self.time,
@@ -345,7 +345,7 @@ class Simulation(Machine):
 
             r,theta,phi = self.history[:,0], degrees(self.history[:,1]), degrees(self.history[:,2])
             v,gamma,psi = self.history[:,3], degrees(self.history[:,4]), degrees(self.history[:,5])
-            m           = self.history[:,7]
+            m           = self.history[:,6]
 
             x0 = self.history[0,:]
             range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=radians(lon),latc=radians(lat),km=True) for lon,lat in zip(theta,phi)]
