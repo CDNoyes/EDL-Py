@@ -2,6 +2,7 @@ import numpy as np
 from pyaudi import gdual_double as gd
 from pyaudi import gdual_vdouble as gdv
 import pyaudi as pa
+import DA as da 
 
 """ From Virtuous Smooth for Global Optimization 
 
@@ -22,9 +23,9 @@ f(x) = log(1+x)
 f(x) = arcsinh(sqrt(x))
 """
 
-def smooth_sqrt(x, delta=1e-5):
-    if x >= delta:
-        return np.sqrt(x)
+def smooth_sqrt(x, delta=1e-2):
+    if da.const(x) >= delta:
+        return pa.sqrt(x)
 
     f = np.sqrt(delta)
     fp = 0.5/f
@@ -34,6 +35,24 @@ def smooth_sqrt(x, delta=1e-5):
     C = 3*f/delta - 2*fp + 0.5*delta*fpp
     return A*x**3 + B*x**2 + C*x
 
+
+def smooth_sqrt_vec(x, delta=1e-5):
+    """ Vectorized Implementation"""
+    y = np.zeros_like(x)
+
+    i = x >= delta
+    y[i] = np.sqrt(x[i])
+
+    j = np.invert(i)
+    f = np.sqrt(delta)
+    fp = 0.5/f
+    fpp = -0.25
+    A = f/(delta**3) - fp/(delta**2) + 0.5*fpp/delta
+    B = -3*f/delta**2 + 3*fp/delta - fpp
+    C = 3*f/delta - 2*fp + 0.5*delta*fpp
+    y[j] = A*x[j]**3 + B*x[j]**2 + C*x[j]
+    return y 
+
 def test():
     import matplotlib.pyplot as plt 
 
@@ -42,11 +61,19 @@ def test():
     plt.plot(x,y)
 
     for delta in [0.09, 0.01, 1e-4]:
-        z = [smooth_sqrt(xi, delta=delta) for xi in x]
+        z = smooth_sqrt_vec(x, delta=delta) 
 
         plt.plot(x,z,'--', label=f"{delta}")
     plt.legend()
     plt.show()
 
+def DA_example():
+    x = np.linspace(0,0.1,11)
+    dx = gd(0, 'x', 2)
+    
+    z = [smooth_sqrt(xi+dx, delta=0.01) for xi in x]
+    print(z)
+
 if __name__ == "__main__":
-    test()
+    # test()
+    DA_example()
