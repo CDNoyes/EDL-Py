@@ -219,7 +219,7 @@ class Simulation(Machine):
 
         else:
             L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[6])
-            rtg = 0 # TODO: Compute this 
+            rtg = self.x[2]*self.edlModel.planet.radius #self.edlModel.planet.range() # TODO: Compute this 
 
             d =  {
                   'time'            : self.time,
