@@ -125,6 +125,11 @@ class Planet:
         CR = arcsin(sin(d13)*sin(psi12-psi13))
         DR = self.radius*arccos(cos(d13)/cos(CR))
         CR *= self.radius
+        try:
+            DR[np.isnan(PHI)] = 0
+            CR[np.isnan(PHI)] = 0
+        except TypeError:
+            pass 
 
         if km:
             return DR/1000., CR/1000.
@@ -179,4 +184,5 @@ def compare():
 
 
 if __name__ == "__main__":
-    compare()
+    # compare()
+    print(Planet().coord(0,0,0, 565e3, 0))
