@@ -139,14 +139,14 @@ class Simulation(Machine):
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
             if self._output:
                 print("L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[7])))
+                print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[6])))
 
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
             if self._output:
                 print("L/D: {:.2f}".format(self.edlModel.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[7])))
+                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -309,7 +309,7 @@ class Simulation(Machine):
 
             r,theta,phi = self.history[:,0], degrees(self.history[:,1]), degrees(self.history[:,2])
             v,gamma,psi = self.history[:,3], degrees(self.history[:,4]), degrees(self.history[:,5])
-            m           = self.history[:,7]
+            m           = self.history[:,6]
 
             r_nav,theta_nav,phi_nav = self.history[:,8], degrees(self.history[:,9]), degrees(self.history[:,10])
             v_nav,gamma_nav,psi_nav = self.history[:,11], degrees(self.history[:,12]), degrees(self.history[:,13])
@@ -345,7 +345,7 @@ class Simulation(Machine):
 
             r,theta,phi = self.history[:,0], degrees(self.history[:,1]), degrees(self.history[:,2])
             v,gamma,psi = self.history[:,3], degrees(self.history[:,4]), degrees(self.history[:,5])
-            m           = self.history[:,7]
+            m           = self.history[:,6]
 
             x0 = self.history[0,:]
             range = [self.edlModel.planet.range(*x0[[1,2,5]],lonc=radians(lon),latc=radians(lat),km=True) for lon,lat in zip(theta,phi)]
@@ -553,7 +553,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
         V,R = np.meshgrid(history[:,3], history[:,0])
         D_matrix = []
         for r in R:
-            L,D = edlModel.aeroforces(r,V[0],history[:,7])
+            L,D = edlModel.aeroforces(r,V[0],history[:,6])
             D_matrix.append(D)
         levels = np.logspace(-5,2.4,11, endpoint=True)
         CS = plt.contour(V,H,(D_matrix),levels=levels,colors='k')
@@ -664,7 +664,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.ylabel(label+'Flight path angle (deg)')
 
 
-    L,D = edlModel.aeroforces(history[:,0],history[:,3],history[:,7])
+    L,D = edlModel.aeroforces(history[:,0],history[:,3],history[:,6])
     g = edlModel.gravity(history[:,0])
 
     plt.figure(fignum)
