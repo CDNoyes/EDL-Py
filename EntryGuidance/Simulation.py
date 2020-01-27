@@ -657,14 +657,14 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.plot(history[:,3], history[:,4]*180/np.pi)
     if plotEvents:
         for i in ie:
-            plt.plot(history[i,3],history[i,4]*180/np.pi,'o',label = fsm_states[ie.index(i)])
+            plt.plot(history[i,3],history[i,4]*180/np.pi, 'o', label=fsm_states[ie.index(i)])
     if legend:
         plt.legend(loc='best')
     plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Flight path angle (deg)')
 
 
-    L,D = edlModel.aeroforces(history[:,0],history[:,3],history[:,7])
+    L,D = edlModel.aeroforces(history[:,0],history[:,3],history[:,6])
     g = edlModel.gravity(history[:,0])
 
     plt.figure(fignum)
@@ -672,7 +672,7 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     plt.plot(history[:,3],D)
     if plotEvents:
         for i in ie:
-            plt.plot(history[i,3], D[i],'o',label = fsm_states[ie.index(i)])
+            plt.plot(history[i,3], D[i], 'o', label=fsm_states[ie.index(i)])
     plt.ylabel('Drag (m/s^2)')
     plt.xlabel('Velocity (m/s)')
     if legend:
