@@ -95,7 +95,7 @@ class Planet:
         ''' Calls MG '''
         return
 
-    def range(self,lon0,lat0,heading0,lonc,latc,km=False):
+    def range(self, lon0, lat0, heading0, lonc, latc, km=False):
         '''Computes the downrange and crossrange between two lat/lon pairs with a given initial heading.'''
         # from numpy import arccos, arcsin, sin, cos, pi, nan_to_num, zeros_like
         from numpy import pi, nan_to_num, zeros_like, real
