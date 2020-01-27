@@ -43,7 +43,7 @@ def InitialState(full_state=False, vehicle='MSL', **kwargs):
                                                           2804)
     else:  # Heavy BC, equatorial flight
         r0, theta0, phi0, v0, gamma0, psi0, m0 = (3540.0e3, radians(0), radians(0),
-                                                      6000,   radians(-14.5), radians(0),
+                                                      5500,   radians(-14.5), radians(0),
                                                       8500)
 
     x0 = [r0, theta0, phi0, v0, gamma0, psi0, m0]
