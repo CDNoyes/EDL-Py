@@ -117,6 +117,9 @@ class Simulation(Machine):
             mu = 0.         # pitch angle
             zeta = 0.       # yaw angle
 
+        if self._time_constant and self.control_history:
+            sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
+
         if self._use_da:
             X = RK4(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
         else:
@@ -124,10 +127,11 @@ class Simulation(Machine):
         self.update(X, self.cycle.duration, np.asarray([sigma, throttle, mu]))
 
 
-    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10):
+    def run(self, InitialState, Controllers, InputSample=None, FullEDL=False, AeroRatios=(1,1), StepsPerCycle=10, TimeConstant=0):
         """ Runs the simulation from a given a initial state, with the specified controllers in each phase, and using a chosen sample of the uncertainty space """
         self.reset()
         self.spc = StepsPerCycle
+        self._time_constant = TimeConstant 
 
         if InputSample is None:
             InputSample = np.zeros(4)
