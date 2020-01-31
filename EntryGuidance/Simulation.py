@@ -117,7 +117,7 @@ class Simulation(Machine):
             mu = 0.         # pitch angle
             zeta = 0.       # yaw angle
 
-        if self._time_constant and self.control_history:
+        if self._time_constant and len(self.control_history) > 1:
             sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
 
         if self._use_da:
