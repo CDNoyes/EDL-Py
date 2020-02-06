@@ -52,7 +52,10 @@ Draw diagram explaining the difference between range control and srp control
 A constant lift up bank angle is in fact optimal for maximal altitude at a fixed velocity (or minimal velocity at a fixed altitude) if the entry flight path angle is free and the downrange distance is free as well (fixed at zero crossrange). If the downrange distance is not the optimal one (for a given flight path angle)
 
 The entry flight path angle is probably generally determined based on constraints like heat rate, total heat load, or g-load. Might still be able to choose between a range. 
-%
+
+As the vehicle flies, the estimated SRP propellant required from the current state may not be monotonic. But the estimated propellant required from the optimal ignition point may be? 
+
+\textbf{TODO:} Examine the shape of the objective function, very bowl shaped but with a fairly flat bottom. Consider framing the discussion in terms of invariant sets? 
 
 \section{Intro}
 Powered descent played a role on MSL, and will also be used in M2020, MSR/SRL campaign. In future missions, supersonic retropropulsion may be used to land larger, heavier vehicles than the current generation of landers, and powered descent will play an even more significant role in the EDL process. There exist many guidance approaches to the SRP problem, with many focusing on fuel optimality, including GFOLD and other convex optimization methods, polynomial guidance, indirect methods, etc. In brief, there is no shortage of ways to tackle the problem of decelerating via propulsion. 
@@ -71,11 +74,64 @@ An outline of the algorithmic approach, given a fixed bank angle parametrization
 \begin{enumerate}
 \item Integrate the estimated vehicle state forward using the current bank angle parametrization until the target altitude is reached
 \item Determine the optimal ignition state along the powered descent trajectory
-\item Generate the sensitivity of the ignition state to some or all of the bank angle parameters 
+\item If the estimated optimal fuel consumption is unacceptable, update the bank angle profile parameters to optimize 
 \end{enumerate}
-%
+
+
+\section{Entry Guidance Details}
+\subsection{Bank Angle Parametrizations}
+Two different parametrizations of the bank angle profile were tested. Each is a two-parameter profile designed to generate both longitudinal and lateral motion. The first is a constant bank angle $\sigma_c$ with one reversal at a velocity $v_r$
+\begin{equation}
+\sigma(v) = \left\{
+\begin{array}{ll}
+\sigma_c & v\geq v_r \\
+-\sigma_c & v\le v_r
+\end{array} 
+\right.
+\end{equation}
+while the second fixes the bank angle magnitudes and uses two reversal velocities $(v_1,\,v_2)$
+\begin{equation}
+\sigma(v) = \left\{
+\begin{array}{ll}
+\sigma_1 & v\geq v_1 \\
+\sigma_2 & v_2\leq v\le v_1 \\
+\sigma_3 & v< v_2
+\end{array} 
+\right.
+\end{equation}
+and we used $\sigma_1 = 90^\circ$, $-\sigma_2 = \sigma3 = 15^\circ$.
+\subsection{Optimization}
+
+\subsubsection{Objective Function}
+The SRP problem admits continuous solutions, and the entry equations are also smooth for smooth bank angle inputs. Thus we expect that even when optimizing the ignition condition along a trajectory rather than use a fixed state variable such as velocity or energy, the objective function should be well behaved. One question is whether several isolated minima exist, or only a single global optimum. 
+
+Evaluating the objective function for a range of parameters for each profile indicates the objective function is bowl shaped, potentially with a fairly flat both in the case of the second profile. The shape of the objective function means that gradient-based methods will be effective in determining the optimal profile parameters. 
+
+\begin{figure}[h!]
+	   \begin{minipage}{0.45\textwidth}
+		\centering
+		\includegraphics[width=0.9\textwidth]{Profile1_Objective} % first figure itself
+		\caption{Contours of the objective function using a constant bank angle with one reversal}
+	\end{minipage}\hfill
+	\begin{minipage}{0.45\textwidth}
+		\centering
+		\includegraphics[width=0.9\textwidth]{Profile2_Objective} % second figure itself
+		\caption{Contours of the objective function using the two reversal profile}
+	\end{minipage}
+\end{figure}
+
+Each profile is capable of handling the $3\sigma$ entry flight path angle disturbances of $\pm 0.25^\circ$ when the nominal entry flight path angle and target downrange distance are chosen appropriately. It is possible to choose these values such that significant asymmetry exists. Surprisingly, the constant bank profiles require only about $5^\circ$ of variation to deal with this variation if known from the entry interface, and the reversal velocities require less than 100 m/s correction. 
+
+
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[scale=0.5]{"Profile1_Objective"}
+%	\caption{Contours of the objective function using a constant bank angle with one reversal}
+%\end{figure}
+
 %The approach is very broad as it does not specify the entry parametrization to be used, the powered descent guidance, or how to compute the sensitivities required. 
 % M2020 will fly Apollo EG and table GFOLD
+
 %\section{Optimal Entry Trajectories}
 %Similar to "Propellant Optimal Powered Descent Guidance" we will discuss several optimal control problems and their relationships. Each problem has the same objective of maximizing altitude at a fixed velocity, the constraints differentiate the problems. 
 %
