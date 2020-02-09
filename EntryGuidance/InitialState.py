@@ -26,6 +26,7 @@ def InitialState(full_state=False, vehicle='MSL', **kwargs):
 
            'azimuth'    : 5,
            'psi'        : 5,
+           'heading'    : 5,
 
            'mass'       : 6,
            'm'          : 6,
