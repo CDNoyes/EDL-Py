@@ -57,6 +57,15 @@ As the vehicle flies, the estimated SRP propellant required from the current sta
 
 \textbf{TODO:} Examine the shape of the objective function, very bowl shaped but with a fairly flat bottom. Consider framing the discussion in terms of invariant sets? 
 
+\textbf{TODO:} Diagram showing full predicted entry trajectory, highlight the portion checked for SRP, show the ignition condition.
+
+Given a downrange distance and site altitude, there will be a range of entry flight path angles that admit solutions for a given control parametrization, such as a constant bank angle with one reversal. Among these admissible flight paths, the optimal one in terms of propellant occurs at the steepest entry with the lowest bank angle. This of course has no robustness, as any disturbances that result in lower energy than the nominal case will fall short and be forced to fly a lengthened, suboptimal powered approach. 
+
+In short, if a constraint such as g-limit, or total heat load, or maximum heat rate forces the entry flight path to lie in a certain range, there will be a corresponding family of trajectories with different SRP costs. If no solutions with sufficiently low propellant costs exist for the desired flight path range, it is possible the target downrange is not chosen suitably and must be changed, or potentially no trajectory exists with such a cost. 
+
+\subsection{Entry State to SRP State Conversion}
+Given an entry state of the form $[r,\, \theta,\, \phi,\, v,\, \gamma,\, \psi]$, the corresponding SRP state is found by assuming the current heading $\psi$ defines the downrange distance. For a fixed target $(h_T,\, \theta_T,\, \phi_T)$, the range to go, and crossrange to target are computed. The SRP state is given by $[rtg,\, |cr|,\, r-r_p-h_T, v\cos\gamma, 0, v\sin\gamma, m_0]$. First, note that the absolute value of the crossrange is used; this gives a denser table of tabulated solutions by exploiting symmetry. Similarly, because the downrange direction is defined by the heading angle, the cross track velocity is always zero, allowing the use of 5D interpolation rather than 6D, again allowing the same number of solutions to more densely cover the input space. 
+
 \section{Intro}
 Powered descent played a role on MSL, and will also be used in M2020, MSR/SRL campaign. In future missions, supersonic retropropulsion may be used to land larger, heavier vehicles than the current generation of landers, and powered descent will play an even more significant role in the EDL process. There exist many guidance approaches to the SRP problem, with many focusing on fuel optimality, including GFOLD and other convex optimization methods, polynomial guidance, indirect methods, etc. In brief, there is no shortage of ways to tackle the problem of decelerating via propulsion. 
 
@@ -79,6 +88,12 @@ An outline of the algorithmic approach, given a fixed bank angle parametrization
 
 
 \section{Entry Guidance Details}
+%\begin{list}
+%Delivery errors are handled via replanning
+%Lift, drag, density disturbances via L/D control? Tracking?
+%\end{list}
+
+
 \subsection{Bank Angle Parametrizations}
 Two different parametrizations of the bank angle profile were tested. Each is a two-parameter profile designed to generate both longitudinal and lateral motion. The first is a constant bank angle $\sigma_c$ with one reversal at a velocity $v_r$
 \begin{equation}
