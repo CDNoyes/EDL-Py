@@ -2,7 +2,7 @@ from itertools import product
 import numpy as np
 
 
-def boxgrid(bounds, N, interior=False, chebyshev=False, surface=False):
+def boxgrid(bounds, N, interior=True, chebyshev=False, surface=False):
     """ n-dimensional box grid, either just the exterior, or with interior points as well.
     Inputs:
         bounds is an n-length list/tuple with each element being the (min,max) along that dimension
@@ -12,7 +12,7 @@ def boxgrid(bounds, N, interior=False, chebyshev=False, surface=False):
         surface keeps points along the surface, otherwise only edge points are kept.
 
     surface=True is only meaningful for n>2 and interior=False
-    Setting N=2 and interior=False, surface=False will return just the vertices of the hyper-rectangle.
+    Setting N=2 will return just the vertices of the hyper-rectangle.
 
     """
     if isinstance(N, int):
