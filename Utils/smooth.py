@@ -14,14 +14,13 @@ def smooth(x, y, N=1, tau=0.3):
         b = make_interp_spline(x, y, k=3)
 
         y = b(x)
-        # tau = 0.5
         dx = np.diff(x)[0]
         alpha = dx/(tau+dx)
         z = [y[0]]
         for yi in y[1:]:
             z.append(z[-1] + alpha*(yi-z[-1]))
         y = z
-    return interp1d(x, z, kind='cubic', axis=-1, copy=True, bounds_error=False, fill_value=(y[0],y[-1]), assume_sorted=True)
+    return interp1d(x, z, kind='cubic', axis=-1, copy=True, bounds_error=False, fill_value=(y[0], y[-1]), assume_sorted=True)
 
 
 def test():

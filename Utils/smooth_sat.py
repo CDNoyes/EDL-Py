@@ -98,7 +98,7 @@ def compare():
     x_exp = np.linspace(-1.5, 1.5, 20)
     names = ['x']*x_exp.size
 
-    for order in [2,3,7,9]:
+    for order in [2,3,]:
         z = da.make(x_exp, names, order)
 
 
@@ -134,5 +134,5 @@ def compare():
 if __name__ == "__main__":
     # opt()
     # test()
-    compare_error()
-    # compare()
+    # compare_error()
+    compare()
