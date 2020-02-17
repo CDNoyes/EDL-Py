@@ -1,8 +1,14 @@
-class Target:
+import numpy as np 
 
-    def __init__(self, DR=780., CR=0.):
-    
-        self.DR = DR
-        self.CR = CR
+class Target:
+    def __init__(self, latitude, longitude, altitude=None, velocity=None):
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitude = altitude
+        self.velocity = velocity 
         
-        return
+    def coordinates(self, degrees=False):
+        if degrees:
+            return np.degrees([self.longitude, self.latitude])
+        else:
+            return np.array([self.longitude, self.latitude])
