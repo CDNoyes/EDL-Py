@@ -1,15 +1,13 @@
-import sys, os
-sys.path.append("./")
-from scipy.interpolate import interp1d
-from scipy.integrate import odeint
-from scipy.io import loadmat, savemat
-import pickle
-
 import numpy as np
 import chaospy as cp 
 import matplotlib.pyplot as plt 
 
-# from Utils.boxgrid import boxgrid
+from scipy.interpolate import interp1d
+from scipy.io import loadmat, savemat
+
+import sys, os
+sys.path.append("./")
+
 from Utils.RK4 import RK4
 from Utils.submatrix import submatrix 
 
@@ -17,6 +15,7 @@ from EntryGuidance.EntryEquations import Entry, EDL
 from EntryGuidance.Simulation import Simulation, Cycle, EntrySim
 from EntryGuidance.InitialState import InitialState
 from EntryGuidance.Planet import Planet 
+from EntryGuidance.SRPUtils import range_from_entry, srp_from_entry
 
 
 class VMC(object):
@@ -34,25 +33,6 @@ class VMC(object):
         self.control    = None
         self.mc         = None
 
-
-    def reference_data(self, ref_profile, Vf, plot=False):
-        """ In closed loop simulations, generate reference data once and use it
-            each simulation
-        """
-        print("Generating reference data...")
-        from InitialState import InitialState
-
-        x0 = InitialState()
-        sim = Simulation(cycle=Cycle(0.2), output=False, **EntrySim(Vf=Vf))
-        res = sim.run(x0, [ref_profile])
-        self.ref_sim = sim
-
-        if plot:
-            sim.plot(compare=False)
-            plt.show()
-        # self.x0_nom = InitialState(1, bank=bank[0])
-        print("...done. ")
-        print(sim.history.shape)
 
     def sample(self, N, sample_type='S', parametric=True, initial=False, knowledge=False):
         """ Generates samples for use in Monte Carlo simulations """
@@ -394,16 +374,7 @@ class VMC(object):
 
         plt.title("Colored by Altitude")
         plt.colorbar()
-        
-        try:
-            xf = self.ref_sim.history[-1]
-            hor_err = np.sqrt((lon - xf[1])**2 + xf[2]**2)*3397
-            
-            plt.figure(5, figsize=figsize)
-            plt.hist(hor_err, cumulative=True, histtype='step', bins='auto', linewidth=4, density=True)
-            plt.xlabel("Horizontal Error (km)")
-        except AttributeError:  # No ref sim, perhaps because loaded from file, or because no reference is needed 
-            pass 
+
 
         # plt.figure(6, figsize=figsize)
         # plt.hist((r-self.model.planet.radius)/1000., cumulative=True, histtype='step', bins='auto', linewidth=4, density=True)
@@ -469,26 +440,6 @@ def reversal_controller(bank, v_reverse):
         sigma = np.ones_like(x[0])*bank
         sigma[np.less_equal(x[3], v_reverse)] *= -1 
         return sigma
-    return _control
-
-def switch_controller(v_reverse, vectorized):
-    b1 = 90
-    b2 = 15
-    if vectorized:
-        def _control(e,x,l,d):
-            v = x[3]
-            sigma = np.radians(b1)*np.ones_like(e)
-            sigma[np.less_equal(v, v_reverse[0])] = -np.radians(b2)
-            sigma[np.less_equal(v, v_reverse[1])] = np.radians(b2)
-            return sigma
-    else:
-        def _control(v):
-            sigma = np.radians(b1)
-            if v <= v_reverse[0]:
-                sigma = -np.radians(b2)
-            if v <= v_reverse[1]:
-                sigma = np.radians(b2)
-            return sigma
     return _control
 
 
