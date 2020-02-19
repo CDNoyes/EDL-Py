@@ -10,3 +10,4 @@
 *.ipynb_checkpoints
 *.bak
 data/*
+Documents/*
