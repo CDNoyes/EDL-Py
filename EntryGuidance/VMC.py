@@ -32,7 +32,7 @@ class VMC(object):
         self.samples    = None
         self.control    = None
         self.mc         = None
-
+        self._trigger   = None 
 
     def sample(self, N, sample_type='S', parametric=True, initial=False, knowledge=False):
         """ Generates samples for use in Monte Carlo simulations """
@@ -157,8 +157,8 @@ class VMC(object):
                 print(Xc.T[0])
                 print("D: {:.4f}".format(drag[0]))
                 print("Bank: {:.2f} deg".format(np.degrees(U[-1][0][0])))
-            # if (energy + de) < energyf:
-            #     de = energyf - energy
+            if (energy + de) < energyf:  # Make sure the exact final energy is hit. Most cases we wont care but sometimes we will 
+                de = energyf - energy
             eom = edl.dynamics(u)
             xnew = RK4(eom, X[-1], np.linspace(energy, energy+de, 2))[-1]  # N x 7? 
             # fix = np.any(np.isnan(xnew), axis=1)
@@ -197,6 +197,8 @@ class VMC(object):
         self._trigger = trigger_function 
 
     def trigger(self):
+        if self._trigger is None:
+            self._trigger = final_trigger # Default trigger, just uses the final state, i.e. the one at the terminal energy 
         xfi = [self._trigger(traj) for traj in np.transpose(self.mc_full['state'], (2,0,1))] # the true stopping point is between this and xfi-1
         xf = [traj[i] for i, traj in zip(xfi, np.transpose(self.mc_full['state'], (2,0,1)))], 
         self.xf = np.array(xf).squeeze()
@@ -429,6 +431,9 @@ def altitude_trigger(h=4, vmax=600):
                 return idx
         return -1
     return _trigger
+
+def final_trigger(traj):
+    return -1 
 
 
 def test_controller(bank, v_reverse):
