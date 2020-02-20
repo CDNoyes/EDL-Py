@@ -1,9 +1,11 @@
-import os 
+import os,sys 
 import numpy as np
 from scipy.interpolate import interp1d, LinearNDInterpolator, Rbf 
 from scipy.io import loadmat, savemat
 
 import matplotlib.pyplot as plt 
+sys.path.append("./")
+from Utils.boxgrid import boxgrid 
 
 class SRPData:
     """ The RBF method appears best, outperforming both SVR and linear ND
@@ -180,14 +182,14 @@ class SRPData:
         input_matrix = {"cartesian": [], "entry": []}
         output_matrix = []
         for Vf in np.linspace(500, 700, resolution[0]):
-            for fpa in np.linspace(-30, 0, resolution[1]):
+            for fpa in np.linspace(-45, 0, resolution[1]):
                 input_matrix['entry'].append([Vf, fpa])
                 
                 fpa = np.radians(fpa)
                 Vx = -Vf*np.cos(fpa)
                 Vz = Vf*np.sin(fpa)
                 input_matrix['cartesian'].append([-Vx, Vz])
-                N = 40
+                N = 50
                 x = boxgrid([(0, 8000), (0,0), (2000, 4000), (Vx, Vx), (Vz, Vz)], [N,1,N,1,1], True) # Vary only DR and Altitude 
                 mf = self(x)
 #                 tf = self.time_of_flight(x)
@@ -228,14 +230,14 @@ class SRPData:
                 plt.colorbar()
                 plt.title(state)
             
-        
         plt.show()
         
-    def time_of_flight(self, state):
-        try:
-            return self.tf_model(*np.asarray(state).T)
-        except ValueError:
-            return self.tf_model(*np.asarray(state))
+
+    # def time_of_flight(self, state):
+    #     try:
+    #         return self.tf_model(*np.asarray(state).T)
+    #     except ValueError:
+    #         return self.tf_model(*np.asarray(state))
         
     def __call__(self, state):
         """ State should be the 5 dimensional SRP ignition state"""
@@ -262,11 +264,20 @@ def test():
     pickle.dump(srpdata, open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"), 'wb'))
 
 def test_pickle():
+    """ NOTE: To load this elsewhere, you'll need to import SRPData at the module level, not in the function/method """
+
     import pickle
     srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"), 'rb'))
     x = [4000, 0, 2500, -500, -140]
     print(srpdata(x))
 
+def generate_plots():
+    import pickle
+    srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"), 'rb'))
+    # srpdata.plot((3,3))
+    srpdata.plot((25,25))
+
 if __name__ == "__main__":
     # test()
-    test_pickle()
+    # test_pickle()
+    generate_plots()

@@ -161,10 +161,19 @@ class SRPController:
             current_bank, current_reverse = self.history['params'][-1]
             
 #             bank_range = np.radians([10, 50]) ## 33 to 47 should cover the majority of EFPA variations 
-            bank_range = current_bank + np.radians([-3, 3]) # should check for bounds like 0 though 
-#             bank_range[0] = max(0, bank_range[0])
+            if 0:
+                # Tight 
+                bank_range = current_bank + np.radians([-3, 3]) # should check for bounds like 0 though 
+                reversal_range = current_reverse + np.array([-250, 250])
+            else:
+                # Loose
+                bank_range = current_bank + np.radians([-15, 15]) # should check for bounds like 0 though 
+                reversal_range = current_reverse + np.array([-500, 500])
+
+
+            bank_range[0] = max(0, bank_range[0])
+            
 #             reversal_range = [min(velocity-100, 2000), min(velocity, 4000)] # The current velocity is the upper bound on when a reversal could occur, the lower bound is fixed until below the lower bound 
-            reversal_range = current_reverse + np.array([-250, 250])
             B,Vr = boxgrid([bank_range, reversal_range], self.N, interior=True).T
 
             self.control_params = (B,Vr)
@@ -218,7 +227,7 @@ class SRPController:
         
         if self.update(self.history, current_state, **kwargs):
 #             if self.debug:
-            print("Update triggered")
+            print("Update triggered...")
             if 0: # Just used for debugging to turn the actual replanning off 
                 print(self.history)
                 self.history['n_updates'] += 1
@@ -323,12 +332,12 @@ def update_rule(history, state, **kwargs):
 
 
 def test_single():
-    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16.3))    
+    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16.9))    
     target = Target(0, 753.7/3397, 0)  # This is what all the studies have been done with so far 
 
     srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
 
-    mcc = SRPController(N=[20, 20], target=target, srpdata=srpdata, update_function=update_rule, debug=True)
+    mcc = SRPController(N=[50, 50], target=target, srpdata=srpdata, update_function=update_rule, debug=True)
     mcc(x0)
     plt.show()
 
@@ -413,5 +422,5 @@ def test_sweep():
     df.to_csv("temp.csv")
 
 if __name__ == "__main__":
-    # test_single()
-    test_sweep()
+    test_single()
+    # test_sweep()
