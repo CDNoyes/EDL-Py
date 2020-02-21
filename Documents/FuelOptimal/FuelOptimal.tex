@@ -63,7 +63,32 @@ Given a downrange distance and site altitude, there will be a range of entry fli
 
 In short, if a constraint such as g-limit, or total heat load, or maximum heat rate forces the entry flight path to lie in a certain range, there will be a corresponding family of trajectories with different SRP costs. If no solutions with sufficiently low propellant costs exist for the desired flight path range, it is possible the target downrange is not chosen suitably and must be changed, or potentially no trajectory exists with such a cost. 
 
+\subsection{Motivation: Comparison with Predictor Corrector Approach}
 \textbf{TODO:} Compare with standard predictor corrector approach. This should actually be quite powerful because the problem is scarcely feasible outside a narrow range of bank angles for ANY reversal velocity. Thus, even with the exact same parametrization (constant with one rev), the same powered descent guidance, the same optimal ignition trigger, the difference in fuel required between the two could be massive. For the standard PC, choosing the correct terminal energy is essential, and the advice given might not be good. Additionally, much attention is being paid to the powered descent algorithm, but little has been paid to the entry trajectory, and this method works with any smooth guidance.
+
+\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.9\textwidth]{PredictorCorrector_BankvsVelocity} 
+		\caption{Optimal Bank to Achieve a fixed downrange for a terminal energy at zero altitude.}
+		\label{fig_bank_vs_vel}
+
+\end{figure}
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.9\textwidth]{ContourComparison} 
+	\caption{Optimal Bank and Reversal to land at target}
+	\label{fig_contour}
+	
+\end{figure}
+
+Figure~\ref{fig_bank_vs_vel} shows the bank angle required to achieve the targeted downrange distance as a function of the terminal velocity (the simulations are performed based on energy, using a zero altitude target), i.e., E = f(h, v), but for fixed altitude E=f(0, v) there is a 1-to-1 correspondence.
+ 
+To determine the optimal contours for a chosen parametrization, we begin by simulating entry trajectories with a constant bank angle and one bank reversal over the space $[0^\circ,\,90^\circ]\times [2000, 4000] m/s$. Along each trajectory, the point with the lowest fuel consumption required for a pinpoint landing is determined and the fuel is recorded. Figure~\ref{fig_contour} depicts the results in which it evident that only a narrow band of bank angles of roughly $4^\circ$ can achieve a soft landing at all, even with an \textit{optimally timed} bank reversal and an \textit{optimally triggered} powered descent initiation. Only about half of that narrow range produces trajectories with an acceptable fuel consumption.
+
+Comparing the two figures, we see that although bank angles from $10^\circ$ to $30^\circ$ can satisfy the range requirement, the powered descent problem places more stringent requirements on the entry trajectory. This highlights the absolute necessity of estimating (or searching for) an appropriate terminal energy when using the PC approach; failure to do so results in infeasible situations.
+
+Problem details: 8500 kg vehicle, BC = 366 $kg/m^2$, EFPA = $-16.9^\circ$, DR = 753.7 km, Isp = 295 s, T = 595 kN
 
 \subsection{Entry State to SRP State Conversion}
 Given an entry state of the form $[r,\, \theta,\, \phi,\, v,\, \gamma,\, \psi]$, the corresponding SRP state is found by assuming the current heading $\psi$ defines the downrange distance. For a fixed target $(h_T,\, \theta_T,\, \phi_T)$, the range to go, and crossrange to target are computed. The SRP state is given by $[rtg,\, |cr|,\, r-r_p-h_T, v\cos\gamma, 0, v\sin\gamma, m_0]$. First, note that the absolute value of the crossrange is used; this gives a denser table of tabulated solutions by exploiting symmetry. Similarly, because the downrange direction is defined by the heading angle, the cross track velocity is always zero, allowing the use of 5D interpolation rather than 6D, again allowing the same number of solutions to more densely cover the input space. 

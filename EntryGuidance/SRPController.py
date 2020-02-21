@@ -167,7 +167,8 @@ class SRPController:
                 reversal_range = current_reverse + np.array([-250, 250])
             else:
                 # Loose
-                bank_range = current_bank + np.radians([-15, 15]) # should check for bounds like 0 though 
+                bank_range = np.radians([10, 30])
+                # bank_range = current_bank + np.radians([-15, 15]) # should check for bounds like 0 though 
                 reversal_range = current_reverse + np.array([-500, 500])
 
 
@@ -337,7 +338,7 @@ def test_single():
 
     srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
 
-    mcc = SRPController(N=[50, 50], target=target, srpdata=srpdata, update_function=update_rule, debug=True)
+    mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=True)
     mcc(x0)
     plt.show()
 

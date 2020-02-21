@@ -403,7 +403,8 @@ def getFileName(name, save_dir):
 
         I.e. if name = 'MC' and dir/MC-date-1 exists, MC-date-2 will be returned.
     """
-    date = datetime.now().date()
+    import datetime 
+    date = datetime.date.today()
 
     files = os.listdir(save_dir)
     current = 1
