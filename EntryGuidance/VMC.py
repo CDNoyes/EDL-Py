@@ -220,6 +220,8 @@ class VMC(object):
         """ Takes an SRP database class, and a pinpoint landing Target class 
             to calculate the optimal ignition point along a trajectory 
         
+        TODO: Replace this will a call to the same method of SRPData 
+
         """
         self.mc_srp = {'traj': [],'control': [],"fuel": [],"ignition_state": [],"terminal_state": [],"target": target}
         
@@ -233,7 +235,7 @@ class VMC(object):
             h = x_srp[2]
             high = np.logical_and(h >= hmin, h <= 4000) # 4km is currently the maximum altitude 
             close = np.logical_and(x_srp[0] <= 8000, x_srp[0] >= 500) # 8km is currently the RTG limit in the table 
-            close = np.logical_and(close, x_srp[1])   # 5km crossrange is the max in the table 
+            close = np.logical_and(close, x_srp[1] <= 5000)   # 5km crossrange is the max in the table 
             high = np.logical_and(close, high)
             
             if np.sum(high) >= 2:
@@ -437,7 +439,7 @@ def final_trigger(traj):
     return -1 
 
 
-def test_controller(bank, v_reverse):
+def __test_controller(bank, v_reverse):
     """ This version requires v_reverse to be the same length as the state
     This is so that we can quickly determine where a reversal should go 
     
@@ -455,7 +457,7 @@ def test():
 
     vmc = VMC()
     vmc.null_sample(N)
-    vmc.control = test_controller(np.radians(np.linspace(-90, 90, N)), np.ones((N,))*2750)
+    vmc.control = __test_controller(np.radians(np.linspace(-90, 90, N)), np.ones((N,))*2750)
     vmc.set_trigger(velocity_trigger(500))
     vmc.run(current_state, save=False, stepsize=[5, 0.5, 10], time_constant=2.0, Ef=30000, debug=False)
 

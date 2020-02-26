@@ -13,63 +13,93 @@
 \begin{document}
 \maketitle
 
-\section{Notes}
- N-dimensional interpolation is possible offline, but may be problematic online. A structured grid might alleviate the problem if enough samples can be generated 
-In this analytical MPC approach, the propellant consumed is managed by the triggering mechanism. 
+\begin{abstract}
+Powered descent already plays an important role in current Mars EDL, and its importance will grow as larger and heavier payloads are required to be delivered. Much research has been devoted to solving powered descent (or powered approach) problems with various constraints and objectives, including fuel minimization. Far less energy has been spent in developing appropriate entry guidance strategies that coordinate with the powered descent guidance algorithm to deliver the entry vehicle to favorable ignition conditions. We begin by demonstrating significant deficiencies in the current state of the art approach. Our approach extends a predictor-corrector guidance through the subsequent powered phase, and alters the objective of the entry guidance to minimize the fuel required to bring the vehicle to desired conditions via propulsion. 
+\end{abstract}
+%\section{Notes}
+% N-dimensional interpolation is possible offline, but may be problematic online. A structured grid might alleviate the problem if enough samples can be generated 
+%In this analytical MPC approach, the propellant consumed is managed by the triggering mechanism. 
+%
+%Different from standard MPC since the entire trajectory in planned, not a receding horizon. More of a shrinking horizon?
+%
+%Due to the high velocity at which SRP begins, the onboard knowledge of the vehicle's state may not be well known. As the vehicle decelerates, the estimate will become better and a ground-relative nav solution is obtained. From this info, the final landing site, which may be different than the nominal landing site, is determined. The vehicle budgets propellant for the nominal target (it has to aim somewhere at ignition) as well as a separate allotment for any divert maneuver.
+%
+%%For a constant, maximal thrust, the optimal range to go and altitude at ignition for a variety of velocity/fpa combos can be found very easily. This is the target manifold for the entry guidance termination. The manifold is `finite' since the propellant onboard is limited. Essentially, we have removed the positional states from the SRP problem, and relegated them to the entry phase. 
+%
+%%It appears to be the case that only the magnitude of the velocity determines the propellant cost, while the optimal altitude/distance depends on the flight path angle. Update: this depends on the constants g0, Tmax, Isp. 
+%
+%Small range error is not generally an issue because the vertical descent portion can do a divert if needed, and one may be needed even at the nominal landing site. 
+%
+%Should start checking for ignition at the highest velocity at which it would be possible to land with the allotted propellant. 
+%
+%%The switching curve in 1-D is now a manifold that the spacecraft may not reach; desired to ignite at minimal distance from the manifold. 
+%
+%Any adaptive triggering mechanism must make use of some form of prediction to determine if the current state is suitable for triggering, and if the condition is improving or not. So long as the vehicle is decelerating, the velocity state is improving. However, the positional states may or may not be improving, e.g., if the optimal downrange distance is overshot. Thus, triggering should occur either when 
+%\begin{itemize}
+%\item The vehicle's altitude is too low and SRP must begin to achieve a soft landing 
+%\item the down range distance to the target has become too short and prolonging further will incur additional downrange error
+%\item The vehicle begins to accelerate because drag (velocity) has dropped too low while the flight path angle has become steep 
+%\end{itemize}
+%
+%concerning entry guidance, do altitude optimal trajectories at a fixed velocity have the same characteristics as minimal velocity trajectories at a fixed final altitude?
+%
+%Any derivation involving a change in mass cannot be decoupled 
+%
+%%Ought to compare the derived terminal manifold with that obtained by assuming a constant mass. 
+%
+%Draw diagram explaining the difference between range control and srp control
+%
+%%Formal neighboring optimal control would minimize velocity subject to that terminal constraint 
+%
+%\section{Notes and Observations}
+%A constant lift up bank angle is in fact optimal for maximal altitude at a fixed velocity (or minimal velocity at a fixed altitude) if the entry flight path angle is free and the downrange distance is free as well (fixed at zero crossrange). If the downrange distance is not the optimal one (for a given flight path angle)
+%
+%The entry flight path angle is probably generally determined based on constraints like heat rate, total heat load, or g-load. Might still be able to choose between a range. 
+%
+%As the vehicle flies, the estimated SRP propellant required from the current state may not be monotonic. But the estimated propellant required from the optimal ignition point may be? 
+%
+%\textbf{TODO:} Examine the shape of the objective function, very bowl shaped but with a fairly flat bottom. Consider framing the discussion in terms of invariant sets? 
+%
+%\textbf{TODO:} Diagram showing full predicted entry trajectory, highlight the portion checked for SRP, show the ignition condition. Note that possible points are trimmed by velocity, range to go, and altitude Perhaps also reference Guru/Joel doc for phase definitions, and show phases. Unpowered entry flight, powered approach (or deceleration?), powered descent includes potential final divert vertical and vertical phase. 
+%
+%A divert is likely necessary because SRP begins far from the target where hazards may not be known. 
+%
+%Given a downrange distance and site altitude, there will be a range of entry flight path angles that admit solutions for a given control parametrization, such as a constant bank angle with one reversal. Among these admissible flight paths, the optimal one in terms of propellant occurs at the steepest entry with the lowest bank angle. This of course has no robustness, as any disturbances that result in lower energy than the nominal case will fall short and be forced to fly a lengthened, suboptimal powered approach. 
+%
+%In short, if a constraint such as g-limit, or total heat load, or maximum heat rate forces the entry flight path to lie in a certain range, there will be a corresponding family of trajectories with different SRP costs. If no solutions with sufficiently low propellant costs exist for the desired flight path range, it is possible the target downrange is not chosen suitably and must be changed, or potentially no trajectory exists with such a cost. 
 
-Different from standard MPC since the entire trajectory in planned, not a receding horizon. More of a shrinking horizon?
 
-Due to the high velocity at which SRP begins, the onboard knowledge of the vehicle's state may not be well known. As the vehicle decelerates, the estimate will become better and a ground-relative nav solution is obtained. From this info, the final landing site, which may be different than the nominal landing site, is determined. The vehicle budgets propellant for the nominal target (it has to aim somewhere at ignition) as well as a separate allotment for any divert maneuver.
 
-%For a constant, maximal thrust, the optimal range to go and altitude at ignition for a variety of velocity/fpa combos can be found very easily. This is the target manifold for the entry guidance termination. The manifold is `finite' since the propellant onboard is limited. Essentially, we have removed the positional states from the SRP problem, and relegated them to the entry phase. 
 
-%It appears to be the case that only the magnitude of the velocity determines the propellant cost, while the optimal altitude/distance depends on the flight path angle. Update: this depends on the constants g0, Tmax, Isp. 
 
-Small range error is not generally an issue because the vertical descent portion can do a divert if needed, and one may be needed even at the nominal landing site. 
+\section{Introduction}
 
-Should start checking for ignition at the highest velocity at which it would be possible to land with the allotted propellant. 
+Powered descent played a role in safely landing MSL's Curiosity rover, and will also be utilized on Mars2020, and Mars Sample Return campaign. In future missions, supersonic retropropulsion may be used to land larger, heavier vehicles relative to the current generation of landers, and powered descent will play an even more significant role in the EDL process. There exist many guidance approaches to the powered descent problem, with many focusing on fuel optimality, including GFOLD and other convex optimization methods, polynomial guidance, indirect methods, etc. In brief, there is no shortage of ways to tackle the problem of decelerating via propulsion. 
 
-%The switching curve in 1-D is now a manifold that the spacecraft may not reach; desired to ignite at minimal distance from the manifold. 
+Far less attention has been given to the problem of entry guidance targeting favorable SRP ignition conditions. The only such work (by Ping Lu) has several areas for improvement. 
 
-Any adaptive triggering mechanism must make use of some form of prediction to determine if the current state is suitable for triggering, and if the condition is improving or not. So long as the vehicle is decelerating, the velocity state is improving. However, the positional states may or may not be improving, e.g., if the optimal downrange distance is overshot. Thus, triggering should occur either when 
-\begin{itemize}
-\item The vehicle's altitude is too low and SRP must begin to achieve a soft landing 
-\item the down range distance to the target has become too short and prolonging further will incur additional downrange error
-\item The vehicle begins to accelerate because drag (velocity) has dropped too low while the flight path angle has become steep 
-\end{itemize}
+An adaptive trigger for termination of unguided flight was demonstrated to provide massive benefits over triggering at a fixed state variable such as downrange, velocity, or energy. The issue of monotonicity in the fuel required was dealt with by solving a related powered descent optimal control problem. Despite presenting a predictor-corrector approach in which a prediction of the terminal entry state is available and being used to modulate the bank angle, only the current vehicle state is checked for triggering. Our approach to the triggering mechanism differs in that we utilize the predicted trajectory. This allows us to avoid the issue of monotonicity of predicted fuel consumption, and also guarantees we find the global minimum. 
 
-concerning entry guidance, do altitude optimal trajectories at a fixed velocity have the same characteristics as minimal velocity trajectories at a fixed final altitude?
+A fundamental difference of retropropulsion-based EDL from parachute-based EDL architectures, even those that utilize a vertical powered descent phase with potential for a divert maneuver prior, lies in the set of desirable states at the termination of the entry phase. Traditionally, the entry objective is range control with lateral control as a secondary objective, and the two problems can be neatly decoupled. In determining the powered descent ignition state, however, both the lateral and longitudinal motion is required. This brings to bear two important considerations: the chosen parametrization of the bank angle, and the objective of bank angle modulation. 
 
-Any derivation involving a change in mass cannot be decoupled 
+In the work by Ping Lu, the bank angle is still modulated to perform range control, and utilizes a profile linear in energy with one parameter. Lateral logic to determine bank reversals is applied separately after solving for the bank angle magnitude. In our approach, lateral and longitudinal motions are not decoupled, and thus the minimum number of parameters we consider in our parametrization is two.
 
-%Ought to compare the derived terminal manifold with that obtained by assuming a constant mass. 
+Additionally, the proposed entry guidance approach utilizes knowledge of the powered guidance approach to be used in the subsequent phase, making the two phases linked by more than just the adaptive trigger. Instead, the bank angle is actively modulated to reduce predicted fuel consumption rather than achieve a range objective, thereby coordinating to produce superior results. 
 
-Draw diagram explaining the difference between range control and srp control
+%An outline of the algorithmic approach, given a fixed bank angle parametrization and a pre-specified powered descent guidance method, is 
+%\begin{enumerate}
+%\item Integrate the estimated vehicle state forward using the current bank angle parametrization until the target range is reached
+%\item Determine the optimal ignition state along the unpowered entry trajectory
+%\item If the estimated optimal fuel consumption is unacceptable, update the bank angle profile parameters to optimize 
+%\end{enumerate}
 
-%Formal neighboring optimal control would minimize velocity subject to that terminal constraint 
-
-\section{Notes and Observations}
-A constant lift up bank angle is in fact optimal for maximal altitude at a fixed velocity (or minimal velocity at a fixed altitude) if the entry flight path angle is free and the downrange distance is free as well (fixed at zero crossrange). If the downrange distance is not the optimal one (for a given flight path angle)
-
-The entry flight path angle is probably generally determined based on constraints like heat rate, total heat load, or g-load. Might still be able to choose between a range. 
-
-As the vehicle flies, the estimated SRP propellant required from the current state may not be monotonic. But the estimated propellant required from the optimal ignition point may be? 
-
-\textbf{TODO:} Examine the shape of the objective function, very bowl shaped but with a fairly flat bottom. Consider framing the discussion in terms of invariant sets? 
-
-\textbf{TODO:} Diagram showing full predicted entry trajectory, highlight the portion checked for SRP, show the ignition condition.
-
-Given a downrange distance and site altitude, there will be a range of entry flight path angles that admit solutions for a given control parametrization, such as a constant bank angle with one reversal. Among these admissible flight paths, the optimal one in terms of propellant occurs at the steepest entry with the lowest bank angle. This of course has no robustness, as any disturbances that result in lower energy than the nominal case will fall short and be forced to fly a lengthened, suboptimal powered approach. 
-
-In short, if a constraint such as g-limit, or total heat load, or maximum heat rate forces the entry flight path to lie in a certain range, there will be a corresponding family of trajectories with different SRP costs. If no solutions with sufficiently low propellant costs exist for the desired flight path range, it is possible the target downrange is not chosen suitably and must be changed, or potentially no trajectory exists with such a cost. 
-
-\subsection{Motivation: Comparison with Predictor Corrector Approach}
-\textbf{TODO:} Compare with standard predictor corrector approach. This should actually be quite powerful because the problem is scarcely feasible outside a narrow range of bank angles for ANY reversal velocity. Thus, even with the exact same parametrization (constant with one rev), the same powered descent guidance, the same optimal ignition trigger, the difference in fuel required between the two could be massive. For the standard PC, choosing the correct terminal energy is essential, and the advice given might not be good. Additionally, much attention is being paid to the powered descent algorithm, but little has been paid to the entry trajectory, and this method works with any smooth guidance.
+\subsection{Motivation: Comparison with Predictor-Corrector Approach}
+%\textbf{TODO:} Compare with standard predictor corrector approach. This should actually be quite powerful because the problem is scarcely feasible outside a narrow range of bank angles for ANY reversal velocity. Thus, even with the exact same parametrization (constant with one rev), the same powered descent guidance, the same optimal ignition trigger, the difference in fuel required between the two could be massive. For the standard PC, choosing the correct terminal energy is essential, and the advice given might not be good. Additionally, much attention is being paid to the powered descent algorithm, but little has been paid to the entry trajectory, and this method works with any smooth guidance.
 
 \begin{figure}[h!]
 		\centering
 		\includegraphics[width=0.9\textwidth]{PredictorCorrector_BankvsVelocity} 
-		\caption{Optimal Bank to Achieve a fixed downrange for a terminal energy at zero altitude.}
+		\caption{Bank angle required to achieve a fixed downrange versus the terminal velocity corresponding to various terminal energies at zero altitude.}
 		\label{fig_bank_vs_vel}
 
 \end{figure}
@@ -82,46 +112,24 @@ In short, if a constraint such as g-limit, or total heat load, or maximum heat r
 	
 \end{figure}
 
-Figure~\ref{fig_bank_vs_vel} shows the bank angle required to achieve the targeted downrange distance as a function of the terminal velocity (the simulations are performed based on energy, using a zero altitude target), i.e., E = f(h, v), but for fixed altitude E=f(0, v) there is a 1-to-1 correspondence.
+A ``standard" predictor-corrector entry guidance algorithm determines the bank angle required to achieve a downrange distance at a fixed energy level. 
+Figure~\ref{fig_bank_vs_vel} shows the bank angle required to achieve a targeted downrange distance as a function of the terminal velocity. Note that the simulations are terminated based on energy, using a zero altitude target, i.e., E = f(h, v), but for fixed altitude of zero,  E=f(0, v) there is a 1-to-1 correspondence between energy and velocity.
  
-To determine the optimal contours for a chosen parametrization, we begin by simulating entry trajectories with a constant bank angle and one bank reversal over the space $[0^\circ,\,90^\circ]\times [2000, 4000] m/s$. Along each trajectory, the point with the lowest fuel consumption required for a pinpoint landing is determined and the fuel is recorded. Figure~\ref{fig_contour} depicts the results in which it evident that only a narrow band of bank angles of roughly $4^\circ$ can achieve a soft landing at all, even with an \textit{optimally timed} bank reversal and an \textit{optimally triggered} powered descent initiation. Only about half of that narrow range produces trajectories with an acceptable fuel consumption.
+To determine the optimal fuel contours for a chosen parametrization of the bank angle during entry flight, we begin by simulating trajectories with a constant bank angle and one bank reversal over the space $[0^\circ,\,90^\circ]\times [2000,\, 4000]$ m/s. This parametrization is motivated by simplicity, and is sufficient to illustrate the point of this section. Along each resulting trajectory, the point with the lowest fuel consumption required for a pinpoint landing is determined, and the fuel required is recorded. Figure~\ref{fig_contour} depicts the results, in which it is evident that only a narrow band of bank angles of roughly $4^\circ$ can achieve the desired pinpoint landing at all, even with an \textit{optimally timed} bank reversal and an \textit{optimally triggered} powered descent initiation. Furthermore, only about half of that already narrow range produces trajectories with an acceptable fuel consumption.
 
-Comparing the two figures, we see that although bank angles from $10^\circ$ to $30^\circ$ can satisfy the range requirement, the powered descent problem places more stringent requirements on the entry trajectory. This highlights the absolute necessity of estimating (or searching for) an appropriate terminal energy when using the PC approach; failure to do so results in infeasible situations.
+Comparing the two figures, we see that although bank angles from $10^\circ$ to $30^\circ$ can satisfy the range requirement at different energies, the powered descent problem places more stringent requirements on the entry trajectory. This highlights the absolute necessity of coupling the two phases and coordinating their guidance approaches; failure to do so results in significant increases in fuel required, or infeasible situations in the worst cases.
 
-Problem details: 8500 kg vehicle, BC = 366 $kg/m^2$, EFPA = $-16.9^\circ$, DR = 753.7 km, Isp = 295 s, T = 595 kN
-
-\subsection{Entry State to SRP State Conversion}
-Given an entry state of the form $[r,\, \theta,\, \phi,\, v,\, \gamma,\, \psi]$, the corresponding SRP state is found by assuming the current heading $\psi$ defines the downrange distance. For a fixed target $(h_T,\, \theta_T,\, \phi_T)$, the range to go, and crossrange to target are computed. The SRP state is given by $[rtg,\, |cr|,\, r-r_p-h_T, v\cos\gamma, 0, v\sin\gamma, m_0]$. First, note that the absolute value of the crossrange is used; this gives a denser table of tabulated solutions by exploiting symmetry. Similarly, because the downrange direction is defined by the heading angle, the cross track velocity is always zero, allowing the use of 5D interpolation rather than 6D, again allowing the same number of solutions to more densely cover the input space. 
-
-\section{Intro}
-Powered descent played a role on MSL, and will also be used in M2020, MSR/SRL campaign. In future missions, supersonic retropropulsion may be used to land larger, heavier vehicles than the current generation of landers, and powered descent will play an even more significant role in the EDL process. There exist many guidance approaches to the SRP problem, with many focusing on fuel optimality, including GFOLD and other convex optimization methods, polynomial guidance, indirect methods, etc. In brief, there is no shortage of ways to tackle the problem of decelerating via propulsion. 
-
-Far less attention has been given to the problem of entry guidance targeting favorable SRP ignition conditions. The only such work (by Ping Lu) has several areas for improvement. 
-
-An adaptive trigger for termination of unguided flight was demonstrated to provide massive benefits over triggering at a fixed state (downrange, velocity, energy). The issue of monotonicity was dealt with by solving a related SRP problem. Despite presenting a predictor-corrector approach in which a prediction of the terminal entry state is available and being used to module the bank angle, only the current state is checked for triggering. Our approach to the triggering mechanism differs in that we utilize the prediction. This allows us to skirt the issue of monotonicity of predicted fuel consumption, and also guarantees we find the global minimum. 
-
-Another issue is the role of bank angle modulation, and the chosen parametrization of the bank angle. In the work by Ping Lu, the bank angle is still modulated to perform range control, and utilizes a profile linear in energy with one parameter. 
-
-A fundamental difference from parachute-based EDL architectures, even those that still utilize a vertical descent phase with potential for a divert maneuver prior, is in the desirable states at the termination of the entry phase. Traditionally, the entry objective is range control with lateral control as a secondary objective, and the two can be neatly decoupled. In determining the SRP ignition state, however, both the lateral and longitudinal motion is required. 
-
-Additionally, the entry guidance approach utilizes knowledge of the planned SRP guidance approach, making the two phases linked by more than just the adaptive trigger because the bank angle is actively modulated to reduce predicted fuel consumption. 
-
-An outline of the algorithmic approach, given a fixed bank angle parametrization and a pre-specified powered descent guidance method, is 
-\begin{enumerate}
-\item Integrate the estimated vehicle state forward using the current bank angle parametrization until the target altitude is reached
-\item Determine the optimal ignition state along the powered descent trajectory
-\item If the estimated optimal fuel consumption is unacceptable, update the bank angle profile parameters to optimize 
-\end{enumerate}
+Problem details: 8500 kg vehicle, BC = 366 $\mathrm{kg/m}^2$, S = 15.8 m$^2$, L/D = 0.24, EFPA = $-16.9^\circ$, DR~=~753.7 km, $ I_{sp} $ = 295 s, $T_{\max} = 595$ kN
 
 
-\section{Entry Guidance Details}
-%\begin{list}
-%Delivery errors are handled via replanning
-%Lift, drag, density disturbances via L/D control? Tracking?
-%\end{list}
+\section{Proposed Entry Guidance}
 
+The heart of the proposed guidance approach is to extend the trajectory prediction through to the following powered descent phase. This allows us to alter the entry guidance objective from range control to fuel minimization in the predictor-corrector. Notice that although fuel minimization is the entry guidance objective, any powered descent guidance algorithm may be used in the powered phase so long as an estimate of the fuel required is given by the algorithm, and this estimate is continuous with respect to the initial state. Thus, although in the examples of this work we have coordinated the powered descent algorithm to also be fuel-optimal in nature, there exist many alternatives such as energy-optimal guidance or non-optimization based approaches such as polynomial guidance. 
 
-\subsection{Bank Angle Parametrizations}
+We further assume that the chosen powered descent method incorporates any necessary problem constraints, because the entry guidance algorithm does not make use of the actual powered descent trajectory (nor does it check for satisfaction of constraints) but instead only the associated fuel cost. 
+
+\subsection{Bank Angle Parametrization}
+
 Two different parametrizations of the bank angle profile were tested. Each is a two-parameter profile designed to generate both longitudinal and lateral motion. The first is a constant bank angle $\sigma_c$ with one reversal at a velocity $v_r$
 \begin{equation}
 \sigma(v) = \left\{
@@ -141,11 +149,26 @@ while the second fixes the bank angle magnitudes and uses two reversal velocitie
 \end{array} 
 \right.
 \end{equation}
-and we used $\sigma_1 = 90^\circ$, $-\sigma_2 = \sigma3 = 15^\circ$.
+and we used $\sigma_1 = 90^\circ$, $-\sigma_2 = \sigma_3 = 15^\circ$.
+
+\subsection{Trajectory Prediction and Powered Descent Ignition}
+Once the bank angle parametrization is specified, the estimated entry state is integrated numerically to generate a prediction of the remaining unpowered flight. 
+
+The numerical integration of the entry state is carried out with respect to downrange distance to the target. This has several advantages over common alternatives. First, although energy or velocity could be used, a sufficiently low choice must be made, but time spent integrating below the reachable set of the vehicle is wasted, and the choice is problem/vehicle specific. Altitude would also be a natural choice since the minimum ignition altitude would serve as the terminal integration condition, but like energy and velocity this is problem dependent, and additionally altitude is not a strictly monotonic variable in the case of lofting trajectories. Using range to go as the independent variable allows the terminal integration condition to be zero, independent of the problem specifics, with very little wasted integration time since the optimal ignition state is generally close to the target. 
+
+Once the prediction is generated, several constraints are applied to filter the trajectory down to points that should be checked for their predicted fuel consumption. Because this step could be costly (depending on the chosen powered approach guidance), these constraints greatly reduce the number of calls to the PA guidance required. Figure~\ref{fig_ignition} depicts this scenario including a portion of the trajectory already flown, the entry flight prediction, constraints, target, and predicted optimal ignition point.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=1\textwidth]{H_Vs_S_625} 
+	\caption{Only the portion of the entry trajectory satisfying constraints on velocity, altitude, and range to go are searched for the fuel optimal ignition state.}
+	\label{fig_ignition}
+\end{figure}
+
 \subsection{Optimization}
 
 \subsubsection{Objective Function}
-The SRP problem admits continuous solutions, and the entry equations are also smooth for smooth bank angle inputs. Thus we expect that even when optimizing the ignition condition along a trajectory rather than use a fixed state variable such as velocity or energy, the objective function should be well behaved. One question is whether several isolated minima exist, or only a single global optimum. 
+We require that the chosen powered descent guidance approach admits continuous fuel requirements, and the entry equations are also smooth for smooth bank angle inputs. Thus we expect that even when optimizing the ignition condition along a trajectory rather than use a fixed state variable such as velocity or energy, the objective function should be well behaved. One question is whether several isolated minima exist, or only a single global optimum. 
 
 Evaluating the objective function for a range of parameters for each profile indicates the objective function is bowl shaped, potentially with a fairly flat both in the case of the second profile. The shape of the objective function means that gradient-based methods will be effective in determining the optimal profile parameters. 
 
@@ -164,6 +187,17 @@ Evaluating the objective function for a range of parameters for each profile ind
 
 Each profile is capable of handling the $3\sigma$ entry flight path angle disturbances of $\pm 0.25^\circ$ when the nominal entry flight path angle and target downrange distance are chosen appropriately. It is possible to choose these values such that significant asymmetry exists. Surprisingly, the constant bank profiles require only about $5^\circ$ of variation to deal with this variation if known from the entry interface, and the reversal velocities require less than 100 m/s correction. 
 
+\subsection{Feedback: Implicit vs Explicit}
+A standard feature of the predictor-corrector approach is the implicit generation of feedback by repeated calls with the current state, not unlike model predictive control. However, noting that the prediction and associated computations may be lengthy computationally, tracking the latest predicted trajectory has been shown to be effective while reducing computational burden. This approach has been taken here, where a low number of calls to the predictor-corrector are made, and the vertical L/D of the most recent trajectory is tracked by modulating the bank angle. This essentially decouples the guidance algorithm into two parts, the trajectory resulting from the predictor-corrector mitigates delivery errors and errors accumulated during flight, while the tracking component seeks to reduce the accumulation of errors in flight. 
+
+\subsection{Entry State to Powered Descent State Conversion}
+Given an entry state of the form $[r,\, \theta,\, \phi,\, v,\, \gamma,\, \psi]$, the corresponding SRP state is determined by assuming the current heading $\psi$ defines the downrange distance. For a fixed target $(h_T,\, \theta_T,\, \phi_T)$, the range to go, and crossrange to target are computed. The SRP state is given by $[rtg,\, |cr|,\, r-r_p-h_T, v\cos\gamma, 0, v\sin\gamma, m_0]$. First, note that the absolute value of the crossrange is used; this gives a denser table of tabulated solutions by exploiting symmetry. Similarly, because the downrange direction is defined by the heading angle, the cross track velocity is always zero, allowing the use of 5D interpolation rather than 6D, again allowing the same number of solutions to more densely cover the input space. 
+
+\section{Example}
+
+
+\section{Conclusion}
+Work to go includes a more efficient method of optimization and investigation of different bank angle parametrizations. 
 
 %\begin{figure}[h!]
 %	\centering

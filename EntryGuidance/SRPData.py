@@ -6,6 +6,7 @@ from scipy.io import loadmat, savemat
 import matplotlib.pyplot as plt 
 sys.path.append("./")
 from Utils.boxgrid import boxgrid 
+from EntryGuidance.SRPUtils import range_from_entry, srp_from_entry
 
 class SRPData:
     """ The RBF method appears best, outperforming both SVR and linear ND
@@ -233,6 +234,53 @@ class SRPData:
         plt.show()
         
 
+    def srp_trim(self, traj, target, vmax=800, default=100000, full_return=False):
+        """ A method for determining the optimal ignition state along a trajectory 
+
+            default is the value returned when no suitable ignition state is found
+            full_return returns a dictionary with:
+                terminal entry state, 
+                ignition state, 
+                propellant required, 
+                the entry trajectory clipped at the ignition point
+
+        """
+        v = traj[:,3]
+        k = v < vmax
+        rtg,cr = range_from_entry(traj[k], target.coordinates())
+        x_srp = srp_from_entry(traj[k], rtg, cr, target_alt=target.altitude).T # 5 x N
+        h = x_srp[2]
+        hmin = self.hmin
+        # These logic checks greatly reduce the number of points to search over in some cases, resulting in a good speed up 
+        high = np.logical_and(h >= hmin, h <= 4000) # 4km is currently the maximum altitude 
+        close = np.logical_and(x_srp[0] <= 8000, x_srp[0] >= 500) # 8 km is currently the RTG limit in the table 
+        close = np.logical_and(close, x_srp[1] <= 5000)   # 5km crossrange is the max in the table 
+        high = np.logical_and(close, high)
+
+        if np.any(high):
+            m_srp = self(x_srp.T[high])
+            I = np.argmin(m_srp)
+            vf = np.linalg.norm(x_srp.T[high][I][3:])
+
+            if full_return:
+                mc_srp = {}
+                mc_srp['traj'] = traj[v <= vf]
+                mc_srp['terminal_state'] = (traj[k][high][I])
+                mc_srp['fuel'] = (m_srp[I])
+                mc_srp['ignition_state'] = (x_srp[:,high][:,I]) # may need a transpose
+                return mc_srp 
+            return m_srp[I]
+
+        else: # No suitable state was found
+            if full_return:
+                I = 0
+                mc_srp = {}
+                mc_srp['traj'] = (np.concatenate((traj[np.invert(k)], traj[k][high][:I])))
+                mc_srp['terminal_state'] = (traj[k][high][I])
+                mc_srp['fuel'] = (default)
+                mc_srp['ignition_state'] = (x_srp[:,high][:,I]) # may need a transpose
+            return default 
+
     # def time_of_flight(self, state):
     #     try:
     #         return self.tf_model(*np.asarray(state).T)
@@ -278,6 +326,6 @@ def generate_plots():
     srpdata.plot((25,25))
 
 if __name__ == "__main__":
-    # test()
+    test()
     # test_pickle()
-    generate_plots()
+    # generate_plots()

@@ -4,7 +4,6 @@ import sys
 sys.path.append("./")
 from EntryGuidance.Planet import Planet 
 from EntryGuidance.Target import Target
-from EntryGuidance.SRPData import SRPData # Unpickling in plot_contours fails without this 
 from Utils.boxgrid import boxgrid 
 
 def srp_from_entry(entry_state, rtg, cr, target_alt=0):
@@ -132,5 +131,6 @@ def plot_contours():
     plt.show()
 
 if __name__ == "__main__":
+    from EntryGuidance.SRPData import SRPData # Unpickling in plot_contours fails without this 
     test()
     plot_contours()

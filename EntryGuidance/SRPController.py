@@ -85,7 +85,7 @@ class SRPController:
         self.target = target 
         self.update = update_function
         self.vmc = VMC()
-        self.vmc.null_sample(np.product(N)) # This is because we're using N samples per param, + the zero case where we don't "need" reversals 
+        self.vmc.null_sample(np.product(N)) 
         
 
         self.srpdata = srpdata 
@@ -97,7 +97,7 @@ class SRPController:
         Vf = 400 
         self.sim = Simulation(cycle=Cycle(0.1), output=False, use_da=False, **EntrySim(Vf=Vf), )
         
-        self.history = {"n_updates": 0,  "params": [], "n_reversals": 0 ,"fuel": [], "state": []}
+        self.history = {"n_updates": 0,  "params": [], "n_reversals": 0 ,"fuel": [], "state": [], "velocity": []}
 
 
     def plot_history(self):
@@ -126,24 +126,7 @@ class SRPController:
         return mf 
         
     def srp_trim(self, traj):
-        vmax = 1000 
-        v = traj[:,3]
-        k = v < vmax
-        rtg,cr = range_from_entry(traj[k], self.target.coordinates())
-        x_srp = srp_from_entry(traj[k], rtg, cr, target_alt=self.target.altitude).T # 5 x N
-        h = x_srp[2]
-        hmin = self.srpdata.hmin
-        high = h > hmin
-        if np.any(high):
-            m_srp = self.srpdata(x_srp.T[high])
-            I = np.argmin(m_srp)
-#             self.mc_srp['traj'].append(np.concatenate((traj[np.invert(k)], traj[k][high][:I])))
-#             self.mc_srp['terminal_state'].append(traj[k][high][I])
-#             self.mc_srp['fuel'].append(m_srp[I])
-#             self.mc_srp['ignition_state'].append(x_srp[:,high][:,I]) # may need a transpose
-            return m_srp[I]
-        else: # No suitable state was found
-            return 100000
+        return self.srpdata.srp_trim(traj, self.target)
 
 
     def set_profile(self, params):
@@ -161,10 +144,10 @@ class SRPController:
             current_bank, current_reverse = self.history['params'][-1]
             
 #             bank_range = np.radians([10, 50]) ## 33 to 47 should cover the majority of EFPA variations 
-            if 0:
+            if 1:
                 # Tight 
-                bank_range = current_bank + np.radians([-3, 3]) # should check for bounds like 0 though 
-                reversal_range = current_reverse + np.array([-250, 250])
+                bank_range = current_bank + np.radians([-1.0, 1.0]) # should check for bounds like 0 though 
+                reversal_range = current_reverse + np.array([-100, 100])
             else:
                 # Loose
                 bank_range = np.radians([10, 30])
@@ -242,7 +225,7 @@ class SRPController:
                 self.vmc.run(current_state, save=False, stepsize=[1, 0.05, 10], time_constant=self.time_constant)
                 if self.debug:
                     self.vmc.plot()
-                    self.vmc.plot_trajectories()
+                    # self.vmc.plot_trajectories()
 
                 if self.target is not None:
                     self.vmc.srp_trim(self.srpdata, self.target, vmax=790, hmin=2000, optimize=False)
@@ -275,11 +258,13 @@ class SRPController:
                         self.history['n_updates'] += 1 
                         self.history['params'].append(params)
                         self.history['fuel'].append(fuel[opt]) # should we use the single prediction? why don't they match better
+                        self.history['velocity'].append(np.linalg.norm(self.vmc.mc_srp['ignition_state'][opt][3:]))
                         self.history['state'].append(current_state)
 
                         if 1: # diagnostics 
                             # print("Target DR = {:.1f} km".format(self.target.longitude*3397))
                             print("- Optimum: {:.1f} kg at {:.1f} deg, reversal at {:.1f}".format(fuel[opt], np.degrees(self.control_params[0][opt]), self.control_params[1][opt]))
+                            print("- Predicted Ignition velocity = {:.1f} m/s".format(np.linalg.norm(self.vmc.mc_srp['ignition_state'][opt][3:])))
 #                             print("- Optimum: {:.1f} kg, {}".format(fuel[opt], params))
 #                             print("Predicted fuel consumption from single integration: {:.1f} kg".format(mf))
                             print("Ignition State:")
@@ -338,7 +323,7 @@ def test_single():
 
     srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
 
-    mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=True)
+    mcc = SRPController(N=[10, 300], target=target, srpdata=srpdata, update_function=update_rule, debug=True, time_constant=2)
     mcc(x0)
     plt.show()
 
@@ -421,6 +406,17 @@ def test_sweep():
     import pandas as pd 
     df = pd.DataFrame(data.T, columns=["fuel","p1","p2"])
     df.to_csv("temp.csv")
+
+
+
+# def __objective(p, sim):
+
+
+def optimize():
+    """ Compares sequential univariate optimization to the vectorized solution """
+    Vf = 500 
+    sim = Simulation(cycle=Cycle(0.25), output=False, use_da=False, **EntrySim(Vf=Vf), )
+
 
 if __name__ == "__main__":
     test_single()
