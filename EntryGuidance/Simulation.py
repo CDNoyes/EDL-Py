@@ -149,8 +149,8 @@ class Simulation(Machine):
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
             self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
             if self._output:
-                print("L/D: {:.2f}".format(self.edlModel.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
+                print("L/D: {:.3f}".format(self.edlModel.vehicle.LoD))
+                print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -188,7 +188,7 @@ class Simulation(Machine):
             self.findTransition()
         if self._output:
             print('Transitioning from state {} to {} because the following condition was met:'.format(self._states[self.index], self.state))
-            print(self._conditions[self.index].dump())
+            self._conditions[self.index].dump()
             for key,value in self.triggerInput.items():
                 if key not in ('vehicle', 'current_state', 'planet'):
                     print('{} : {}\n'.format(key, value))
@@ -740,10 +740,9 @@ def SRP():
 
 def EntrySim(Vf=500):
     ''' Defines conditions for a simple one phase guided entry '''
-    from Triggers import VelocityTrigger,AltitudeTrigger
+    from Triggers import VelocityTrigger
     states = ['Entry']
     trigger = [VelocityTrigger(Vf)]
-    # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
 
 def TimedSim(time=30):
