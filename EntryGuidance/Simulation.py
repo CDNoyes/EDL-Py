@@ -492,42 +492,43 @@ class Simulation(Machine):
 
     def findTransition(self):
         n = len(self.times)
+        if n > 1:
+            for i in range(n-2, n-1-self.spc, -1):
+                # Find the states to interpolate between:
+                # print(i)
+                self.time = self.times[i]
+                self.x = self.history[i]
+                self.u = self.control_history[i] 
+                self.triggerInput = self.getDict()
+                if not self._conditions[self.index](self.triggerInput):
+                    break
+                
+            N = max(10, int(1000/self.spc)) # Always use at least 10 points 
+            for j in np.linspace(0.01, 0.99, N): # The number of points used here will determine the accuracy of the final state
+                
+                # Find a better state:
+                self.time = ((1-j)*self.times[i] + j*self.times[i+1])
+                self.x = ((1-j)*self.history[i] + j*self.history[i+1])
+                self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
+                self.triggerInput = self.getDict()
+                
+                if self._conditions[self.index](self.triggerInput):
+                    break
 
-        for i in range(n-2, n-1-self.spc, -1):
-            # Find the states to interpolate between:
-            self.time =self.times[i]
-            self.x = self.history[i]
-            self.u = self.control_history[i] 
-            self.triggerInput = self.getDict()
-            if not self._conditions[self.index](self.triggerInput):
-                break
-            
-        N = max(10, int(1000/self.spc)) # Always use at least 10 points 
-        for j in np.linspace(0.01, 0.99, N): # The number of points used here will determine the accuracy of the final state
-            
-            # Find a better state:
-            self.time = ((1-j)*self.times[i] + j*self.times[i+1])
-            self.x = ((1-j)*self.history[i] + j*self.history[i+1])
-            self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
-            self.triggerInput = self.getDict()
-            
-            if self._conditions[self.index](self.triggerInput):
-                break
+            # Remove the extra states:
+            self.history = self.history[0:i+1]
+            self.times = self.times[0:i+1]
+            self.control_history = self.control_history[0:i+1]
 
-        # Remove the extra states:
-        self.history = self.history[0:i+1]
-        self.times = self.times[0:i+1]
-        self.control_history = self.control_history[0:i+1]
+            # Update the final point
+            self.history.append(self.x)
+            self.control_history.append(self.u)
+            self.times.append(self.time)
 
-        # Update the final point
-        self.history.append(self.x)
-        self.control_history.append(self.u)
-        self.times.append(self.time)
-
+        # else:
+        #     if self._output:
+        #         print("No better endpoint found")
         # return
-        # if self._output:
-        #     print("No better endpoint found")
-        return
 
     # def save(self): #Create a .mat file
     def gui(self):
