@@ -124,6 +124,7 @@ class Simulation(Machine):
             X = RK4(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
         else:
             X = odeint(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
+
         self.update(X, self.cycle.duration, np.asarray([sigma, throttle, mu]))
 
 
@@ -169,16 +170,26 @@ class Simulation(Machine):
     def update(self, x, dt, u):
         if len(x.shape) == 1:
             self.x = x
+            N = 1
         else:
+            N = x.shape[0]
             self.x = x[-1, :]
 
         if u is not None:
             self.u = u
-            self.control_history.append(self.u)
+            if N == 1:
+                self.control_history.append(self.u)
+            else:
+                U = np.tile(u[:,None], (N,)).T
+                self.control_history.extend(U)
 
-        self.history.append(self.x)
+        if N == 1:
+            self.history.append(self.x)
+            self.times.append(self.time)
+        else:
+            self.history.extend(x)
+            self.times.extend(np.linspace(self.time, self.time+dt, self.spc))
         self.time += dt
-        self.times.append(self.time)
         self.triggerInput = self.getDict()
 
 
@@ -482,39 +493,40 @@ class Simulation(Machine):
     def findTransition(self):
         n = len(self.times)
 
-        for i in range(n-2,n-12,-1):
-            self.time = self.times[i]
+        for i in range(n-2, n-1-self.spc, -1):
+            # Find the states to interpolate between:
+            self.time =self.times[i]
             self.x = self.history[i]
-            self.u = self.control_history[i]
+            self.u = self.control_history[i] 
             self.triggerInput = self.getDict()
-            if self._use_da:
-                trigger_input = da.const_dict(self.triggerInput)
-            else:
-                trigger_input = self.triggerInput
-            if not self._conditions[self.index](trigger_input): # Interpolate between i and i+1 states
-                for j in np.linspace(0.01,0.99,50): # The number of points used here will determine the accuracy of the final state
-                    # Find a better state:
-                    self.time = ((1-j)*self.times[i] + j*self.times[i+1])
-                    self.x = ((1-j)*self.history[i] + j*self.history[i+1])
-                    self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
-                    self.triggerInput = self.getDict()
-                    if self._conditions[self.index](trigger_input):
-                        break
+            if not self._conditions[self.index](self.triggerInput):
+                break
+            
+        N = max(10, int(1000/self.spc)) # Always use at least 10 points 
+        for j in np.linspace(0.01, 0.99, N): # The number of points used here will determine the accuracy of the final state
+            
+            # Find a better state:
+            self.time = ((1-j)*self.times[i] + j*self.times[i+1])
+            self.x = ((1-j)*self.history[i] + j*self.history[i+1])
+            self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
+            self.triggerInput = self.getDict()
+            
+            if self._conditions[self.index](self.triggerInput):
+                break
 
+        # Remove the extra states:
+        self.history = self.history[0:i+1]
+        self.times = self.times[0:i+1]
+        self.control_history = self.control_history[0:i+1]
 
-                # Remove the extra states:
-                self.history = self.history[0:i+1]
-                self.times = self.times[0:i+1]
-                self.control_history = self.control_history[0:i+1]
+        # Update the final point
+        self.history.append(self.x)
+        self.control_history.append(self.u)
+        self.times.append(self.time)
 
-                # Update the final point
-                self.history.append(self.x)
-                self.control_history.append(self.u)
-                self.times.append(self.time)
-
-                return
-        if self._output:
-            print("No better endpoint found")
+        # return
+        # if self._output:
+        #     print("No better endpoint found")
         return
 
     # def save(self): #Create a .mat file
