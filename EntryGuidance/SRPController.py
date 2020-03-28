@@ -1,9 +1,10 @@
 import pickle
+import time 
 import numpy as np
-import chaospy as cp 
+import pandas as pd 
 import matplotlib.pyplot as plt 
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, Rbf
 from scipy.io import loadmat, savemat
 
 import sys, os
@@ -63,21 +64,23 @@ def switch_controller(v_reverse, vectorized):
     return _control
 
 
-
 def _objective(bank, reverse_velocity, x0, srp_trim, aero, time_constant):
     """ This auxiliary function is used by SRPController.optimize method """
-    Vf = 500 
+    Vf = 500
     states = ['Bank1','Bank2']
     trigger = [VelocityTrigger(reverse_velocity), VelocityTrigger(Vf)]
     data = {'states':states, 'conditions': trigger}
-    sim = Simulation(cycle=Cycle(0.25), output=False, use_da=False, **data)
+    DT = 1
+    sim = Simulation(cycle=Cycle(DT), output=False, use_da=False, **data)
     # control = [reversal_controller(bank, reverse_velocity, vectorized=False)]*2
+
     control = [lambda **d: bank, lambda **d: -bank]
-    sim.run(x0, control, AeroRatios=aero, TimeConstant=time_constant)
+    sim.run(x0, control, AeroRatios=aero, TimeConstant=time_constant, StepsPerCycle=10)
     # sim.plot()
     # plt.show()
     m0 = srp_trim(sim.history)
     return m0
+
 
 class SRPController:
     
@@ -102,7 +105,7 @@ class SRPController:
         self.target = target 
         self.update = update_function
         self.vmc = VMC()
-        self.vmc.null_sample(np.product(N)) 
+        # self.vmc.null_sample(np.product(N)) 
         
         self.aeroscale = np.array([1,1]) # Lift and drag modifiers in the prediction 
 
@@ -146,8 +149,6 @@ class SRPController:
         plt.xlabel("Update #")
         plt.ylabel("Optimal Ignition Velocity (m/s)")
 
-
-        
         
     def predict(self, state):
         # A method that integrates forward from the current state and gets the predicted fuel performance
@@ -210,6 +211,7 @@ class SRPController:
 
             self.control_params = (B,Vr)
             self.vmc.control = reversal_controller(B, Vr, vectorized=True)
+
         else:
             if velocity >= self.history['params'][-1][0]:
 #                 V1,V2 = boxgrid([[min(4600, velocity-400), min(5000, velocity+2)], [500, 1200]], self.N, interior=True).T  # Allowing 0 set of points above the current velocity means no 90 deg arc 
@@ -233,6 +235,7 @@ class SRPController:
 
         
         """
+
         r,th,ph,v,fpa,azi,m = current_state
 
         # Aero ratio update - no filter, just uses the current ratio to predict later 
@@ -243,21 +246,21 @@ class SRPController:
         # Initialize on the fly if needed
         if self.profile is None:
             if self.constant_controller:
-                banks = [0.5070640774215105, 0.7186126052854204, 0.6159175070853673, 0.808363021976321, 0.7670262765343501, 0.66598089878731, 0.7909097294563778, 0.8993038619486571,0.1974977837783057, 0.3812166524092878, 0.08, 1.028]
-                efpa = np.radians([-16.3-0.5, -16.3, -16.3-0.25,-16.3+0.25, -16.3+0.125, -16.3-0.125, -16.1, -16.3+0.5, -16.3-1, -16.3-0.75, -17.4, -15.4])
-                vr = [2847.3684210526317, 2935, 2895, 3021, 2957.89,  2910.526, 2989.47, 3126.315789473684, 2757.8947368421054, 2789.4736842105262, 2650,  3332.95]
-                azi = [-0.5, -0.25, 0, 0.25, 0.5] # currently just for -16.9 deg 
-#                 vra = [3310, 3069, 2824, 2624, 2393] # "gradient" is roughly -950 m/s per deg  
-
-                k = np.argsort(efpa)
-                efpa = np.array(efpa)[k]
-                banks = np.array(banks)[k]
-                vr = np.array(vr)[k]
-                
-                b = interp1d(efpa, banks, fill_value='extrapolate')(current_state[4])
-                v0 = interp1d(efpa, vr, fill_value='extrapolate')(current_state[4])
-                dv0 = np.degrees(current_state[5])*-950    # correction for azimuth 
-                v0 += dv0
+                ic = np.radians(boxgrid([(-17.2, -15.8), (-0.5, 0.5)], [15, 9], interior=True).T) # dont touch this, it was used to generate srp_params.csv with N=[30, 100]
+                df = pd.read_csv("./data/FuelOptimal/srp_params_opt.csv")
+                data = df.values.T[1:]
+                bank_data = data[1]
+                v0_data = data[2]
+                print(ic.shape)
+                print(data.shape)
+                # b = interp2d(ic[0], ic[1], bank_data, kind='linear')(fpa, azi)[0]
+                # v0 = interp2d(ic[0], ic[1], v0_data, kind='linear')(fpa, azi)[0]
+                bank_model = Rbf(*ic, data[1], function="Linear")
+                b = np.radians(bank_model(fpa, azi))
+                rev_model = Rbf(*ic, data[2], function="Linear")
+                v0 = rev_model(fpa, azi)
+                print(b)
+                print(v0)
                 if 1 or self.debug:
                     print("SRP Controller initialized to {:.2f} deg, {:.1f} m/s".format(np.degrees(b), v0))
                 self.set_profile((b,v0))
@@ -280,7 +283,9 @@ class SRPController:
             else:
 
                 if 1:  # Sequential optimization based parameter updates
-                    sol = self.optimize(current_state, verbose=True)
+                    # sol = self.optimize(current_state, verbose=True)      # 1-D optimization based 
+                    # sol = self.optimize_mc(current_state, max_iters=3)    # Repeated 1-D VMC based 
+                    sol = self.optimize_nonlinear(current_state, )           # Nonlinear optimization-based  'Powell'
                     params = sol['params']
                     fuel = sol['fuel']
                     self.set_profile(params)
@@ -322,19 +327,6 @@ class SRPController:
                         traj = self.vmc.mc[opt]
     #                         print(np.shape(traj))
                         self.set_profile(params)
-    #                         mf = self.predict(current_state)   
-    #                         print(np.shape(self.sim.history))
-                
-                        # plot the single integration trajectory and the optimal one from the vectorized to determine why they are different... 
-    #                         for x,label in zip([traj, self.sim.history],['Single','Vector']):
-    #                             r,th,ph,V,fpa,psi,m = x.T 
-    #                             h = (r-3397e3)/1000
-    #                             for i,state in enumerate([h, np.degrees(th), np.degrees(ph), np.degrees(fpa), np.degrees(psi)]):
-                            
-    #                                 plt.figure(60+i)
-    #                                 plt.plot(V, state, label=label)
-    #                                 plt.xlabel('Velocity')
-    #                                 plt.legend()
 
                         self.history['n_updates'] += 1 
                         self.history['params'].append(params)
@@ -387,32 +379,175 @@ class SRPController:
             self.banksign =  s
         return bank 
 
+    def optimize_mc(self, x0, max_iters=5):
+        """ Rather than do full factorial Monte Carlos of parameters, do 1-D searches with fewer points """
+
+        velocity = x0[3]
+        improvement_tolerance = 10 # kg 
+        current_bank, current_reverse = self.history['params'][-1]
+
+        if len(self.N) == 2:
+            N1,N2 = self.N
+        else:
+            N1 = N2 = self.N
+
+        fuel_best = 1e6 
+        for iteration in range(max_iters):
+                
+            # Fix the bank angle, optimize reversal          
+            if not iteration or velocity <= current_reverse:  # After reversal, don't bother updating it 
+                pass 
+
+            else: 
+                bank_range = [current_bank, current_bank]
+                reversal_range = current_reverse + np.array([-100, 100])
+                N = [1, N2]
+                B,Vr = boxgrid([bank_range, reversal_range], N, interior=True).T
+                self.control_params = (B,Vr)
+                self.vmc.null_sample(N2) 
+                self.vmc.samples[0] = self.aeroscale[0] - 1
+                self.vmc.samples[1] = self.aeroscale[1] - 1
+                self.vmc.control = reversal_controller(B, Vr, vectorized=True)
+                self.vmc.run(x0, save=False, stepsize=[1, 0.05, 10], time_constant=self.time_constant)
+                # if self.debug:
+                #     self.vmc.plot()
+                    # self.vmc.plot_trajectories()
+
+                self.vmc.srp_trim(self.srpdata, self.target, vmax=690, hmin=2000, optimize=False)
+                fuel = np.array(self.vmc.mc_srp['fuel'])
+                opt = np.argmin(fuel)
+                if fuel[opt] <= fuel_best:
+                    current_bank, current_reverse = self.control_params[0][opt], self.control_params[1][opt]
+                    improvement = fuel_best - fuel[opt]
+                    fuel_best = min(fuel[opt], fuel_best)
+                    traj = self.vmc.mc[opt]
+                    print("  Solution: {:.2f} deg, {:.1f} m/s, {:.1f} kg".format(np.degrees(current_bank), current_reverse, fuel_best))
+                else:
+                    print("Reversal opt failed")
+                    # self.set_profile(params)
+
+            if iteration and improvement <= improvement_tolerance:
+                print("Solution is only mildly improving, terminating optimization")
+                break
+    
+
+            # Fix the reversal, optimize bank angle
+            bank_range = current_bank + np.radians([-5, 5])
+            reversal_range = [current_reverse, current_reverse]
+            N = [N1, 1]
+            B,Vr = boxgrid([bank_range, reversal_range], N, interior=True).T
+            self.control_params = (B,Vr)
+            self.vmc.null_sample(N1) 
+            self.vmc.samples[0] = self.aeroscale[0] - 1
+            self.vmc.samples[1] = self.aeroscale[1] - 1
+            self.vmc.control = reversal_controller(B, Vr, vectorized=True)
+            self.vmc.run(x0, save=False, stepsize=[1, 0.05, 10], time_constant=self.time_constant)
+            # if self.debug:
+            #     self.vmc.plot()
+                # self.vmc.plot_trajectories()
+
+            self.vmc.srp_trim(self.srpdata, self.target, vmax=690, hmin=2000, optimize=False)
+            fuel = np.array(self.vmc.mc_srp['fuel'])
+            opt = np.argmin(fuel)
+            if fuel[opt] <= fuel_best:
+                current_bank, current_reverse = self.control_params[0][opt], self.control_params[1][opt]
+                improvement = fuel_best - fuel[opt]
+                fuel_best = min(fuel_best,fuel[opt])
+                traj = self.vmc.mc[opt] 
+                print("  Solution: {:.2f} deg, {:.1f} m/s, {:.1f} kg".format(np.degrees(current_bank), current_reverse, fuel_best))
+            else:
+                print("Bank opt failed")
+
+            if improvement <= improvement_tolerance:
+                print("Solution is only mildly improving, terminating optimization")
+                break
+
+
+        self.set_profile((current_bank, current_reverse))
+        return {'params': (current_bank, current_reverse), 'fuel': fuel_best, 'traj': traj} 
+
+    def optimize_nonlinear(self, x0, method='Nelder-Mead'):
+        """ Try SQP-based optimization """
+        from scipy.optimize import minimize 
+
+        scalar = False 
+
+        aero = self.aeroscale
+        target = self.target
+        srpdata = self.srpdata
+
+        obj =  lambda p: _objective(*p, x0=x0, srp_trim=lambda x: srpdata.srp_trim(x, target, vmax=700), aero=aero, time_constant=self.time_constant)
+        p0 = self.history['params'][-1]
+        vr = p0[1]
+        # In theory we could do something like, check if the current is a valid solution, and if so, use tight bounds. 
+        # If not, use looser bounds? 
+        # t0 = time.time()
+        # print(obj(p0))
+        # t1 = time.time()
+        # print("Took {:.2f} s".format(t1-t0))
+        bounds = [p0[0] + np.radians([-3, 3]), p0[1] + np.array([-100, 100]) ]
+
+
+        if scalar: # scalar opt on just bank 
+            obj = lambda p: _objective(p[0], reverse_velocity=vr, x0=x0, srp_trim=lambda x: srpdata.srp_trim(x, target), aero=aero, time_constant=self.time_constant)
+            p0 = p0[0]
+            bounds = [bounds[0]]
+            # print(vr)
+            # print(bounds)
+            # print(obj(p0))
+
+        t0 = time.time()
+        if method in ["Nelder-Mead", "Powell"]: # These work exactly the same every single time for some reason 
+            sol = minimize(obj, p0, method='Nelder-Mead') # Works well, but fairly slow ~ 2 minutes from a good guess 
+        else:
+            sol = minimize(obj, p0, method=method, bounds=bounds) # Fails without "good" bounds, but fast otherwise! 
+        # sol = minimize(obj, p0, method='L-BFGS-B', bounds=bounds) # Worked fairly well, but slower and less optimal than SLSQP typically 
+        # sol = minimize(obj, p0, method='TNC', bounds=bounds)  # Similar to LBFGS, but slower. 
+        # sol = minimize(obj, p0, method='trust-constr', bounds=bounds)  # Didnt work well even with good bounds/guess 
+        t1 = time.time()
+
+        # Here we could/should check if the solution is on the boundary, indicating further improvement is possible with different bounds. 
+        # if np.any(bounds[0] == sol.x[0]) or np.any(bounds[1] == sol.x[1]):
+        #     print("Solution on boundary")
+
+        if scalar:
+            print("{} Optimization: \n\t Bank* = {:.2f} deg\n\tVr* = {:.2f} m/s\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(method, np.degrees(sol.x[0]), vr, sol.fun, sol.nfev, t1-t0))
+            output = {'params': (sol.x[0],vr), 'fuel': sol.fun,} 
+        else:
+            if self.debug:
+                print("{} Optimization: \n\t Bank* = {:.2f} deg\n\tVr* = {:.2f} m/s\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(method, np.degrees(sol.x[0]), sol.x[1], sol.fun, sol.nfev, t1-t0))
+            output = {'params': sol.x, 'fuel': sol.fun,} 
+
+        return output
+
 
     def optimize(self, x0, verbose=True):
         """ Uses sequential univariate optimization to determine optimal parameters """
         from functools import partial 
-        from scipy.optimize import minimize_scalar
-        import time 
+        from scipy.optimize import minimize_scalar, minimize
 
         # Problem data 
         target = self.target
         srpdata = self.srpdata
-        aero = self.aeroscale # [a-1 for a in self.aeroscale]
+        aero = self.aeroscale 
 
 
         # Optimization tolerances
         fuel_tol = 5 # kg 
         bank_tol = np.radians(0.25) # 0.5 degree tolerance 
         vr_tol = 10  # m/s
-        max_iters = 5
+        max_iters = 3
 
         # Initialize our search parameters 
         if self.history['params']: #stuff is not None:
             bank_best, vr_best = self.history['params'][-1]
-            fuel_best = 0 # should we set this to the previous value? 
+            fuel_best = 6000 # should we set this to the previous value? 
+
             # Optimization bounds
-            bank_lims = bank_best + np.radians([-5, 5])
-            vr_lims = vr_best + np.array([-250, 250])
+            bank_range = np.radians([-5, 5])
+            bank_lims = bank_best + bank_range 
+            vr_range = np.array([-150, 150])
+            vr_lims = vr_best + vr_range
 
         else:
             bank_best = np.radians(0) # doesnt actually get used except in the first delta computation
@@ -424,52 +559,68 @@ class SRPController:
 
         # TODO: Handle failure scenarios where no good solution is found for the initial reversal (or bank)
 
-        bank_first = True # whether to optimize bank angle then reversal, or vice versa 
-        bank_delta = 1e6
-        fuel_delta = 1e6
+        BANK_ANGLE_OPTIMIZATION_FAILED = False
+        REVERSAL_ANGLE_OPTIMIZATION_FAILED = False
 
         T0 = time.time()
         for i in range(max_iters):
             if verbose:
                 print("\nIteration {}".format(i+1))
 
+            # fix the reversal, optimize bank 
+            t0 = time.time()
+            bank_fun = partial(_objective, x0=x0, srp_trim=lambda x: srpdata.srp_trim(x, target), reverse_velocity=vr_best, aero=aero, time_constant=self.time_constant)
+            bank_sol = minimize_scalar(bank_fun, bounds=bank_lims, method='Bounded')
+            # bank_sol = minimize(bank_fun, x0=bank_best, bounds=[bank_lims], method='SLSQP')
+            t1 = time.time()
 
-            if i or bank_first:
-                # fix the reversal, optimize bank 
-                t0 = time.time()
-                bank_fun = partial(_objective, x0=x0, srp_trim=lambda x: srpdata.srp_trim(x, target), reverse_velocity=vr_best, aero=aero, time_constant=self.time_constant)
-                bank_sol = minimize_scalar(bank_fun, bounds=bank_lims, method='Bounded')
-                t1 = time.time()
-
-                # if (not bank_sol.success) or bank_sol.fun > 6000:
-                    # go back and do it again with different vr_best
-
+            if bank_sol.fun <= fuel_best:
+                BANK_ANGLE_OPTIMIZATION_FAILED = False
                 if verbose:
-                    print("Bank optimization: \n\tu* = {:.2f} deg\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(np.degrees(bank_sol.x), bank_sol.fun, bank_sol.nfev, t1-t0))
+                    print("    Bank optimization: \n\tu* = {:.2f} deg\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(np.degrees(bank_sol.x), bank_sol.fun, bank_sol.nfev, t1-t0))
                 bank_delta = np.abs(bank_best - bank_sol.x)
                 bank_best = bank_sol.x 
                 fuel_delta = np.abs(fuel_best-bank_sol.fun)
-                fuel_best = min(fuel_best, bank_sol.fun)  # TODO: Check if the cost actually decreased...if it didnt, we probably dont want to update the results
-                bank_lims = bank_best + np.radians([-5, 5]) # Update bounds for the next iteration
+                fuel_best = bank_sol.fun  
+                bank_lims = bank_best + bank_range # Update bounds for the next iteration
 
                 if i and fuel_delta < fuel_tol:
-                    break 
+                    break
+            else:
+                print("Bank angle optimization with bounds [{:.2f} {:.2f}] deg could not improve the current solution".format(*np.degrees(bank_lims)))
+                BANK_ANGLE_OPTIMIZATION_FAILED = True
 
             # fix the bank, optimize reversal 
             t0 = time.time()
             vr_fun = partial(_objective, bank=bank_best, x0=x0, srp_trim=lambda x: srpdata.srp_trim(x, target), aero=aero, time_constant=self.time_constant)
             vr_sol = minimize_scalar(lambda x: vr_fun(reverse_velocity=x), bounds=vr_lims, method='Bounded')
             t1 = time.time()
-            if verbose:
-                print("Reversal optimization: \n\tVr* = {:.2f} deg\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(vr_sol.x, vr_sol.fun, vr_sol.nfev, t1-t0))
+            if vr_sol.fun <= fuel_best:
+                if verbose:
+                    print("Reversal optimization: \n\tVr* = {:.2f} m/s\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(vr_sol.x, vr_sol.fun, vr_sol.nfev, t1-t0))
 
-            vr_delta = np.abs(vr_best - vr_sol.x)
-            vr_best = vr_sol.x
-            fuel_delta = np.abs(fuel_best-vr_sol.fun)
-            fuel_best = min(fuel_best, vr_sol.fun)
-            vr_lims = vr_best + np.array([-250, 250])
+                vr_delta = np.abs(vr_best - vr_sol.x)
+                vr_best = vr_sol.x
+                fuel_delta = np.abs(fuel_best-vr_sol.fun)
+                fuel_best = vr_sol.fun
+                vr_lims = vr_best + vr_range
+            else:
+                if verbose:
+                    print("    Reversal optimization with bounds [{:.1f} {:.1f}] deg could not improve the current solution".format(*vr_lims))
+                REVERSAL_ANGLE_OPTIMIZATION_FAILED = True
 
-            if (vr_delta < vr_tol and bank_delta < bank_tol) or fuel_delta < fuel_tol:
+            if BANK_ANGLE_OPTIMIZATION_FAILED and REVERSAL_ANGLE_OPTIMIZATION_FAILED:
+                print("Both optimization steps failed...")
+                if fuel_best > 5000:
+                    print("changing bounds and trying again") 
+                    # Change the center point, the range, or both? If nominally we use a center point and small range, maybe try a big range 
+                    bank_lims = np.radians([10, 65])
+                    vr_lims = [2000, 4000]
+                else:
+                    print("...but solution is acceptable, optimization terminating.")
+                    break 
+            # Basically, only break if both optimizations succeeded and the solutions didnt change by much
+            if not REVERSAL_ANGLE_OPTIMIZATION_FAILED and vr_delta < vr_tol and (fuel_delta < fuel_tol): # and not BANK_ANGLE_OPTIMIZATION_FAILED and bank_delta < bank_tol:
                 break 
 
         TF = time.time()
@@ -477,12 +628,15 @@ class SRPController:
             print("\nTotal optimization time: {:.1f} s".format(TF-T0))
             print("Solution = {:.2f} deg, reversal at V = {:.2f} using {:.1f} kg of fuel".format(np.degrees(bank_best), vr_best, fuel_best))
         
-        return {'params': (bank_best, vr_best), 'fuel': fuel_best,} # 'traj': 
+        return {'params': (bank_best, vr_best), 'fuel': fuel_best,} 
 
 
 
-# def update_rule_maker(Vr):
-    # return update_rule 
+def update_rule_maker(Vr):
+    """ Utility to generate an update rule with any set of reversal velocities """
+    def rule(history, state, **kwargs):
+        return np.any([(history['n_updates'] == i and v <= vr) for i, vr in enumerate(Vr)])
+    return rule 
 
 def update_rule(history, state, **kwargs):
     r,th,ph,v,gamma,psi,m = state
@@ -506,15 +660,15 @@ class SRPControllerTrigger(Trigger):
         super(SRPControllerTrigger, self).__init__(self.__Trigger, 'SRP Controller ignition point reached')
 
     
-
 def test_single():
-    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16.8))    
+    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16.5))    
     target = Target(0, 753.7/3397, 0)  # This is what all the studies have been done with so far 
     # target = Target(0, 755/3397, 0)  
 
     srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
 
-    mcc = SRPController(N=[30, 50], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
+    # mcc = SRPController(N=[30, 50], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
+    mcc = SRPController(N=[200, 200], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
     mcc(x0)
     plt.show()
 
@@ -526,7 +680,7 @@ def test_sim(InputSample):
     TC = 2      # time constant 
     srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
 
-    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule, debug=False, time_constant=TC)
+    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5400, 4500, 2500, 1500]), debug=False, time_constant=TC)
     Vf = 500     # Anything lower than the optimal trigger point is fine 
     
     states = ['Entry']
@@ -729,8 +883,8 @@ def test_sweep():
             print(efpa, azi)
             x0 = InitialState(vehicle='heavy', fpa=np.radians(efpa), psi=np.radians(azi)) 
             for boolean in [1,]:
-                mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
-                # mcc = SRPController(N=[3, 5], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
+                # mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
+                mcc = SRPController(N=[3, 5], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
                 mcc(x0)
                 data.append([mcc.history['fuel'][-1], *mcc.history['params'][-1]])
 
@@ -739,7 +893,7 @@ def test_sweep():
     else:
         import pandas as pd 
         ic = boxgrid([(-17.2, -15.8), (-0.5, 0.5)], [15, 9], interior=True) # dont touch this, it was used to generate srp_params.csv with N=[30, 100]
-        df = pd.read_csv("./data/FuelOptimal/srp_params.csv")
+        df = pd.read_csv("./data/FuelOptimal/srp_params_opt.csv")
         data = df.values.T[1:]
         print(data.shape)
 
@@ -782,8 +936,8 @@ def test_sweep():
 
 if __name__ == "__main__":
     
-    # test_single()
-    test_sweep()
+    test_single()
+    # test_sweep()
     # test_sim()
     # plt.show()
     # parametric_sensitivity()
