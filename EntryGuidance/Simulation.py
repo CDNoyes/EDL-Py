@@ -525,12 +525,7 @@ class Simulation(Machine):
             self.control_history.append(self.u)
             self.times.append(self.time)
 
-        # else:
-        #     if self._output:
-        #         print("No better endpoint found")
-        # return
 
-    # def save(self): #Create a .mat file
     def gui(self):
         import datetime
         uniq_filename = str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '.')
