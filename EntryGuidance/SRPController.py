@@ -23,6 +23,7 @@ from EntryGuidance.Target import Target
 from EntryGuidance.VMC import VMC, velocity_trigger
 from EntryGuidance.Triggers import Trigger, VelocityTrigger
 
+SRPFILE = os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_21k_7200kg.pkl")
 
 def reversal_controller(bank, v_reverse, vectorized):
     """ This version requires v_reverse to be the same length as the state
@@ -66,7 +67,7 @@ def switch_controller(v_reverse, vectorized):
 
 def _objective(bank, reverse_velocity, x0, srp_trim, aero, time_constant):
     """ This auxiliary function is used by SRPController.optimize method """
-    Vf = 500
+    Vf = 450
     states = ['Bank1','Bank2']
     trigger = [VelocityTrigger(reverse_velocity), VelocityTrigger(Vf)]
     data = {'states':states, 'conditions': trigger}
@@ -115,9 +116,9 @@ class SRPController:
         self.control_params = []  # These are actual the whole space of control params over which we are searching for the optimum       
         
         # Construct a simulation here for use in predictions
-        Vf = 470 
-        self.sim = Simulation(cycle=Cycle(0.1), output=False, use_da=False, **EntrySim(Vf=Vf), )
-        self.sim.run([2000+3397e3, self.target.longitude*0.99, self.target.latitude, Vf + 10, np.radians(-10), 0, 8500], [lambda **d: 0])
+        Vf = 450 
+        self.sim = Simulation(cycle=Cycle(1), output=False, use_da=False, **EntrySim(Vf=Vf), )
+        self.sim.run([2000+3397e3, self.target.longitude*0.99, self.target.latitude, Vf + 10, np.radians(-10), 0, 7200], [lambda **d: 0])
         # self.predict() # This is just to initialize an edlModel
         self.history = {"n_updates": 0,  "params": [], "n_reversals": 0 ,"fuel": [], "state": [], "velocity": []}     
 
@@ -154,15 +155,32 @@ class SRPController:
         # A method that integrates forward from the current state and gets the predicted fuel performance
         # The update method can utilize this to check if an update should occur (if the discrepancy is large etc)
         
-        def ref_profile(velocity, **args):
-            sigma = self.profile(velocity)
-            return sigma 
-        self.sim.run(state, [ref_profile], TimeConstant=self.time_constant) # Make sure the time constant matches what we use in the VMC in __call__
-        mf = self.srp_trim(self.sim.history)
-        return mf 
+        # def ref_profile(velocity, **args):
+        #     sigma = self.profile(velocity)
+        #     return sigma 
+        # self.sim.run(state, [ref_profile], TimeConstant=self.time_constant, StepsPerCycle=10) # Make sure the time constant matches what we use in the VMC in __call__
         
-    def srp_trim(self, traj):
-        return self.srpdata.srp_trim(traj, self.target)
+        Vf = 450
+        states = ['Bank1','Bank2']
+        bank = self.history['params'][-1][0]
+        reverse_velocity = self.history['params'][-1][1]
+        trigger = [VelocityTrigger(reverse_velocity), VelocityTrigger(Vf)]
+        data = {'states':states, 'conditions': trigger}
+        DT = 1
+        self.sim = Simulation(cycle=Cycle(DT), output=False, use_da=False, **data)
+        # control = [reversal_controller(bank, reverse_velocity, vectorized=False)]*2
+
+        control = [lambda **d: bank, lambda **d: -bank]
+        self.sim.run(state, control, AeroRatios=self.aeroscale, TimeConstant=self.time_constant, StepsPerCycle=10)
+
+
+        data = self.srp_trim(self.sim.history, full_return=True)
+        return data 
+        
+
+    def srp_trim(self, traj, *args, **kwargs):
+        """Utility to allow direct calls to srp_trim with passing the target"""
+        return self.srpdata.srp_trim(traj, self.target, *args, **kwargs)
 
 
     def set_profile(self, params):
@@ -243,24 +261,22 @@ class SRPController:
             Lm, Dm = self.sim.edlModel.aeroforces(r,v,m)  # Nominal model value 
             self.aeroscale = [drag/Dm, lift/Lm]
         
+        # TODO: make this an init method or something 
         # Initialize on the fly if needed
         if self.profile is None:
             if self.constant_controller:
-                ic = np.radians(boxgrid([(-17.2, -15.8), (-0.5, 0.5)], [15, 9], interior=True).T) # dont touch this, it was used to generate srp_params.csv with N=[30, 100]
-                df = pd.read_csv("./data/FuelOptimal/srp_params_opt.csv")
-                data = df.values.T[1:]
-                bank_data = data[1]
-                v0_data = data[2]
-                print(ic.shape)
-                print(data.shape)
-                # b = interp2d(ic[0], ic[1], bank_data, kind='linear')(fpa, azi)[0]
-                # v0 = interp2d(ic[0], ic[1], v0_data, kind='linear')(fpa, azi)[0]
-                bank_model = Rbf(*ic, data[1], function="Linear")
-                b = np.radians(bank_model(fpa, azi))
-                rev_model = Rbf(*ic, data[2], function="Linear")
-                v0 = rev_model(fpa, azi)
-                print(b)
-                print(v0)
+                # df = pd.read_csv("./data/FuelOptimal/srp_params_7200kg_old.csv")
+                # data = df.values.T[1:]
+                # bank_data = data[1]
+                # v0_data = data[2]
+                # ic = np.radians(data[3:]) # TODO: check if the inputs are inside the box defined by these points. The RBFs will extrapolate, often with poor results.
+                # bank_model = Rbf(*ic, data[1], function="Linear")
+                # b = np.radians(bank_model(fpa, azi))
+                # rev_model = Rbf(*ic, data[2], function="Linear")
+                # v0 = rev_model(fpa, azi)
+
+                b = np.radians(35.24)
+                v0 = 2702.8 - 500 * np.degrees(azi)
                 if 1 or self.debug:
                     print("SRP Controller initialized to {:.2f} deg, {:.1f} m/s".format(np.degrees(b), v0))
                 self.set_profile((b,v0))
@@ -270,8 +286,9 @@ class SRPController:
         
        
         if self.update(self.history, current_state, **kwargs):
-#             if self.debug:
             print("Update triggered...")
+            if self.debug:
+                print("Current aero ratios: {}".format(self.aeroscale))
             if 0: # Just used for debugging to turn the actual replanning off 
                 print(self.history)
                 self.history['n_updates'] += 1
@@ -285,25 +302,29 @@ class SRPController:
                 if 1:  # Sequential optimization based parameter updates
                     # sol = self.optimize(current_state, verbose=True)      # 1-D optimization based 
                     # sol = self.optimize_mc(current_state, max_iters=3)    # Repeated 1-D VMC based 
-                    sol = self.optimize_nonlinear(current_state, )           # Nonlinear optimization-based  'Powell'
+                    sol = self.optimize_nonlinear(current_state, )           # Nonlinear optimization-based 'Powell'
                     params = sol['params']
                     fuel = sol['fuel']
                     self.set_profile(params)
-                    self.history['n_updates'] += 1 
                     self.history['params'].append(params)
-                    self.history['fuel'].append(fuel) 
-                    self.history['state'].append(current_state)
-                    # Dont actually have these with these method, have to integrate one more time to get state/vel
-                    # self.history['velocity'].append(np.linalg.norm(self.vmc.mc_srp['ignition_state'][opt][3:]))
-                    self.history['velocity'].append(500)
 
                     if 1: # diagnostics 
                         print("- Optimum: {:.1f} kg at {:.1f} deg, reversal at {:.1f}".format(fuel, np.degrees(params[0]), params[1]))
-                        # print("- Predicted Ignition velocity = {:.1f} m/s".format(np.linalg.norm(self.vmc.mc_srp['ignition_state'][opt][3:])))
-#       
                         # print("Ignition State:")
-                        # for state in self.vmc.mc_srp['ignition_state'][opt]:
+                        # for state in data['ignition_state']:
                         #     print("{:.1f}".format(state))
+
+                    # Don't actually have these with these method, have to integrate one more time to get state/vel
+                    data = self.predict(current_state)
+                    if self.debug:
+                        print("Optimization: {:.2f} kg\nIntegration: {:.2f} kg".format(fuel, data['fuel']))
+
+                    self.history['n_updates'] += 1 
+                    self.history['fuel'].append(fuel) 
+                    self.history['state'].append(current_state)
+                    self.history['velocity'].append(np.linalg.norm(data['ignition_state'][3:]))
+                    if 1:
+                        print("- Predicted Ignition velocity = {:.1f} m/s".format(self.history['velocity'][-1]))
 
                 else: # Vectorized monte carlo to brute force a solution, but also good because of the plots it generates 
                     self.set_control_params(current_state[3],)
@@ -467,7 +488,7 @@ class SRPController:
         return {'params': (current_bank, current_reverse), 'fuel': fuel_best, 'traj': traj} 
 
     def optimize_nonlinear(self, x0, method='Nelder-Mead'):
-        """ Try SQP-based optimization """
+        """ Optimization based approach """
         from scipy.optimize import minimize 
 
         scalar = False 
@@ -511,11 +532,11 @@ class SRPController:
         #     print("Solution on boundary")
 
         if scalar:
-            print("{} Optimization: \n\t Bank* = {:.2f} deg\n\tVr* = {:.2f} m/s\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(method, np.degrees(sol.x[0]), vr, sol.fun, sol.nfev, t1-t0))
+            print("{} Optimization: \n\tBank* = {:.2f} deg\n\tVr*    = {:.2f} m/s\n\tFuel  = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(method, np.degrees(sol.x[0]), vr, sol.fun, sol.nfev, t1-t0))
             output = {'params': (sol.x[0],vr), 'fuel': sol.fun,} 
         else:
             if self.debug:
-                print("{} Optimization: \n\t Bank* = {:.2f} deg\n\tVr* = {:.2f} m/s\n\tFuel = {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(method, np.degrees(sol.x[0]), sol.x[1], sol.fun, sol.nfev, t1-t0))
+                print("{} Optimization: \n\t Bank* = {:.2f} deg\n\tVr* =   {:.2f} m/s\n\tFuel =  {:.1f} kg\n\tFound via {} calls over {:.1f} s".format(method, np.degrees(sol.x[0]), sol.x[1], sol.fun, sol.nfev, t1-t0))
             output = {'params': sol.x, 'fuel': sol.fun,} 
 
         return output
@@ -635,6 +656,7 @@ class SRPController:
 def update_rule_maker(Vr):
     """ Utility to generate an update rule with any set of reversal velocities """
     def rule(history, state, **kwargs):
+        r,th,ph,v,gamma,psi,m = state
         return np.any([(history['n_updates'] == i and v <= vr) for i, vr in enumerate(Vr)])
     return rule 
 
@@ -661,11 +683,10 @@ class SRPControllerTrigger(Trigger):
 
     
 def test_single():
-    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16.5))    
-    target = Target(0, 753.7/3397, 0)  # This is what all the studies have been done with so far 
-    # target = Target(0, 755/3397, 0)  
+    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16))    
+    target = Target(0, 700/3397, 0)  # This is what all the studies have been done with so far 
 
-    srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
+    srpdata = pickle.load(open(SRPFILE,'rb'))
 
     # mcc = SRPController(N=[30, 50], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
     mcc = SRPController(N=[200, 200], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
@@ -673,14 +694,14 @@ def test_single():
     plt.show()
 
 
-def test_sim(InputSample):
+def test_sim(InputSample, EFPA=-16.5):
     """ Runs a scalar simulation with the SRP Controller called multiple times """
-    x0 = InitialState(vehicle='heavy', fpa=np.radians(-16.5))    
+    x0 = InitialState(vehicle='heavy', fpa=np.radians(EFPA))    
     target = Target(0, 753.7/3397, 0)   # This is what all the studies have been done with so far 
     TC = 2      # time constant 
-    srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
+    srpdata = pickle.load(open(PKLFILE,'rb'))
 
-    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5400, 4500, 2500, 1500]), debug=False, time_constant=TC)
+    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5490, 4000, 2000, 1200]), debug=False, time_constant=TC)
     Vf = 500     # Anything lower than the optimal trigger point is fine 
     
     states = ['Entry']
@@ -698,52 +719,32 @@ def test_sim(InputSample):
 
 def parametric_sensitivity():
     """
-    For an EFPA of -16.5 deg, with 10% variations, 
-    30x30 grid, and target = 753.7 km, and updates at V=[5400, 4500, 2500, 1500]
-    
-        Relative to 1621.2 kg nominal:
-        [  70.65144012 -118.78597476]  Drag
-        [ -34.24647146   -0.52222875]  Lift
-        [  47.07930184 -115.1438377 ]  rho0
-        [  46.97824707   97.19422051]  hs
-
-    EFPA of -16
-        Relative to 1692.5 kg nominal:
-        [[200.6287932  -71.6260923 ]
-        [ -5.18122371  47.90443347]
-        [119.93834177 -20.99023425]
-        [119.16541008  27.11436686]]
-
-    EFPA of -16.8
-        Relative to 1624.7 kg nominal:
-        [[ 75.24256561  -8.22029269]
-        [-59.46041707 165.03898967]
-        [ 61.98970408 165.66392808]
-        [302.56148349 110.7214038 ]]
-
-        -16.8 w/ initial replan 
-        Relative to 1631.9 kg nominal:
-        [[ -16.00116493 -141.97580872]
-        [ -10.55514601  115.75582444]
-        [  62.31822491    6.34079603]
-        [ 295.3585298   103.51845012]]
-    
+   
     """
-    mnom = test_sim([0,0,0,0])
-    inps = np.eye(4) * 0.1 
-    data = []
-    for sample in inps:
-        print("\nSAMPLE {}".format(sample))
-        neg = test_sim(-sample)
-        pos = test_sim(sample)
-        data.append([neg, pos])
+    totals = [] # [-/= fuel cases]
+    m0 = []  # nominal fuel for each efpa 
+    # for efpa in [-16.9, -16.5, -16.1]:
+    for efpa in [-16.5]:
 
-    data = np.array(data)
-    delta = data - mnom 
-    print("\nRelative to {:.1f} kg nominal: ".format(mnom))
-    print(delta)
+        mnom = test_sim([0,0,0,0])
+        m0.append(mnom)
+        inps = np.eye(4) * 0.1 
 
-def plot_parametric():
+        for sample in inps:
+            print("\nSAMPLE {}".format(sample))
+            neg = test_sim(-sample)
+            pos = test_sim(sample)
+            data.append([neg, pos])
+        totals.append(data)
+        data = np.array(data)
+        delta = data - mnom 
+        print("\nRelative to {:.1f} kg nominal: ".format(mnom))
+        print(delta)
+
+
+    plot_parametric(efpas, mnom, totals)
+
+def plot_parametric(efpa, m0, data):
     """ Some consistent conclusions, many obvious but now corroborated
 
         Consistent results:
@@ -766,28 +767,12 @@ def plot_parametric():
         while in the last case, the plus variation incurred a larger penalty 
 
     """
-    efpa = [-16, -16.5, -16.8]
-    m0 = [1692.5, 1621.2, 1624.7]
-
-    deltas = [
-        [[200.6287932,  -71.6260923 ],
-        [ -5.18122371,  47.90443347],
-        [119.93834177, -20.99023425],
-        [119.16541008,  27.11436686]],
-
-        [[  70.65144012, -118.78597476],  
-        [ -34.24647146,   -0.52222875],  
-        [  47.07930184, -115.1438377 ],  
-        [  46.97824707,   97.19422051]],
-
-        [[ 75.24256561,  -8.22029269],
-        [-59.46041707, 165.03898967],
-        [ 61.98970408, 165.66392808],
-        [302.56148349, 110.7214038 ]]]
-    deltas = np.array(deltas)
+    n = len(efpa)
+    m0 = np.array(m0)
+    deltas = np.array([d-m for d,m in zip(data, m0)])
     print(deltas.shape)
 
-    totals = [nom + delta for nom,delta in zip(m0, deltas)]
+    totals = data #[nom + delta for nom,delta in zip(m0, deltas)]
     percents = [delta/total for total,delta in zip(totals, deltas)] # fractional change in propellant 
     worst = np.max(totals, axis=(1,2))
     best = np.min(totals, axis=(1,2))
@@ -801,10 +786,10 @@ def plot_parametric():
     # colors = ['r','g','b',]
     plt.figure()
     plt.suptitle("Fuel Usage")
-    for i in range(3):
+    for i in range(n):
         data = totals[i]
         p = percents[i]
-        plt.subplot(3, 1, i+1)
+        plt.subplot(n, 1, i+1)
         plt.title(f'EFPA = {efpa[i]} deg')
         for j in range(4):
             # plt.plot([data[j][0], m0[i], data[j][1]], [j,j,j],'--o')
@@ -816,7 +801,7 @@ def plot_parametric():
             if not i and not j:
                 plt.legend()
         plt.axis([np.min(totals)*0.95, np.max(totals)*1.05, -0.5, 3.5])
-        if i ==2:
+        if i == n-1:
             plt.xlabel("Fuel Used (kg)")
         else:
             plt.xticks([])
@@ -842,9 +827,9 @@ def plot_parametric():
     pmax = np.max(percents)*100 * 1.05
     plt.figure()
     plt.suptitle("Percent Change from Nominal Fuel Use")
-    for i in range(3):
+    for i in range(n):
         data = percents[i]*100
-        plt.subplot(3, 1, i+1)
+        plt.subplot(n, 1, i+1)
         plt.title(f'EFPA = {efpa[i]} deg')
         for j in range(4):
             plt.plot([data[j][0], data[j][1]], [j,j], 'k--')
@@ -859,22 +844,19 @@ def plot_parametric():
         plt.yticks([0,1,2,3],labels=["CD", "CL", "rho0", "hs"])
         plt.ylabel(r"Parameter")
     plt.xlabel("Percent Difference (%)")
-
-
     plt.show()
 
 
 def test_sweep():
-    """ Sweeps over a variety of EFPA/EAZI angles """
-    target = Target(0, 753.7/3397, 0)  # This is what all the studies have been done with so far 
-    srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"),'rb'))
+    """ Sweeps over a variety of EFPA/EAZI angles to generate a table of initial params. Also plots the results"""
+    target = Target(0, 700/3397, 0)  # This is what all the studies have been done with so far 
+    srpdata = pickle.load(open(SRPFILE,'rb'))
 
     # FPAs = np.linspace(-17.2, -15.8, 6)
     # FPAs = [-17.39]
     # AZIs = [-0.5, -0.25, 0, 0.25, 0.5]
     # AZIs = [0.]
-    ic = boxgrid([(-17.2, -15.8), (-0.5, 0.5)], [15, 9], interior=True)
-    # ic = boxgrid([(-15, -13.5), (0,0)], [4,1], interior=True)
+    ic = boxgrid([(-16.1, -15.9), (-0.5, 0.5)], [3, 5], interior=True)
 
     if 1:
         data = []
@@ -885,8 +867,12 @@ def test_sweep():
             for boolean in [1,]:
                 # mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
                 mcc = SRPController(N=[3, 5], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
-                mcc(x0)
-                data.append([mcc.history['fuel'][-1], *mcc.history['params'][-1]])
+                try:
+                    mcc(x0)
+                    data.append([mcc.history['fuel'][-1], *mcc.history['params'][-1], efpa, azi])
+                except IndexError:  # Occurs when the optimization ends without finding a feasible solution 
+                    print("Could not find viable solution ")
+                    pass
 
         data = np.array(data).T
         data[1] = np.degrees(data[1])
@@ -896,6 +882,10 @@ def test_sweep():
         df = pd.read_csv("./data/FuelOptimal/srp_params_opt.csv")
         data = df.values.T[1:]
         print(data.shape)
+
+    import pandas as pd 
+    df = pd.DataFrame(data.T, columns=["fuel", "p1"," p2", "efpa", "eazi"])
+    df.to_csv("./data/FuelOptimal/temp.csv")
 
     plt.figure()
     plt.tricontourf(ic.T[0], ic.T[1], data[0])
@@ -928,17 +918,14 @@ def test_sweep():
 
     plt.show()
 
-    import pandas as pd 
-    df = pd.DataFrame(data.T, columns=["fuel","p1","p2"])
-    df.to_csv("temp.csv")
 
 
 
 if __name__ == "__main__":
     
-    test_single()
-    # test_sweep()
-    # test_sim()
+    # test_single()
+    test_sweep()
+    # test_sim([0,0,0,0])
     # plt.show()
     # parametric_sensitivity()
     # plot_parametric()
