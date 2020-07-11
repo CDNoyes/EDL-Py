@@ -146,11 +146,33 @@ def srp_landing(figsize=(15,10)):
         plt.savefig("./Documents/FuelOptimal/H_Vs_S_{}.png".format(v_plot), bbox_inches='tight')
 
 
-
-
     plt.show()
 
 
+def two_phase_edl():
+    """ Creates a plot of the two phases - Entry vs SRP 
+        Color the two sides of the plot 
+    
+    """
+
+    plt.figure()
+    plt.fill_between([0, 1], 1, 0, alpha=0.1, color='b')
+    plt.fill_between([1, 2], 1, 0, alpha=0.1, color='r')
+
+    plt.tick_params(
+    axis='both',       # changes apply to the x-axis
+    which='both',      # both major and minor ticks are affected
+    bottom=False,      # ticks along the bottom edge are off
+    # top=False,         # ticks along the top edge are off
+    left=False,
+    labelbottom=False, # labels along the bottom edge are off
+    labelleft=False,) # labels along the left edge are off
+    plt.text(0.25, 0.9, "Entry Phase")
+    plt.text(1.15, 0.9, "Powered Descent Phase")
+
+    plt.savefig("./Documents/FuelOptimal/EDLPhaseDiagramBackdrop.png", bbox_inches='tight')
+    plt.show()
 
 if __name__ == "__main__":
-    srp_landing()
+    # srp_landing()
+    two_phase_edl()
