@@ -30,12 +30,14 @@ The challenges during the entry phase from a guidance perspective include entry 
 
 A fundamental difference of retropropulsion-based EDL from parachute-based EDL architectures, even those that utilize a vertical powered descent phase with potential for a divert maneuver beforehand, lies in the set of desirable states at the termination of the entry phase. The terminal entry state is constrained by safe parachute deployment conditions defined by upper and lower limits on Mach number and dynamic pressure. The constraints are often translated into constraints on altitude and velocity using a model of the Martian atmosphere. In summary, when a chute is involved, the target set is the parachute deployment box coupled with small downrange and crossrange errors, combined with a well-aligned heading, and no restriction on flight path angle. Traditionally, the primary objective of bank angle modulation during entry is range control with lateral control as a secondary objective, and guidance approaches could treat the two problems as decoupled. During the mission design phase, the downrange distance is chosen to be compatible with the parachute deployment conditions and other mission parameters such as the entry flight path angle.
 
-The target set in SRP-based EDL is in some sense much larger, but with more important coupling between the states. All six of the entry states contribute to the propellant cost; the optimal downrange distance and altitude at which to ignite depend on both the velocity magnitude and the flight path angle while aligning the heading is necessary to eliminate crossrange distance to the target. Altering the objective of entry guidance to shaping the trajectory for the benefit of the powered descent phase thus encourages a coupled approach. \textbf{This may not be as true with a low T/W ratio} 
+The target set in SRP-based EDL is in some sense much larger, but with more important coupling between the states. All six of the entry states contribute to the propellant cost; the optimal downrange distance and altitude at which to ignite depend on both the velocity magnitude and the flight path angle while aligning the heading is necessary to eliminate crossrange distance to the target. Altering the objective of entry guidance to shaping the trajectory for the benefit of the powered descent phase thus encourages a coupled approach. 
+%\textbf{This may not be as true with a low T/W ratio} 
 
 %For example, MSL utilized a range control phase and a heading alignment phase. Once the heading is aligned, the bank angle command will remain zero until the termination of the entry phase. Thus, unless heading alignment is initiated at the right time for zero bank angle to lead to the best termination condition, blah blah.
 
-The proposed entry guidance for SRP-based EDL begins with an analysis of the chosen powered descent guidance approach. The chosen algorithm will define a mapping from a given state to the propellant required to reach the target set. This mapping is computed over a set of interest and stored for use in the entry phase. Details of this computation are presented later. This mapping is utilized in two distinct ways. At points along a given entry trajectory, the propellant cost can be computed in order to determine the best ignition condition for that trajectory. If the trajectory does not intersect a portion of the feasible ignition set with sufficiently low propellant cost, the bank angle profile can be modified to improve the intersection using the mapping.  
+The proposed entry guidance for SRP-based EDL begins with an analysis of the chosen powered descent guidance approach. The chosen algorithm will define a mapping from a given state to the propellant required to reach the pinpoint landing target set. This mapping is computed over a set of interest and stored for use in the entry phase. Details of this computation are presented later. This mapping is utilized in two distinct ways. At points along a given entry trajectory, the propellant cost can be computed in order to determine the best ignition condition for that trajectory. If the trajectory does not intersect a portion of the feasible ignition set with sufficiently low propellant cost, the bank angle profile can be modified to improve the intersection using the mapping.  
 %If the trajectory is poor, there may be not suitable ignition point, and the bank angle profile should be modified.
+The possibility of computing the powered descent controllable set to be used as a target set for an entry guidance algorithm was suggested in Ref.~\cite{SRP_ControllableSets}, wherein a procedure based on convex optimization was designed to efficiently compute it is given. 
 
 There exist many guidance solutions to the powered descent problem, with many focusing on propellant optimality. Such classes of algorithms include G-FOLD\cite{gfold,gfold_flighttests} and other convex optimization-based methods, polynomial-based approaches including the venerated Apollo lunar descent guidance \cite{apollo_lunar}, indirect optimal control methods \cite{PropellantOptimalAdaptiveTrigger}, and many others. In brief, there is no shortage of ways to tackle the problem of powered descent.
 
@@ -56,7 +58,7 @@ Despite presenting an approach in which a prediction of the terminal entry state
 
 %We note that Reference Fully-Propulsive Mars Atmos Strategies for High-Mass Payload Missions looked at chuteless architectures but did not utilize lifting for control, and instead employed HYPERsonic retropulsion.
 \subsection{Problem Statement, Definitions, Coordinate Frames}
-The problem under investigation considers a two-phase EDL sequence consisting of an entry phase and a powered descent phase. An approach phase is generally not modeled as part of the EDL sequence, and the dispersions arising from this phase are modeled as delivery errors. In the entry phase, the vehicle is guided via bank angle modulation and the vehicle state is described in spherical coordinates. In the descent phase, the vehicle is guided via supersonic retropropulsion with the equations of motion given in Cartesian coordinates.  The reason for the choice of two different coordinate systems is to be consistent with the literature on each respective topic.
+The problem under investigation considers a two-phase EDL sequence consisting of an entry phase and a powered descent phase. The dispersions in vehicle state arising from the approach phase are modeled as delivery errors at the beginning of the EDL sequence. In the entry phase, the vehicle is guided via bank angle modulation and the vehicle state is described in spherical coordinates. In the descent phase, the vehicle is guided via supersonic retropropulsion with the equations of motion given in Cartesian coordinates.  The reason for the choice of two different coordinate systems is to be consistent with the literature on each respective topic.
 
 \begin{figure}[h!]
 	\centering
@@ -79,27 +81,40 @@ where $R$ is magnitude of the vehicle's radial distance from the center of the p
 C_{\gamma} &= 2\omega\cos\psi\cos\phi \\
 C_{\psi} &= 2\omega(\tan\gamma\sin\psi\cos\phi-\sin\phi)
 \end{align}
-where $\omega$ is the rotation rate of Mars. Equations~\ref{eq_entry_start}-\ref{eq_entry_end} will be compactly referred to as $\dot{x} = f(x,\sigma)$ and their solution at time $t$ from a state $x_0$ evolving under a bank angle profile $\sigma[0,t]$ is given by the transition map $x(t) = T[x_0;\sigma[0,t]]$.
+where $\omega$ is the rotation rate of Mars. Equations~\ref{eq_entry_start}-\ref{eq_entry_end} will be compactly referred to as $\dot{\mathbf{x}} = f(\mathbf{x},\sigma)$ and their solution at time $t$ from a state $\mathbf{x_0}$ evolving under a bank angle profile $\sigma[0,t]$ is given by the transition map $\mathbf{x}(t) = \varphi(t;\, x,\,\sigma[0,t])$.
 
-The equations of motion for a point mass vehicle in powered flight are
+The equations of motion for a point mass vehicle in powered flight in a surface fixed frame are
 \begin{align}
-&\dot{r} = v \label{eq_eom_srp} \\
-&\dot{v} = \frac{T}{m} + g(r) \\
-&\dot{m} = -\frac{||T||}{I_{sp}G_0} \label{eq_eom_srp_end}
+&\dot{\mathbf{r}} = \mathbf{v} \label{eq_eom_srp} \\
+&\dot{\mathbf{v}} = \frac{\mathbf{T}}{m} + \mathbf{g}(\mathbf{r}) \\
+&\dot{m} = -\frac{||\mathbf{T}||}{I_{sp}G_0} \label{eq_eom_srp_end}
 \end{align}
-where $r\in\mathbb{R}^3$ is the position vector of the vehicle, $v\in\mathbb{R}^3$ is the velocity vector of the vehicle, $m$ is its mass, $T\in\mathbb{R}^3$ is the thrust vector of the vehicle, $g\in\mathbb{R}^3$ is the gravitational acceleration vector, $I_{sp}$ is the specific impulse of the rocket engine, assumed to be constant, and $G_0$ is the gravitational acceleration magnitude at the surface of the Earth. The full state vector in $\mathbb{R}^7$ comprises the position, velocity, and mass. 
+where $\mathbf{r}\in\mathbb{R}^3$ is the position vector of the vehicle, $\mathbf{v}\in\mathbb{R}^3$ is the velocity vector of the vehicle, $m$ is its mass, $\mathbf{T}\in\mathbb{R}^3$ is the thrust vector of the vehicle, $\mathbf{g}\in\mathbb{R}^3$ is the gravitational acceleration vector, $I_{sp}$ is the specific impulse of the rocket engine, assumed to be constant, and $G_0$ is the gravitational acceleration magnitude at the surface of the Earth. The full powered descent state vector in $\mathbb{R}^7$ comprises the position, velocity, and mass. 
 
-The powered descent problem considered herein is to determine the optimal thrust magnitude and direction, as well the optimal time of flight, subject to the equations of motion and constraints on the available thrust.  The initial powered descent state is assumed to be fixed and the target position and velocity are taken to be $[0,\, 0,\, z_{target}]$,  $[0,\, 0,\, \dot{z}_{target}]$ respectively, where $z_{target}$ and $\dot{z}_{target}$ are the desired altitude and vertical velocity at the end of the descent phase. The optimal control problem is posed as
+The powered descent problem considered herein is to determine the optimal thrust magnitude and direction, as well the optimal time of flight, that solve the pinpoint landing boundary value problem comprising the equations of motion with prescribed initial and final conditions, while subject to constraints on the available thrust. The powered descent problem is posed as the optimal control problem
 \begin{align}
 \max \;m(t_f) \label{eq_srp_ocp}\\
-&r(t_0) = r_0 \\
-&v(t_0) = v_0 \\
+&\mathbf{r}(t_0) = \mathbf{r_0} \\
+&\mathbf{v}(t_0) = \mathbf{v_0} \\
 &m(t_0) = m_0\\
-&r(t_f) = [0,\, 0,\, z_{target}] \\
-&v(t_f) = [0,\, 0,\, \dot{z}_{target}] \\
-&T_{\min} \le ||T(t)|| \le T_{\max}
+&\mathbf{r}(t_f) = [0,\, 0,\, z_{target}] \\
+&\mathbf{v}(t_f) = [0,\, 0,\, \dot{z}_{target}] \\
+&T_{\min} \le ||\mathbf{T}(t)|| \le T_{\max}
 \end{align}
-together with the dynamics Eq.~\ref{eq_eom_srp}-\ref{eq_eom_srp_end}. Formulated as such, the optimal control problem can be viewed as a function $\mathrm{OCP}(\cdot)$ that maps an initial condition, or ignition state, to a propellant cost. The set of all initial state vectors for which the optimal control problem is feasible and the propellant required by the solution less than some prescribed maximum $ M $ is $X_{M} = \left\{x\,|\, \mathrm{OCP}(x) \le M \right\}$.
+%together with the dynamics Eq.~\ref{eq_eom_srp}-\ref{eq_eom_srp_end},
+where $z_{target}$ and $\dot{z}_{target}$ are the desired altitude and vertical velocity at the end of the descent phase. Formulated as such, the optimal control problem can be viewed as a function $\mathrm{OCP}(\cdot)$ that maps an initial condition, i.e., ignition state, to a propellant cost. 
+The set of initial states for which the optimal control problem has a feasible solution includes regions that are not of interest. Examples include initial altitudes very low to the ground, initial velocities much higher than those reachable by the entry vehicle before impacting the surface, and initial distances very far from the target, or having already overshot the target. The set of feasible solutions is restricted to the region of interest by defining a vector of constraints
+\begin{align}
+\mathbf{c}(\mathbf{x}) = \left[ \begin{array}{lc}
+        x^2 + y^2 - d^2_{\max}\\
+        d^2_{\min} - x^2 - y^2\\
+        z_{\min} - z \\
+        ||\textbf{v}|| - v_{\max}
+        \end{array} \right] \le 0\label{eq_constraints}% The period stops a warning about not closing the left 
+\end{align} 
+where $[d_{\min},\,d_{\max}]$ are the minimum and maximum distance to the target, $z_{\min}$ is the minimum altitude, and $v_{\max}$ is the upper bound on velocity. 
+%Let the controllable set, $\mathcal{C}$, be defined as the set of initial states for which there exists a thrust control function that leads the vehicle to the specified final state. We assume that $\mathcal{C}$, and the set of initial states for which the optimal control problem has a solution, are the same. 
+The set of all initial state vectors for which the solution to the optimal control problem is feasible and the propellant required by the solution is less than some prescribed maximum $ M $, and satisfying the constraint vector is $\mathcal{F}_{M} = \left\{\mathbf{x}\,|\, \mathbf{c}(\mathbf{x})\le 0,\,\,\mathrm{OCP}(\mathbf{x}) \le M \right\}$. 
 
 Given an entry state and target position, the corresponding descent state is determined by assuming the current heading $\psi$ defines the downrange distance. The downrange and crossrange distances to the target are computed via spherical trigonometry \cite{joel_dissertation}
 \begin{align}
@@ -112,8 +127,9 @@ DR &= r_p\cos^{-1}\left(\frac{\cos d}{\cos c}\right)\\
 CR &= r_pc
 \end{align}
 where $r_p$ is the planet radius. The altitude above the target is computed simply by subtracting the target altitude $h_T$ from the current altitude $h = R-r_p$ and the full SRP state vector is $[DR,\, |CR|,\, h-h_T,\, -V\cos\gamma,\, 0,\, V\sin\gamma,\, m_0]$. Because the downrange direction is defined by the current heading angle, the crossrange velocity is always zero, allowing the use of 5-D interpolation rather than 6-D. The absolute value of the crossrange distance is used because this gives a denser table of tabulated solutions by exploiting symmetry resulting from the zero crossrange velocity. 
+%TODO: The state is 7-D, but with two degenerate dimensions: zero CR and constant initial mass 
 
-An alternative mapping from entry states to powered descent states is to convert the entry state and target to Cartesian coordinates and subtract them. Although this is a feasible option, it is not preferable because it would result that every entry state maps to a unique SRP state. This is undesirable because it requires a larger table of solutions encompassing all the possible Cartesian states. Instead, by using a downrange-crossrange coordinate system based on the current heading, an infinite number of entry states map to the same SRP state as a result of this surjective transformation. Intuitively, this reflects the rotational symmetry of the problem, stemming from the fact that states $ x $ and $ y $ have identical dynamics. More formally, for the powered descent problem as posed, any initial state $[ x,\, y,\, z,\, \dot{x},\, \dot{y},\, \dot{z},\, m]$ such that $(z, \dot{z}, m)$ are fixed and 
+An alternative mapping from entry states to powered descent states is to convert the entry state and target to Cartesian coordinates and subtract them. Although this is a feasible option, it is not preferable because it would result that every entry state maps to a unique SRP state. This is undesirable because it requires a larger table of solutions encompassing all the possible Cartesian states. Instead, by using a downrange-crossrange coordinate system based on the current heading, an infinite number of entry states map to the same SRP state as a result of this surjective transformation. Intuitively, this reflects the rotational symmetry of the problem around the $z$-axis, stemming from the fact that states $ x $ and $ y $ have identical dynamics. More formally, for the powered descent problem as posed, any initial state $[ x,\, y,\, z,\, \dot{x},\, \dot{y},\, \dot{z},\, m]$ such that $(z, \dot{z}, m)$ are fixed and 
 \begin{align}
 x^2 &+ y^2 = p^2 \\
 \dot{x}^2 &+ \dot{y}^2 = v^2 \\
@@ -121,46 +137,48 @@ x^2 &+ y^2 = p^2 \\
 \dot{x} &= -v\cos\psi \\
 \dot{y} &= -v\sin\psi \\
 \end{align}
-lies along an iso-propellant contour. This essentially says that as long as the velocity vector is in the direction of the target, the propellant cost is dictated by the constants involved.
-\begin{figure}[h!]
-	\centering
-	\includegraphics[width=1\textwidth]{EntryToSRP} 
-	\caption{When the velocity is not aligned, each position maps to a different downrange-crossrange pair. In contrast, when the velocity vector is aligned with the target, all the states are mapped to zero crossrange.}
-	\label{fig_entry_to_srp}
-\end{figure}
+lies along an iso-propellant contour defined by the horizontal distance and velocity magnitudes, $p$ and $v$.
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width=1\textwidth]{EntryToSRP} 
+%	\caption{When the velocity is not aligned, each position maps to a different downrange-crossrange pair. In contrast, when the velocity vector is aligned with the target, all the states are mapped to zero crossrange.}
+%	\label{fig_entry_to_srp}
+%\end{figure}
 
-%TODO: Show contours with and without heading alignment, also show how with HA they all map to the same crossrange
-%TODO: Define sets of interest? Adapt definitions from Joel's dissertation
-
-%TODO: Define the actual "optimal control problem" for the entry guidance: find the optimal state that is reachable from the current state and the bank angle profile that will deliver the vehicle to that state 
 
 %Because the vehicle's altitude is often used as a proxy for remaining time to the ground, a minimum altitude is used to define the boundary of the reachable set. Actually, use the feasible set instead. 
 
-The reachable state from a state $x$ is an entire tube of trajectories satisfying the equations of motion under admissible control trajectories $R(x)=\left\{x_f \,| \,\exists\, t_f \ge 0 \land\, \sigma[0,t_f] \,\mathrm{with}\, x_f = T[x; \sigma[0,t_f]]  \right\}$, but the portion of the reachable set that is of interest is its intersection with the feasible set, or $R \cap X_M$.
+The entry phase reachable set from a state $ \mathbf{x} $ is a tube of trajectories satisfying the equations of motion under admissible control functions $\mathcal{R}(\mathbf{x})=\left\{x_f \,| \,\exists\, t_f \ge 0 \land\, \sigma[0,t_f] \,\mathrm{with}\, \mathbf{x}_f = T[\mathbf{x}; \sigma[0,t_f]]  \right\}$, but the portion of the reachable set that is of interest is its intersection with the powered descent feasible set, or $\mathcal{R} \cap \mathcal{F}_M$.
 
-Unlike the powered descent optimal control problem, which may be solved on the ground to full optimality under no such parametrization, this problem is intended to be solved onboard and so motivates a low-order parametrization. The P-parametrized bank angle profile is a function of a finite set of parameters $P = \left\{p_1, p_2, ... \right\}$ that defines the bank angle for each state, $\sigma(x(t)) = \Sigma(x(t); P)$.
+%Unlike the powered descent problem, which may be solved on the ground to full optimality under no such parametrization or solved by a chosen descent guidance algorithm, 
+The entry phase guidance problem is intended to be solved onboard and so motivates a low-order parametrization. The P-parametrized bank angle profile is a function of a finite set of parameters $P = \left\{p_1, p_2, ...,p_N \right\}$ and an associated function $\Sigma$ that defines the bank angle for each state, $\sigma(x(t)) = \Sigma(P(x(t)))$.
+%The dependence is to indicate closed loop nature, i.e. the values that P takes on change with the state unless flying perfectly along the optimal trajectory already 
+%TODO: 
 
-The P-parametrized reachable set is $R_P(x) =\left\{x_f \,| \,\exists\, t_f \ge 0 \land\, Q \,\mathrm{with}\, x_f = T[x; \Sigma(x; Q)[0,t_f]]]  \right\} $. The relative size of $R_P \subset R$ is not the most important consideration in choosing a parametrization. Instead, it is desirable that $R_P$ retains the the propellant optimal point (and neighboring region) while also not being too restricted in its size. More formally, in addition to considering the effects of a parametrization on some measure of $R_P\cap R$, one may also consider the optimality gap, 
+The P-parametrized reachable set is 
+
+$R_P(\mathbf{x}_0) =\left\{\mathbf{x}_f \,| \,\exists\, t_f \land\, P(\mathbf{x}) \,\mathrm{such\, that}\, \mathbf{x}_f = \varphi(t_f;\,\mathbf{x}_0,\, P(x(t))))  \right\} $. 
+
+The relative size of $\mathcal{R}_P \subset \mathcal{R}$ is not the most important consideration in choosing a parametrization. Instead, it is desirable that $\mathcal{R}_P$ retains the the propellant optimal point (and neighboring region) while also not being too restricted in its size. 
+
+More formally, in addition to considering the effects of a parametrization on some measure of $\mathcal{R}_P\cap \mathcal{R}$, one may also consider the optimality gap, 
+While in theory one might like to compare the propellant cost associated with a parametrization with the optimal solution over all parametrizations, i.e., compute
 \begin{align}
-\delta m = \min_{x\in (R\cap X_M)} \mathrm{OCP}(x)\; - \min_{x\in (R_P\cap X_M)} \mathrm{OCP}(x) \ge 0
+\delta m = \left( \min_{x\in (\mathcal{R}\cap \mathcal{F}_M)} \mathrm{OCP}(x)\; - \min_{x\in (\mathcal{R}_P\cap \mathcal{F}_M)} \mathrm{OCP}(x) \right) \; \ge 0
 \end{align}
-This may be difficult to compute in practice, in particular the lower bound set by the true optimum $\min_{x\in (R\cap X_M)} \mathrm{OCP}(x)$. Nevertheless, any two parametrizations can be compared via a similar computation. 
-Figure~\ref{fig_sets} depicts the relationship between the sets $X_M,\,R,\,\mathrm{and}\,R_P$ as well as a possible situation to emphasize the previous point, wherein parametrization A encompasses less of $R$ yet has a smaller optimality gap than parametrization B. 
-%TODO: Explain further 
-
+in order to assess its quality, this may be difficult to compute in practice, in particular determining the lower bound set by the true optimum. Instead, the minimum propellant costs of any two parametrizations can be compared against one another as one measure of their quality. Let $ P_A $ and  $ P_B $ be two different parametrizations.
+Figure~\ref{fig_sets} depicts the relationship between the sets $\mathcal{F}_M,\,\mathcal{R},\,\mathcal{R}_{P_A},\,\mathrm{and}\,\mathcal{R}_{P_B}$ as well as a possible situation to emphasize the previous point, wherein parametrization $ P_A $ can reach less of $R$ yet has a smaller optimality gap than parametrization $ P_B $. 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.8\textwidth]{SetDefinitions} 
-	\caption{Consider two different parametrizations of the control, $ P_A $ and $ P_B $. Despite $ R_{P_B} $ being a larger set encompassing more of the true reachable set $R$, the intersection $R_{P_A}\cap X_M$ is ``larger" than $R_{P_B}\cap X_M$ and more importantly $ R_{P_A} $ encompasses a key subset of $ R $ – the region near the optimum. The difference between the two different optima is the sub-optimality gap imposed by the chosen parametrization.}
+	\includegraphics[width=0.9\textwidth]{SetDefinitions} 
+	\caption{Consider two different parametrizations of the control, $ P_A $ and $ P_B $. While $ P_B $ allows the vehicle to reach more of the reachable set $\mathcal{ R} $ than  $P_A$, much of $ R_{P_B}$ does not intersect $\mathcal{F}_M$. Additionally, the propellant optimal point in $ R_{P_A}$ is better than the optimal point in $ R_{P_B}$, indicated by the smaller distance between the optima which are depicted with stars.  Note that these sets, depicted notionally as convex 2-D shapes, are actually 6-D and no claim is made about the convexity of these sets.}
 	\label{fig_sets}
 \end{figure}
+%TODO: Better describe the stars? 
+%Despite $ R_{P_B} $ being a larger set encompassing more of the true reachable set $R$, the intersection $R_{P_A}\cap \mathcal{F}_M$ is ``larger" than $R_{P_B}\cap \mathcal{F}_M$ and more importantly $ R_{P_A} $ encompasses a key subset of $ R $ – the region near the optimum. The difference between the two different optima is the sub-optimality gap imposed by the chosen parametrization.
 
- 
-
-%Viewing the trajectory as a function of the control input u, determine the optimal u* and ignition velocity v* such that $x(v*; u*)\in X_M$ 
+%Viewing the trajectory as a function of the control input u, determine the optimal u* and ignition velocity v* such that $x(v*; u*)\in \mathcal{F}_M$ 
 %$\min_u^* OCP(entry2srp(x(u*)))$
-
-
 \section{Proposed Entry Guidance}
 
 %Components of entry guidance: 
@@ -168,10 +186,11 @@ Figure~\ref{fig_sets} depicts the relationship between the sets $X_M,\,R,\,\math
 %SRP guidance -> N-D table of propellant costs -> Required to determine both hand off state and params to get there 
 %Onboard determination of ``handoff" i.e. transition from Entry phase to SRP phase 
 
-The objective is deliver the vehicle to the minimum propellant point in the feasible set $X_M$ that is reachable under the chosen bank angle parametrization from the current state. This is in contrast to prescribing ad hoc rules for the terminal entry set to reduce propellant consumption, such as minimizing velocity at a certain downrange distance to the target. 
+%TODO: Minimum propellant set may be more appropriate - don't know that the set is a single point
+The objective is to deliver the vehicle to the minimum propellant ignition point in the feasible subset $\mathcal{F}_M$ that is reachable under the chosen bank angle parametrization from the current state. This is in contrast to prescribing ad hoc rules for the terminal entry set to reduce propellant consumption, such as minimizing velocity at a certain downrange distance to the target. 
 %Seeking the optimal point requires that the terminal entry state be free of such constraints, i.e., it cannot be required to lie on a manifold defined by a fixed velocity or distance from the target. 
 
-This objective is accomplished by the guidance algorithm using an inner/outer loop structure. In the inner loop, the propellant map is used to determine the optimal ignition point along each predicted trajectory. In the outer loop, the bank angle profile is optimized to find the optimal ignition state that is reachable from the current vehicle state, subject to the chosen parametrization of the bank angle profile. Thus, the three key components of the approach are the powered descent propellant map, the bank angle parametrization, and the onboard determination of the handoff condition at which the entry phase ends and powered descent begins.
+This objective is accomplished by the guidance algorithm using a nested computation structure. At the inner level, the propellant map is used to determine the optimal ignition point along each predicted trajectory. At the outer level, the bank angle profile is optimized to find the optimal ignition state that is reachable from the current vehicle state, subject to the chosen parametrization of the bank angle profile. Thus, the three key components of the approach are the powered descent propellant map, the bank angle parametrization, and the onboard determination of the vehicle state at which the entry phase ends and powered descent begins.
 
 %The Powered descent guidance defines a mapping from ignition states to propellant required. This mapping implicitly defines the SRP-feasible set. Although at no point do we explicitly compute this set, 
 
@@ -190,8 +209,8 @@ This objective is accomplished by the guidance algorithm using an inner/outer lo
 %Bank parametrization + vehicle characteristics -> reachable set
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.8\textwidth]{Optimization} 
-	\caption{The guidance algorithm seeks both the propellant-optimal ignition point (indicated by stars on the plot) and the trajectory whose optimal ignition point is best (indicated by the solid black line).}
+	\includegraphics[width=0.9\textwidth]{Optimization} 
+	\caption{The guidance algorithm seeks both the propellant-optimal ignition point (indicated by a star on the plot) and the trajectory whose optimal ignition point is best (indicated by the solid black line). The red, dotted trajectory is infeasible because it does not intersect the powered descent feasible subset $\mathcal{F}_M$}
 	\label{fig_optimization}
 \end{figure}
 
@@ -212,24 +231,29 @@ The commanded bank angle profile considered here is a constant bank angle magnit
 \end{array} 
 \right.
 \end{equation}
-which is fed to a first order filter to approximate the nature of a reaction control system tracking the commands. Because the profile includes a reversal, it offers a means to control lateral motion. 
+which is fed to a rate limiter to approximate the nature of a reaction control system tracking the commands. Because the profile includes a reversal, it offers a means to control lateral motion. 
 
-In our implementation, it is always assumed there is at most one reversal left, but the parametrization remains the same after each reversal. This allows for as many reversals as there are optimization updates, but in practice it is rare to see more than two reversals. With $v_r$ as an optimization variable with a sufficiently low bound, there exists the possibility to have one or no reversal planned at each update.  
+In our implementation, it is always assumed there is at most one reversal left, but the parametrization remains the same after each reversal. This allows for as many reversals as there are optimization updates, but in simulations it is rare to see more than two reversals. By setting the lower bound on $v_r$ to be less than the ignition velocity during optimization, there exists the possibility to have one or no reversal planned at each update.
 
 \subsection{Powered Descent Propellant Mapping}
-By repeatedly solving the optimal control problem, Eq.~\ref{eq_srp_ocp} for a set of initial conditions, a pointwise approximation of the true 5-D pinpoint landing feasible set $X_M$ is computed via sampling. A consequence of the dimensionality of the input space is a requirement to compute a large number of solutions - it takes 16,807 solutions to span each dimension with only 7 points. From these sampled solutions we construct a model of $X_M$. 
+By repeatedly solving the powered descent optimal control problem, Eq.~\ref{eq_srp_ocp}, for a set of initial states, a pointwise approximation of \textbf{a subset of} the pinpoint landing feasible set $\mathcal{F}_M$ is computed via sampling. The full state vector is 7-D, but with two degenerate dimensions: the crossrange velocity, which is always zero by definition, and the initial mass, which is assumed to be fixed. A consequence of the dimensionality of the state space is a requirement to compute a large number of solutions -  16,807 solutions are required to span each dimension with only 7 points. From these sampled solutions we construct an approximation of the propellant costs for states in $\mathcal{F}_M$. Sampling is applicable irrespective of the powered descent algorithm to be used; for the problem of constrained propellant-optimal solutions, there exist more efficient methods of computing the set $\mathcal{F}_M$ and the associated propellant cost, such as in Ref.~\cite{SRP_ControllableSets}.
+%TODO: \cite{SRP_ControllableSets}
+This mapping may be approximated in a variety of ways. Neural networks and other machine learning approaches were considered for their universal function approximation property. However, upon examination of the shape of the 5-D space together with numerical validation (a concept from machine learning) using additional OCP solutions, piecewise-linear 5-D interpolation was chosen to represent the propellant mapping.
 
-This mapping may be modeled in a variety of ways. Neural networks and other machine learning approaches were considered for their universal function approximation property. However, upon examination of the shape of the 5-D space together with numerical validation (a concept from machine learning) using additional OCP solutions, piecewise-linear 5-D interpolation was chosen to represent the propellant mapping.
+%The set of initial states over which to solve the OCP is computed by Latin Hypercube Sampling. After applying the constraints Eq~\ref{eq_constraints}, the OCP is solved for the remaining states. The model is constructed 
 
-The set of initial conditions over which to solve OCP is computed by Latin Hypercube Sampling. Constraints are applied to eliminate easily identified infeasible scenarios such as starting very near to the ground with significant downward velocity. In practice, the optimal region is generally not known in advance. 
-\textbf{WIP}
+%TODO: Note (as Mease mentioned) that because the table is defined in SRP coordinates, it implicitly exploits the rotational symmetry as well 
+
+%\textbf{WIP}
 %TODO: Iterative scheme
  
 
 \subsection{Trajectory Prediction and Powered Descent Ignition}
-Once the bank angle parametrization is specified, the estimated entry state is integrated numerically to generate a prediction of the remaining unpowered entry flight. The numerical integration of the entry state is carried out using downrange distance to the target as the independent variable. Using range to go as the independent variable allows the terminal integration condition to be zero, independent of the problem specifics, with very little wasted integration time since the optimal ignition state is generally close to the target. 
+Once the bank angle parametrization is specified, the estimated entry state is integrated numerically to generate a prediction of the remaining unpowered entry trajectory. The same constraints used to define $\mathcal{F}_M$ are then applied to the predicted trajectory to determine the interval that should be checked for the propellant optimal transition to powered descent. These constraints greatly reduce the number of calls to the descent guidance propellant mapping required to find the optimum. These constraints include an upper bound on velocity corresponding to the maximum achievable deceleration with the available propellant, a minimum ignition altitude required for safe powered descent and subsequent EDL operations, and a maximum distance to the target, again related to the available propellant. Figure~\ref{fig_ignition} depicts this process including a portion of the trajectory already flown, the entry flight prediction, constraints, pinpoint landing target, and predicted optimal ignition point. Once the constraints have been applied, 1-D optimization is applied to the remaining trajectory interval, indicated by the dash black line, by viewing the fixed trajectory as a function of some independent variable. Our implementation uses velocity as the independent variable over which to search, but time or distance are also possibilities. 1-D optimization is used to very quickly locate the optimum, rather than determine the solution by brute force by checking all of the remaining points. Once the solution is determined, the commanded bank angle sign and magnitude are computed as a function of the vehicle's estimated velocity, and are then sent to the control system.
 
-This has several advantages over common alternatives. First, although energy or velocity could be used, a sufficiently low choice of the terminal value must be made, but any time spent integrating below the reachable set of the vehicle is wasted, and the choice is problem/vehicle specific. Altitude would also be a natural choice since the minimum ignition altitude would serve as the terminal integration condition, but like energy and velocity this is problem-dependent, and additionally altitude is not a strictly monotonic variable in the case of lofting trajectories.
+%The numerical integration of the entry state is carried out using downrange distance to the target as the independent variable. Using range to go as the independent variable allows the terminal integration condition to be zero, independent of the problem specifics, with very little wasted integration time since the optimal ignition state is generally close to the target. 
+
+%This has several advantages over common alternatives. First, although energy or velocity could be used, a sufficiently low choice of the terminal value must be made, but any time spent integrating below the reachable set of the vehicle is wasted, and the choice is problem/vehicle specific. Altitude would also be a natural choice since the minimum ignition altitude would serve as the terminal integration condition, but like energy and velocity this is problem-dependent, and additionally altitude is not a strictly monotonic variable in the case of lofting trajectories.
 
 \begin{figure}[h!]
 	\centering
@@ -238,26 +262,25 @@ This has several advantages over common alternatives. First, although energy or 
 	\label{fig_ignition}
 \end{figure}
 
-Once the prediction is generated, several constraints are applied to determine the interval of the trajectory that should be checked for the propellant optimal transition to powered descent. These constraints greatly reduce the number of calls to the descent guidance propellant mapping required to find the optimum. These constraints include an upper bound on velocity corresponding to the maximum achievable deceleration with the available propellant, a minimum ignition altitude required for safe powered descent and subsequent EDL operations, and a maximum distance to the target, again related to the available propellant. Figure~\ref{fig_ignition} depicts this process including a portion of the trajectory already flown, the entry flight prediction, constraints, pinpoint landing target, and predicted optimal ignition point. Once the constraints have been applied, 1-D optimization is applied to the remaining trajectory interval, indicated by the dash black line, by viewing the fixed trajectory as a function of some independent variable. Our implementation uses velocity as the independent variable over which to search, but time or distance are also possibilities. 1-D optimization is used to very quickly locate the optimum, rather than brute force the solution by checking all of the remaining points. 
 
-\begin{figure}[h!]
-		\centering
-		\includegraphics[width=0.9\textwidth]{ConstantBankObjective} 
-		\caption{Contours of the propellant cost of pinpoint landing using a constant bank angle with one reversal, initial T/W = 4.}
-\end{figure}
-\begin{figure}[h!]
-		\centering
-		\includegraphics[width=0.9\textwidth]{Profile1_Objective} 
-		\caption{Contours of the objective function using a constant bank angle with one reversal, initial T/W = 16.}
-\end{figure}
-%\subsection{Optimization}
+%\begin{figure}[h!]
+%		\centering
+%		\includegraphics[width=0.9\textwidth]{ConstantBankObjective} 
+%		\caption{Contours of the propellant cost of pinpoint landing using a constant bank angle with one reversal, initial T/W = 4.}
+%\end{figure}
+%\begin{figure}[h!]
+%		\centering
+%		\includegraphics[width=0.9\textwidth]{Profile1_Objective} 
+%		\caption{Contours of the objective function using a constant bank angle with one reversal, initial T/W = 16.}
+%\end{figure}
+\subsection{Optimization}
 %
-%\subsubsection{Objective Function}
-%The entry guidance requires that the chosen powered descent guidance approach admits continuous propellant requirements for continuous ignition states to a fixed target. Atmospheric entry dynamics are smooth for smooth bank angle inputs and we thus expect that even when optimizing the ignition condition along a trajectory rather than use a fixed state variable such as velocity or energy, the objective function should be well-behaved and amenable to optimization. One key question is whether several isolated minima exist, or only a single global optimum. 
-%
-%Evaluating the objective function for a range of parameters for the bank profile as was done to generate Figure~\ref{fig_contour} indicates the objective function is bowl shaped with very steep gradients away from the optimum. From this, and repeated optimizations at various possible points, there is always a clear optimum.
-%
-%The shape of the objective function indicates that gradient-based methods will be effective in determining the optimal profile parameters, however, determining the gradient of the objective function with respect to the switching velocity is generally difficult. As a result, derivative-free methods are preferred for this application. Powell's conjugate direction method is used in all of the examples herein. It is effective because once an appropriate search direction is identified, the problem is reduced to a bounded one-dimensional search. 
+
+%The entry guidance requires that the chosen powered descent guidance approach admits continuous propellant requirements for continuous ignition states to a fixed target. Atmospheric entry dynamics are smooth for smooth bank angle inputs and we thus expect that even when optimizing the ignition condition along a trajectory rather than use a fixed state variable such as velocity or energy, the objective function should be well-behaved and amenable to optimization. 
+One key question when optimizing the parameters of the bank angle profile is whether several isolated minima exist, or only a single global optimum. 
+Evaluating the objective function for a range of parameters for the bank profile indicates the objective function is bowl shaped with very steep gradients away from the optimum. From this, and repeated optimizations at various possible points, there is always a clear optimum.
+
+The shape of the objective function indicates that gradient-based methods will be effective in determining the optimal profile parameters, however, determining the gradient of the objective function with respect to the switching velocity is generally difficult. As a result, derivative-free methods are preferred for this application. Powell's conjugate direction method is used in all of the examples herein. It is effective because once an appropriate search direction is identified, the problem is reduced to a bounded one-dimensional search. 
 %
 %Contours of the optimal parameters corresponding to the solutions in Figure~\ref{fig_contour} are given in Figures~\ref{fig_bank} and \ref{fig_rev}. Immediately striking is the optimal bank angle's clear independence from azimuth errors; instead, it is dictated entirely by the flight path angle. 
 %\begin{figure}[h!]
@@ -287,14 +310,26 @@ Once the prediction is generated, several constraints are applied to determine t
 
 %TODO: Monte Carlo Filtering if monte carlo results 
 
-\textbf{Work in progress}
+% TODO: specify time constant, ballistic coefficient, T/W, L/D, 
+In order to characterize the behavior and performance of the entry guidance algorithm, simulations are conducted under various circumstances. In all examples, the vehicle under consideration has a ballistic coefficient of $310\, \mathrm{kg/m^2}$ and a nominal $L/D=0.24$ at Mach 24. This is equivalent to roughly 3x the entry mass of MSL and M2020 at the same area.  The vehicle's propulsion model includes an initial $ T/W $ of 4 with a constant 290 s $ I_{sp} $. 
+The site targeted at the termination of the descent phase is 700 km downrange at zero altitude. The entry flight path angle in all examples is $ -15.75^\circ $. The vehicle's bank angle rate is limited to $10 ^{\circ}/s$. Performance is evaluated using the propellant mass fraction (PMF), the portion of the vehicle 
+Min altitude is 3 km, max distance is 25 km, min distance 0 km, maximum velocity 800 m/s. The entry phase terminates at the ignition velocity last predicted by the entry guidance algorithm.
 
-The performance of the algorithm is first investigated in a series of one-dimensional sensitivities to parametric uncertainties, including lift and drag coefficients, and two forms of density uncertainty. Entry state dispersions are also examined. 
+\textbf{Work in progress}
+\subsection{Sensitivity Analysis}
+The performance of the algorithm is first investigated in a series of one-dimensional sensitivities to parametric uncertainties, including lift and drag coefficients, and two forms of density uncertainty. For this section, the atmospheric density is modeled as 
+\begin{align}
+\rho = \rho_0\mathrm{e}^{-\frac{h}{h_s}}
+\end{align}
+where $\rho_0 = 0.0158 kg/m^3$ is the density at the surface and $h_s = 9354.5 m$ is a scale height. Uncertainty is modeled in each of these quantities. Variations in $\rho_0$ correspond to constant percentage shift at all altitudes, while variations in the scale height alter the density's gradient with respect to altitude, $\dfrac{\partial\rho}{\partial h} = -\dfrac{\rho}{h_s}$.
+%Entry state dispersions are also examined. 
+
+Due to its reliance on predictions, the algorithm is susceptible to model uncertainty. Reference~\cite{predictor_corrector_analysis} examined the performance of predictive algorithms under such circumstances and found, like Ref.~\cite{lu2014entry}, that model adaptation during flight is essential to good performance in the presence of such parametric uncertainty. Because the first three perturbations correspond to result in constant ratios of $L/L_{model}$ and $ D/D_{model} $, the predictions will match the simulated environment, and very stable solutions are expected at each update. In contrast, the scale height uncertainty will result in aerodynamic ratios that vary with altitude, and cause error in the predictions, which cannot account for unknown future variations. Thus it is expected to see greater variation in the predicted propellant required as well as the predicted ignition state. 
 
 \begin{table}[h!]
 	\centering
 	\includegraphics[width=0.75\textwidth]{ParametricSensitivityTable} 
-	\caption{A summary of propellant costs for a series of $\pm10\%$ uncertainties compared to a nominal scenario with no uncertainty.}
+	\caption{A summary of PMFs for a series of $\pm10\%$ uncertainties compared to a nominal scenario with no uncertainty. Scenarios with PMFs higher than the nominal scenario have been highlighted.}
 	\label{table_parametric}
 \end{table}
 
@@ -307,15 +342,17 @@ The performance of the algorithm is first investigated in a series of one-dimens
 
 %Due to their similar effect on the vehicle's L/D ratio, the perturbations pairs  $ +C_D $, $ -C_L $ and $ -C_D $, $ +C_L $ result in essentially the same update to the bank angle magnitude. The lift dispersed cases essentially fly identical altitude-velocity profiles but have slightly different reversal velocities due to the impact of lift on lateral motion. 
 
-%Due to its reliance on predictions, the algorithm is susceptible to model uncertainty. Reference~\cite{predictor_corrector_analysis} examined the performance of predictive algorithms under such circumstances and found, like Ref.~\cite{lu2014entry}, that model adaptation during flight is essential to good performance in the presence of such parametric uncertainty. 
-Table~\ref{table_parametric} summarizes the propellant usages and compares them to the nominal scenario, while Table~\ref{table_parametric_ignition} gives the corresponding propellant optimal ignition states. Several trends are noticeable. The terminal altitude is almost always very close to the minimum altitude constraint. This allows the vehicle to decelerate as much as possible, reducing the velocity that must be nulled by SRP. Scenarios in which the optimal ignition occurs higher indicate some other constraint is active, such as overshooting the optimal downrange distance at which to ignite. Additionally, all of the trajectories feature lofting nearly the end of the entry phase, again allowing for additional deceleration prior to ignition. 
+ 
+Table~\ref{table_parametric} summarizes the PMF for each scenario and compares them to the nominal scenario, while Table~\ref{table_parametric_ignition} gives the corresponding propellant-optimal ignition states. Several trends are noticeable. All of the trajectories feature lofting near the end of the entry phase, and the terminal altitude is almost always very close to the minimum altitude constraint. Since altitude decreases monotonically with velocity after lofting, this allows the vehicle to decelerate for as long as possible, reducing the velocity that must be nulled by SRP. Scenarios in which the optimal ignition occurs higher indicate some other constraint is active, such as overshooting the optimal downrange distance at which to ignite.  
 
-Although there is no separate guidance logic for heading alignment, it is clear from the small crossrange values in Table~\ref{table_parametric_ignition} that by using the table of SRP solutions, the vehicle does align its heading prior to ignition. Not only that, but it times the reversal such that heading is aligned at the right time but without sacrificing range performance. 
+Although there is no separate guidance logic for heading alignment, it is clear from the small crossrange values in Table~\ref{table_parametric_ignition} that by targeting the optimal point in $\mathcal{F}_M$, the vehicle does align its heading prior to ignition. Not only that, but it times the reversal such that heading is aligned at the right time but without sacrificing range performance. 
+
+%One may be tempted, upon seeing the results, to think that the separate approach would suffice. But without knowledge of the ignition state, it is not possible to time a single reversal to achieve this. Adding separate heading alignment phase would allow different reversal time? Might improve 
 %Although the solutions are generally aligned, we can see another strength of the method is that there may be times when accepting some crossrange error in order to improve other states is a worthwhile tradeoff, and this determination is made on a numerical basis.
 
 % For a fixed ground target, a wide range of entry flight path angles (EFPAs) and entry heading errors can be accommodated by the entry guidance algorithm. Figure~\ref{fig_sweep} is an example that demonstrates the propellant cost is approximately invariant with respect to entry azimuth errors and varies weakly with EFPA, about 200 kg of propellant over $1.4^\circ$ of variation in EFPA. The range of acceptable EFPAs is often set by considerations such as g-load limits, or aerothermal constraints, and these results indicate such constraints can be imposed at little-to-no cost to propellant. 
 %
-%It is expected that a guidance algorithm that provides range control during entry to the same downrange distance over such a range of EFPAs will fly very different entry trajectories with a much greater variance in the propellant cost to decelerate the vehicle while landing at the target. This is significant because vehicle designers will allocate propellant based on $3\sigma$ or high percentile estimates, and reducing both the mean and variance means potential for landing greater payload masses. 
+%It is expected that a guidance algorithm that provides range control during entry to the same downrange distance over such a range of EFPAs will fly very different entry trajectories with a much greater variance in the propellant cost to decelerate the vehicle while landing at the target. This is significant because vehicle designers will allocate propellant based on $3\sigma$ or high percentile estimates, and reducing both the mean and variance means potential for landing greater payload masses. A numerical assessment to quantify these effects...
 %
 %\begin{figure}[h!]
 %	\centering
@@ -324,14 +361,14 @@ Although there is no separate guidance logic for heading alignment, it is clear 
 %	\label{fig_sweep}
 %\end{figure}
 
-%\section{Conclusion}
+\subsection{Monte Carlo}
+In this section the atmospheric density is modeled using MarsGRAM \cite{MarsGRAM2010}, rather than the exponential model employed specifically for the sensitivity study. 
+
+One obvious/potential weakness of the parametrization is that the algorithm plans to make only one important reversal. After the reversal has been executed, another may be planned if needed to align the vehicle's heading with the target, so long as the effect on other state variables does not outweigh the benefit of the additional reversal. 
+
+\section{Conclusion}
 
 \bibliographystyle{AAS_publication}
 \bibliography{bib}
-
-%\appendix
-%\section{PMF Table Construction Procedure}
-%Given a function $P(x)$ that produces an estimate of the propellant cost $m_{prop}$ to reach the target state from the current state $x$, we would like a procedure to effectively cover the set of points $X = \left\lbrace x\, |\, P(x) \le m_{\max} \right\rbrace $. 
-
 
 \end{document}
