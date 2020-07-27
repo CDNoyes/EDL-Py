@@ -118,7 +118,12 @@ class Simulation(Machine):
             zeta = 0.       # yaw angle
 
         if self._time_constant and len(self.control_history) > 1:
-            sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
+            # sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
+            # what if instead of time constant we use a rate limit
+            limit = np.radians(10)*self.cycle.duration
+            if np.abs(sigma-self.u[0]) > limit: # apply rate limiting 
+                s = np.sign(sigma-self.u[0]) # increasing or decreasing command 
+                sigma = self.u[0] + s*limit
 
         if self._use_da:
             X = RK4(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
@@ -148,7 +153,7 @@ class Simulation(Machine):
 
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
-            self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
+            self.edlModel.update_ratios(LR=AeroRatios[0], DR=AeroRatios[1])
             if self._output:
                 print("L/D: {:.3f}".format(self.edlModel.vehicle.LoD))
                 print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))

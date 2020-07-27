@@ -107,7 +107,7 @@ class SRPController:
         self.target = target 
         self.update = update_function
         self.vmc = VMC()
-        self.vmc.null_sample(np.product(N)) 
+        # self.vmc.null_sample(np.product(N)) 
         
         self.aeroscale = np.array([1,1]) # Lift and drag modifiers in the prediction 
 
@@ -215,7 +215,8 @@ class SRPController:
 
                 else:
                     # Loose
-                    bank_range = current_bank + np.radians([-8, 8])
+                    bank_range = current_bank + np.radians([-15, 15])
+                    # bank_range = np.radians([5, 60])
                     reversal_range = current_reverse + np.array([-1000, 1000])
 
             else: # After reversal, really hone in on the correct bank for the remainder 
@@ -262,7 +263,10 @@ class SRPController:
         if lift is not None:
             self.sim.edlModel.update_ratios(1,1) # this ensures we get nominal values 
             Lm, Dm = self.sim.edlModel.aeroforces(r, v, m)  # Nominal model values
-            self.aeroscale = np.clip([lift/Lm, drag/Dm], 0.8, 1.2) # basically, never let the control freak out over massive estimates due to scale height 
+            if v > 4500:
+                self.aeroscale = np.clip([lift/Lm, drag/Dm], 0.9, 1.1) # basically, never let the control freak out over massive estimates due to scale height 
+            else:
+                self.aeroscale = np.clip([lift/Lm, drag/Dm], 0.75, 1.25) # basically, never let the control freak out over massive estimates due to scale height 
         
         # TODO: make this an init method or something 
         # Initialize on the fly if needed
@@ -282,8 +286,9 @@ class SRPController:
                     b -= np.radians(np.clip(80 * (1-self.aeroscale[0]), -10, 10))  # update initial bank guess for lift factor 
                     b += np.radians(np.clip(100 * (1-self.aeroscale[1]), -12, 12))  # update initial bank guess for drag factor 
                     b = np.clip(b, 0, np.pi/2) # ensure the above do not push the bank angle into negative territory 
-
-                # b = np.radians(41 + 15*(np.degrees(fpa)+15.6))
+                # if  1:
+                #     print("FPA outside data region, using a linear fit")
+                #     b = np.radians(58 + 12*(np.degrees(fpa)+14.7))
                 # v0 = 2702.8 - 500 * np.degrees(azi)
                 if 1 or self.debug:
                     print("SRP Controller initialized to {:.2f} deg, {:.1f} m/s".format(np.degrees(b), v0))
@@ -294,7 +299,8 @@ class SRPController:
         
        
         if self.update(self.history, current_state, **kwargs):
-            print("Update triggered...")
+            if 'time' in kwargs:
+                print("Update triggered... (sim time = {:.2f} s)".format(kwargs['time']))
             print("Current aero ratios: {}".format(self.aeroscale))
             # if self.debug:
             if 0: # Just used for debugging to turn the actual replanning off 
@@ -309,7 +315,7 @@ class SRPController:
 
                 if 1:  # Sequential optimization based parameter updates
                     # sol = self.optimize_mc(current_state, max_iters=3)    # Repeated 1-D VMC based 
-                    if 1 and current_state[3] <= self.history['params'][-1][1]: # past the reversal velocity 
+                    if 0 and current_state[3] <= self.history['params'][-1][1]: # past the reversal velocity 
                         sol = self.optimize_nonlinear(current_state, method='SLSQP', scalar=True)           # Nonlinear optimization-based 
                         # sol = self.optimize(current_state, verbose=True)      # 1-D optimization based 
                     else:
@@ -518,8 +524,9 @@ class SRPController:
         obj =  lambda p: _objective(*p, x0=x0, srp_trim=lambda x: srpdata.srp_trim(x, target, vmax=700, optimize=optimize_trim), aero=aero, time_constant=self.time_constant)
         p0 = self.history['params'][-1]
         vr = p0[1]
-        # if x0[3] < vr:
-        #     p0[1] = 500 
+        if x0[3] < vr:
+            p0[1] = 600 #max(460, vr/2) #500 
+            p0[0] = np.abs(p0[0])*self.banksign
         # In theory we could do something like, check if the current is a valid solution, and if so, use tight bounds. 
         # If not, use looser bounds? 
         # t0 = time.time()
@@ -527,7 +534,7 @@ class SRPController:
         # t1 = time.time()
         # print("Took {:.2f} s".format(t1-t0))
         # bounds = [p0[0] + np.radians([-20, 20]), p0[1] + np.array([-100, 100]) ]
-        bounds = [np.radians([10, 70]), vr + np.array([-100, 100]) ]
+        bounds = [np.radians([5, 70]), vr + np.array([-100, 100]) ]
 
 
         if scalar: # scalar opt on just bank 
@@ -713,7 +720,7 @@ def test_single():
     # mcc = SRPController(N=[200, 200], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
     mcc(x0)
     print(mcc.history['ignition_state'])
-    # mcc.sim.plot()
+    mcc.sim.plot()
     plt.show()
 
 
@@ -765,8 +772,7 @@ def parametric_sensitivity():
     m0 = []  # nominal fuel for each efpa 
     trajectories = []
     histories = []
-    # for efpa in [-16.9, -16.5, -16.1]:
-    efpas = [-15.9]
+    efpas = [-15.75]
     data = []
     for efpa in efpas:
 
@@ -788,32 +794,11 @@ def parametric_sensitivity():
         print(delta)
 
 
-    output = {'efpa': efpas, "samples": inps, 'prop_nominal': m0, 'traj_nominal':traj, "prop": data, "traj": trajectories, "histories": histories}
+    output = {'efpa': efpas, "samples": inps, 'prop_nominal': m0, 'traj_nominal':traj, "history_nominal": hist, "prop": data, "traj": trajectories, "histories": histories}
     pickle.dump(output, open("./data/FuelOptimal/parametric_data.pkl", 'wb'))
-    plot_parametric(efpas, mnom, totals)
 
 def plot_parametric(data_file):
-    """ Some consistent conclusions, many obvious but now corroborated
-
-        Consistent results:
-        less CD, rh0, and hs all increase fuel required
-        less CL reduced fuel required 
-
-
-        Less drag -> more fuel required
-        More drag -> less fuel required
-
-        More lift -> more fuel required
-
-        rho0: generally more dense -> less fuel required 
-        but the -16.8 case, both variations lead to increased fuel required. 
-        This is likely because -16.8 is nearly the steepest EFPA for which the target is 
-        nominally in the reachable set, and parametric variations can remove it (this occurs when trying -16.9 EFPA with +drag variations)
-
-        scale height variations in either direction increase fuel required,
-        but the trend was inconsistent. In 2/3 cases, the minus variation was worse
-        while in the last case, the plus variation incurred a larger penalty 
-
+    """ 
     """
     from Utils.smooth import smooth 
 
@@ -838,21 +823,25 @@ def plot_parametric(data_file):
     print_dicts(data)
     data['prop'] = np.array(data['prop'])
     Vf = [data['traj_nominal']['velocity'].iloc[-1]+10] + [h['velocity'][-1] for h in np.array(data['histories']).flatten()]
-    print(Vf)
+    # print(Vf)
     prop = np.array([data['prop_nominal'][0], *data['prop'].flatten()])
-    print(prop)
+    # print(prop)
     delta = prop - prop[0]
     per = delta/prop[0]*100
     ignition = [np.zeros((5,))] + [h['ignition_state'][-1] for h in np.array(data['histories']).flatten()]
 
+    # prop_history = [0] + [h['fuel'] for h in np.array(data['histories']).flatten()] # no nominal history...
+    histories = [data['history_nominal']] + [h for h in np.array(data['histories']).flatten()]
 
     # create a table 
     states = ['DR','CR','Alt','Vx', 'Vz']
-    table_data = {'propellant': prop, 'delta': delta, 'percent_diff': per, 'ignition velocity': Vf}
+    table_data = {'pmf': prop/7200*100, 'delta pmf': delta/7200*100, 'ignition velocity': Vf}
     for state, values in zip(states, np.array(ignition).T):
         table_data[state] = values
     df = pd.DataFrame(table_data)
     df.to_csv("./data/FuelOptimal/parametric_sensitivity_table.csv")
+
+    savedir = "./Documents/FuelOptimal/1d parametric/"
 
     # Plots GALORE
     figsize=(7,4)
@@ -882,93 +871,135 @@ def plot_parametric(data_file):
     # plt.ylabel('Altitude (m)', fontsize=fontsize)
     # plt.grid()
     # plt.legend()
-    skip = [r'$C_D$',r'$C_L$',r'$h_s$']
+    # skip = [r'$C_D$',r'$C_L$',r'$h_s$']
+    keeplist = [r'$C_D$',r'$C_L$',r'$\rho$', r'$h_s$', [r'$C_D$',r'$C_L$',r'$\rho$', r'$h_s$']]
+    # keeplist = [[r'$C_D$',r'$C_L$',r'$\rho$', r'$h_s$']]
+    names = ['drag','lift','rho','hs','all']
+    figs = ['h_v','dr_cr','bank','lod','h_v_zoomed','prop_hist']
+    fignum_mult = 0 
+    nplots = len(figs)
 
-    for tr, vf, label in zip(traj, Vf, labels):
+    for keep in keeplist:
+        if not isinstance(keep, list):
+            keep = [keep]
+        keep = ['nominal'] + keep
+        fignum_mult += 1
+        for tr, vf, hist, label in zip(traj, Vf, histories, labels):
 
-        if np.any([s in label for s in skip]):
-            print(label)
-            continue
-        v = tr['velocity'].values 
-        tr = tr[v>=vf]
+            if not np.any([s in label for s in keep]):
+                # print(label)
+                continue
 
-        plt.figure(1, figsize=figsize)
-        plt.plot(tr['velocity'], tr['altitude'], label=label)
-        plt.xlabel('Velocity', fontsize=fontsize)
-        plt.ylabel('Altitude (km)', fontsize=fontsize)
-        plt.tick_params(labelsize=ticksize)
-        plt.grid()
-        plt.legend()
+            v = tr['velocity'].values 
+            tr = tr[v>=vf]
+            v = tr['velocity'].values 
 
-        plt.figure(2, figsize=figsize)
-        plt.plot(tr['crossrange'], tr['downrange'], label=label)
-        plt.xlabel('Downrange (km)', fontsize=fontsize)
-        plt.ylabel('Crossrange (km)', fontsize=fontsize)
-        # plt.axis('equal')
-        plt.tick_params(labelsize=ticksize)
-        plt.grid()
-        plt.legend()
+            plt.figure(nplots*(fignum_mult-1) + 1, figsize=figsize)
+            plt.plot(tr['velocity'], tr['altitude'], label=label)
+            plt.xlabel('Velocity', fontsize=fontsize)
+            plt.ylabel('Altitude (km)', fontsize=fontsize)
+            plt.tick_params(labelsize=ticksize)
+            plt.grid()
+            plt.legend()
 
-        t = tr['time'].values
-        k = np.diff(t) == 0
-        t = t[:-1][k]
+            plt.figure(nplots*(fignum_mult-1) + 2, figsize=figsize)
+            plt.plot(tr['crossrange'], tr['downrange'], label=label)
+            plt.ylabel('Downrange (km)', fontsize=fontsize)
+            plt.xlabel('Crossrange (km)', fontsize=fontsize)
+            # plt.axis('equal')
+            plt.tick_params(labelsize=ticksize)
+            plt.grid()
+            plt.legend()
 
-        bank_smooth = smooth(t, tr['bank'].values[:-1][k], N=1, tau=1.01)(tr['time'])
-        plt.figure(3, figsize=figsize)
-        plt.plot(tr['velocity'], bank_smooth, label=label)
-        # plt.plot(tr['velocity'], tr['bank'], label=label)
-        plt.tick_params(labelsize=ticksize)
-        plt.xlabel('Velocity', fontsize=fontsize)
-        plt.ylabel('Bank Angle (deg)', fontsize=fontsize)
-        plt.grid()
-        plt.legend()
+            t = tr['time'].values
+            k = np.diff(t) == 0
+            t = t[:-1][k]
 
-        lodv = tr['lift']*np.cos(np.radians(tr['bank']))/tr['drag']
-        plt.figure(4, figsize=figsize)
-        plt.plot(tr['velocity'], lodv, label=label)
-        # plt.plot(tr['velocity'], tr['bank'], label=label)
-        plt.tick_params(labelsize=ticksize)
-        plt.xlabel('Velocity', fontsize=fontsize)
-        plt.ylabel('Vertical L/D ', fontsize=fontsize)
-        plt.grid()
-        plt.legend()
+            bank_smooth = smooth(t, tr['bank'].values[:-1][k], N=1, tau=1.01)(tr['time'])
+            bank = tr['bank'].values
+
+            beta = 0.5
+            # bank_smooth = beta * bank[1:] + (1-beta)*bank[:-1]
+            bank_smooth = beta * bank + (1-beta)*bank_smooth
+            plt.figure(nplots*(fignum_mult-1) + 3, figsize=figsize)
+            # plt.plot(tr['velocity'], bank_smooth, label=label)
+            plt.plot(tr['velocity'], tr['bank'], label=label)
+            plt.tick_params(labelsize=ticksize)
+            plt.xlabel('Velocity', fontsize=fontsize)
+            plt.ylabel('Bank Angle (deg)', fontsize=fontsize)
+            plt.grid()
+            plt.legend()
+
+            lodv = tr['lift']*np.cos(np.radians(tr['bank']))/tr['drag']
+            plt.figure(nplots*(fignum_mult-1) + 4, figsize=figsize)
+            plt.plot(tr['velocity'], lodv, label=label)
+            # plt.plot(tr['velocity'], tr['bank'], label=label)
+            plt.tick_params(labelsize=ticksize)
+            plt.xlabel('Velocity', fontsize=fontsize)
+            plt.ylabel('Vertical L/D ', fontsize=fontsize)
+            plt.grid()
+            plt.legend()
+
+            plt.figure(nplots*(fignum_mult-1) + 5, figsize=figsize)
+            plt.plot(tr['velocity'][v<=1200], tr['altitude'][v<1200], label=label)
+            plt.xlabel('Velocity', fontsize=fontsize)
+            plt.ylabel('Altitude (km)', fontsize=fontsize)
+            plt.tick_params(labelsize=ticksize)
+            plt.grid()
+            plt.legend()
+
+            # if 'nominal' in label: # no nominal history saved 
+            #     continue
+            plt.figure(nplots*(fignum_mult-1) + 6, figsize=figsize)
+            updates = list(range(1,1+len(hist['fuel'])))
+            plt.plot(updates, np.array(hist['fuel'])/7200, "o--", label=label)
+            plt.xlabel('Parameter Update', fontsize=fontsize)
+            plt.ylabel('PMF (%)', fontsize=fontsize)
+            plt.tick_params(labelsize=ticksize)
+            plt.grid()
+            plt.legend()
+
+        for i in range(nplots):
+            plt.figure(nplots*(fignum_mult-1) + i+1)
+            plt.savefig(os.path.join(savedir, "{}_{}".format(figs[i], names[fignum_mult-1])))
 
 
 
-    plt.show()
+    # plt.show()
 
 def test_sweep():
     """ Sweeps over a variety of EFPA/EAZI angles to generate a table of initial params."""
 
     target = Target(0, 700/3397, 0)  
+    srpdata = pickle.load(open(SRPFILE,'rb'))
 
-    # FPAs = np.linspace(-17.2, -15.8, 6)
-    # FPAs = [-17.39]
-    # AZIs = [-0.5, -0.25, 0, 0.25, 0.5]
-    # AZIs = [0.]
-    ic = boxgrid([(-16.5, -15.1), (-0.5, 0.5)], [15, 5], interior=True)
-    df = pd.read_csv("./data/FuelOptimal/srp_params.csv")
+    ic = boxgrid([(-16.3, -15.3), (-0.5, 0.5)], [11, 9], interior=True)
+    df = pd.read_csv("./data/FuelOptimal/srp_params - Copy.csv")
     data = df.values.T[1:]
     ic_existing = data[3:5].T
     # ic = [[-16.5, 0.5]]
 
     data = []
     for efpa, azi in ic:
+        skip = False 
         print("\n Entry FPA/AZI:")
         print(efpa, azi)
-        for pair in ic_existing:
-            if np.abs(efpa - pair[0]) < 1e-3 and azi==pair[1]:
-                print("Already run, skipping")
-        # x0 = InitialState(vehicle='heavy', fpa=np.radians(efpa), psi=np.radians(azi)) 
-        # for boolean in [1,]:
-        #     # mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
-        #     # mcc = SRPController(N=[3, 5], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
-        #     try:
-        #         mcc(x0)
-        #         data.append([mcc.history['fuel'][-1], *mcc.history['params'][-1], efpa, azi, *mcc.history['ignition_state'][-1], *mcc.history['entry_state'][-1]])
-        #     except IndexError:  # Occurs when the optimization ends without finding a feasible solution 
-        #         print("Could not find viable solution ")
-        #         pass
+        # for pair in ic_existing:
+        #     if np.abs(efpa - pair[0]) < 0.05 and azi==pair[1]:
+        #         print("Already run a sufficiently close sample, skipping")
+        #         skip = True 
+        # if skip:
+        #     continue 
+        x0 = InitialState(vehicle='heavy', fpa=np.radians(efpa), psi=np.radians(azi)) 
+        for boolean in [1,]:
+            mcc = SRPController(N=[30, 100], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
+            # mcc = SRPController(N=[3, 5], target=target, srpdata=srpdata, update_function=update_rule, debug=False, constant_controller=boolean)
+            try:
+                mcc(x0)
+                data.append([mcc.history['fuel'][-1], *mcc.history['params'][-1], efpa, azi, *mcc.history['ignition_state'][-1], *mcc.history['entry_state'][-1]])
+            except IndexError:  # Occurs when the optimization ends without finding a feasible solution 
+                print("Could not find viable solution ")
+                pass
 
     data = np.array(data).T
     data[1] = np.degrees(data[1])
@@ -984,24 +1015,33 @@ def test_sweep():
     plt.show()
 
 def plot_sweep(datafile):
+    import matplotlib as mpl
+    mpl.rc('image', cmap='inferno')
     df = pd.read_csv(datafile)
     
     data = df.values.T[1:]
     ic = data[3:].T
     print(data.shape)
 
+    pmf = data[0]/df['m'] * 100
+
 
     plt.figure()
-    plt.tricontourf(ic.T[0], ic.T[1], data[0])
+    plt.tricontourf(ic.T[0], ic.T[1], pmf)
     plt.xlabel("EFPA (deg)")
     plt.ylabel("Entry Azimuth Error (deg)")
-    plt.colorbar(label="Propellant Required (kg)")
+    plt.colorbar(label="Propellant Mass Fraction (%)")
 
     plt.figure()
     plt.tricontourf(ic.T[0], ic.T[1], data[1])
     plt.xlabel("EFPA (deg)")
     plt.ylabel("Entry Azimuth Error (deg)")
     plt.colorbar(label="Bank Angle (deg)")
+
+    plt.figure()
+    plt.scatter(ic.T[0], data[1])
+    plt.xlabel("EFPA (deg)")
+    plt.ylabel("Bank Angle (deg)")
 
     plt.figure()
     plt.tricontourf(ic.T[0], ic.T[1], data[2])
@@ -1023,26 +1063,76 @@ def plot_sweep(datafile):
 
     
     plt.figure()
-    plt.scatter(df['vx'], df['x'], c=data[0])
+    plt.scatter(df['vx'], df['x'], c=pmf)
     plt.xlabel('Downrange Velocity')
     plt.ylabel('Downrange distance')
-    plt.colorbar(label="Propellant Required (kg)")
+    plt.colorbar(label="Propellant Mass Fraction (%)")
+
     plt.figure()
-    plt.scatter(df['vz'], df['z'], c=data[0])
-    plt.xlabel('Downrange Velocity')
-    plt.ylabel('Downrange distance')
-    plt.colorbar(label="Propellant Required (kg)")
+    plt.scatter(df['vz'], df['z'], c=pmf)
+    plt.xlabel('Vertical Velocity')
+    plt.ylabel('altitude')
+    plt.colorbar(label="Propellant Mass Fraction (%)")
     
     plt.show()
 
+
+def dataframe_merge(file_to_append, file_to_add):
+    # performs a special merge: appends data from second file to first file
+    # but checks to see if two solutions exist for the same initial conditions, 
+    # and takes the better of the two based on propellant cost 
+    df1 = pd.read_csv(file_to_append)[1:]
+    df2 = pd.read_csv(file_to_add)[1:]
+    df = pd.concat([df1,df2])
+    df.to_csv("./data/FuelOptimal/merged.csv", index=False)
+    # first, create one dataframe
+    remove_duplicates("./data/FuelOptimal/merged.csv")
+    # 
+
+def remove_duplicates(datafile):
+    # checks for repeated datapoints and uses the one with lower propellant cost 
+    outfile = datafile.replace('.csv','_duplicates_removed.csv')
+    print(outfile)
+
+    df = pd.read_csv(datafile)
+    efpa = df['efpa']
+    eazi = df['eazi']
+    prop = df['fuel']
+
+    pairs = np.array([pair for pair in zip(efpa,eazi)])
+    unique = prop > 0 # start with all 1s
+    append = []
+    dup_list = []
+
+    for pair in pairs:
+        # print(pair)
+        dup = np.all(pairs == pair, axis=1)
+        try:
+            repeat = np.any(np.all(pair == np.array(dup_list), axis=1))
+        except:
+            repeat = False 
+
+        if np.sum(dup) > 1 and not repeat:
+            dup_list.append(pair)
+            unique = np.logical_and(unique, np.invert(dup))
+            print("Duplicate(s) found = {}".format(pairs[dup][0]))
+            i = np.argmin(prop[dup].values)
+            append.append(df[dup].iloc[i])
+
+    append = pd.DataFrame(append)
+    df_out = pd.concat([df[unique], append])
+    df_out.to_csv(outfile, index=False)
 
 
 if __name__ == "__main__":
     
     # test_single()
-    test_sweep()
-    # plot_sweep("./data/FuelOptimal/srp_params.csv")
-    # test_sim([0., 0., 0., 0.0], -15.9, True)
+    # test_sweep()
+    # dataframe_merge("./data/fuelOptimal/srp_params - Copy.csv","./data/fuelOptimal/data_to_merge.csv")
+    # remove_duplicates("./data/fuelOptimal/test.csv")
+    # plot_sweep("./data/FuelOptimal/merged_duplicates_removed.csv")
+    # plot_sweep("./data/FuelOptimal/data_to_merge.csv")
+    test_sim([0., 0., 0., 0.01], -15.75, True)
     # parametric_sensitivity()
     # plot_parametric("./data/FuelOptimal/parametric_data.pkl")
 

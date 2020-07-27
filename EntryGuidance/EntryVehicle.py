@@ -67,4 +67,5 @@ class EntryVehicle(object):
 
 if __name__ == "__main__":
     import numpy as np 
-    print(EntryVehicle().aerodynamic_coefficients(np.linspace(1,35,100)))
+    # print(EntryVehicle().aerodynamic_coefficients(np.linspace(1,35,100)))
+    print(EntryVehicle().BC(7200))
