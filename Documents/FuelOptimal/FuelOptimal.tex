@@ -55,7 +55,7 @@ The problem under investigation considers a two-phase EDL sequence consisting of
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.6\textwidth]{EDLPhaseDiagram} 
+	\includegraphics[width=0.5\textwidth]{EDLPhaseDiagram} 
 	\caption{Schematic of the EDL phases}
 	\label{fig_phases}
 \end{figure}
@@ -269,7 +269,7 @@ Once the constraints have been applied, 1-D optimization is applied to the remai
 %This has several advantages over common alternatives. First, although energy or velocity could be used, a sufficiently low choice of the terminal value must be made, but any time spent integrating below the reachable set of the vehicle is wasted, and the choice is problem/vehicle specific. Altitude would also be a natural choice since the minimum ignition altitude would serve as the terminal integration condition, but like energy and velocity this is problem-dependent, and additionally altitude is not a strictly monotonic variable in the case of lofting trajectories.
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.9\textwidth]{H_Vs_S} 
+	\includegraphics[width=0.7\textwidth]{H_Vs_S} 
 	\caption{Only the interval of the predicted entry trajectory satisfying constraints on velocity, altitude, and distance to the target are searched for the propellant-optimal ignition state.}
 	\label{fig_ignition}
 \end{figure}
@@ -313,7 +313,6 @@ The site targeted at the termination of the descent phase is 700 km downrange wi
 %The entry flight path angle in all examples is $ -15.75^\circ $. The vehicle's bank angle rate is limited to $10 ^{\circ}/s$. 
 Performance is evaluated using the propellant mass fraction (PMF), the portion of the vehicle that is propellant, as the primary metric. The bounds used in the constraints Eq.~\ref{eq_constraints} are $z_{\min} = 3$ km, $[d_{\min},\,d_{\max}] = [0, 25]\,$ km, $v_{\max} = 700 $ m/s. The entry phase terminates at the ignition velocity last predicted by the entry guidance algorithm.
 
-%\textbf{Work in progress}
 \subsection{Sensitivity Analysis}
 The performance of the algorithm is first investigated in a series of one-dimensional sensitivities to parametric uncertainties, including lift and drag coefficients, and two forms of density uncertainty. For this section, the atmospheric density is modeled as 
 \begin{align}
@@ -331,13 +330,13 @@ Due to its reliance on predictions, the algorithm is susceptible to model uncert
 \end{figure}
 \begin{table}[h!]
 	\centering
-	\includegraphics[width=0.8\textwidth]{ParametricSensitivityTable} 
+	\includegraphics[width=0.75\textwidth]{ParametricSensitivityTable} 
 	\caption{A summary of PMFs for a series of $\pm10\%$ uncertainties compared to a nominal scenario with no uncertainty. Scenarios with significant increases in PMF relative to the nominal scenario have been highlighted.}
 	\label{table_parametric}
 \end{table}
 \begin{table}[h!]
 	\centering
-	\includegraphics[width=0.85\textwidth]{ParametricSensitivityIgnitionTable} 
+	\includegraphics[width=0.8\textwidth]{ParametricSensitivityIgnitionTable} 
 	\caption{A summary of the propellant-optimal ignition states for a series of $\pm10\%$ uncertainties. Optimal trajectories generally feature low crossrange, and altitudes close to the minimum altitude constraint.}
 	\label{table_parametric_ignition}
 \end{table}
@@ -369,43 +368,43 @@ All of the trajectories feature lofting near the end of the entry phase (not sho
 \subsection{Monte Carlo Simulation}
 \begin{table}[h!]
 	\centering
-	\includegraphics[width=0.5\textwidth]{DispersionTable} 
-	\caption{The mean and 3$\sigma$ inputs for the Monte Carlo simulation.}
+	\includegraphics[width=0.4\textwidth]{DispersionTable} 
+	\caption{The mean and $3\sigma$ values of the inputs used for the Monte Carlo simulation.}
 	\label{table_input_dispersions}
 \end{table}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=1\textwidth]{ignition_pmf} 
+	\includegraphics[width=0.6\textwidth]{ignition_pmf} 
 	\caption{Propellant mass fraction for the Monte Carlo samples.}
 	\label{fig_mc_pmf}
 \end{figure}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.9\textwidth]{bank_vel} 
+	\includegraphics[width=0.6\textwidth]{bank_vel} 
 	\caption{Bank angle profiles resulting from calls to the guidance algorithm at $ V=[5490, 4500, 3000, 2000, 1000] $ m/s.}
 	\label{fig_mc_bank}
 \end{figure}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.9\textwidth]{alt_vel_zoomed} 
+	\includegraphics[width=0.6\textwidth]{alt_vel_zoomed} 
 	\caption{All of the trajectories feature lofting as a means to further decelerate prior to ignition.}
 	\label{fig_mc_alt_vel}
 \end{figure}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.9\textwidth]{dr_cr} 
+	\includegraphics[width=0.6\textwidth]{dr_cr} 
 	\caption{Downrange and crossrange flown from the entry state. Some trajectories fly significant crossranges due to the single planned bank reversal. Note that there are initial downrange errors in addition to than the initial crossrange errors, but due to the difference in scale they are not easily visible.}
 	\label{fig_mc_entry_dr_cr}
 \end{figure}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.9\textwidth]{ignition_dr_cr} 
-	\caption{Downrange and crossrange to the target position. The crossrange is nearly always small, with 88\% under 1 km, indicating the vehicle heading is generally well aligned at ignition.}
+	\includegraphics[width=0.7\textwidth]{ignition_dr_cr} 
+	\caption{Downrange and crossrange to the target position. The crossrange is generally small, with 88\% under 1 km, indicating the vehicle heading is well-aligned at ignition.}
 	\label{fig_mc_ignition_dr_cr}
 \end{figure}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=0.9\textwidth]{ignition_alt_range} 
+	\includegraphics[width=0.7\textwidth]{ignition_alt_range} 
 	\caption{The minimum altitude constraint, indicated in red, causes low energy scenarios to trigger at longer downrange distances and higher velocities, resulting in increased PMF.}
 	\label{fig_mc_ignition_alt_vs_distance}
 \end{figure}
@@ -429,6 +428,26 @@ Figure~\ref{fig_mc_ignition_alt_vs_distance} shows that altitude at ignition is 
 The consistently low ignition altitudes suggest a guidance strategy that triggers ignition at a fixed altitude may perform nearly as well as searching for the optimal ignition state. Doing so would eliminate the need to find the optimum ignition point along a trajectory, removing the nested computation structure, and leaving only the optimization over the parameters of the bank angle profile. An additional benefit of such a strategy is a reduction of the propellant mapping interpolation to four dimensions, requiring far fewer solutions to represent the mapping with the same accuracy. Additionally, some of the suboptimality associated with an altitude trigger would be mitigated by the vehicle flying slightly differently knowing that the ignition altitude is different. 
 
 Reference~\cite{PropellantOptimalAdaptiveTrigger} also noted that propellant-optimal ignitions generally occur near the last feasible entry state, but submits that propellant consumption alone is not a sufficient criterion for powered descent ignition because it does not account for operational margins. We suggest alternatively that by defining the minimum altitude constraint with operational margin in mind, the entry guidance algorithm may utilize an altitude trigger and focus exclusively on propellant consumption without issue. Another possible generalization is to trigger on a fixed glideslope angle, essentially allowing the final altitude to be lower if the vehicle is also nearer to the target.
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.9\textwidth]{min_alt_constraint} 
+	\caption{The optimal placement of the target from the entry interface varies considerably with minimum entry altitude constraint has a strong impact on the geometry of the propellant optimal powered descent trajectories.}
+	\label{fig_min_alt_constraint}
+\end{figure} 
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.9\textwidth]{SRP_vs_min_alt} 
+	\caption{The minimum entry altitude constraint has a strong impact on the geometry of the propellant-optimal powered descent trajectories.}
+	\label{fig_srp_traj}
+\end{figure} 
+ 
+ % %New stuff
+The minimum altitude constraint also implications during mission design. Not only does it strongly affect the geometry of the powered descent phase, but it also affects the optimal entry trajectory length and the minimum propellant required.
+ Figure~\ref{fig_min_alt_constraint} plots these quantities versus the value of the altitude constraint, while Fig.~\ref{fig_srp_traj} shows how the powered descent trajectories vary with the constraint. 
+For the vehicle considered, and a constant bank angle magnitude during entry, the unconstrained optimal ignition altitude is about 1.5 km above the target. When the targeted downrange distance is free, the growth in PMF due to the constraint is modest, but the optimal entry downrange distance grows by nearly 40 km when imposing a 5 km constraint, and the propellant-optimal downrange distance from the target at ignition nearly doubles. 
+ % %End New stuff
+ 
  
 \section{Conclusion}
 An entry guidance algorithm for chuteless, retropropulsion-based entry, descent, and landing was proposed. In particular, we addressed the problem of steering an entry vehicle to a propellant-optimal ignition condition. Feasible solutions to the powered descent problem are used to define the entry guidance target set. By computing and storing a mapping from ignition states in the target set to propellant required, the entry guidance algorithm maintains a predicted ignition state that varies over time as various perturbations alter the reachable set of the vehicle. The guidance algorithm updates the bank profile in order to track the propellant-optimal reachable state.
@@ -436,10 +455,6 @@ An entry guidance algorithm for chuteless, retropropulsion-based entry, descent,
 Although the role of entry guidance has always been to deliver the vehicle to favorable conditions for subsequent descent and landing phases, the use of the powered descent phase's guidance to define a target set, specifically for the purpose of reducing predicted powered descent propellant consumption, is novel. In parachute-based architectures, Mars entry guidance algorithms are generally judged on their ability to manage range errors while reaching the safe parachute deployment set. In contrast, in chuteless missions where pinpoint landing is achieved via powered descent, we posit that performance will instead be based on the required propellant to land the vehicle.
 
 In the presented approach, the transition from the entry phase to powered descent is determined onboard during the optimization of the bank angle profile, but numerical results suggest that a possible simplification of the trigger is possible with little to no increase in propellant. Using a fixed altitude trigger would remove the need to optimize the ignition point along individual trajectories, and would allow a further reduction in size of the propellant map due to the decrease in dimensionality of the possible ignition states. The approach was demonstrated using a simple parametrization. Future work will consider alternatives, such as a profile designed specifically for achieving low velocity, which will likely yield lower propellant consumption. 
-%First steps in defining an entry guidance that seeks an optimal point within a target set. 
-%Merit in taking steps to define the target set and define a guidance scheme to seek the best point. Role of entry guidance as a means to deliver to powered descent state. 
-
-%The results may also refute the notion that the solution needs to be coupled...
 \bibliographystyle{AAS_publication}
 \bibliography{bib}
 
