@@ -95,6 +95,33 @@ class Planet:
         ''' Calls MG '''
         return
 
+
+    def heading(self, lon1, lat1, lon2, lat2):
+        # Given two points on a spherical planet, compute the heading that links that along a great circle arc
+        # Reference 2.39 - 2.44 in Joel's dissertation 
+        from numpy import pi, sin, cos, arccos, sign, abs, arcsin
+
+        d1n = pi/2 - lat1
+        d2n = pi/2 - lat2
+        # From diss
+        cd12 = sin(d1n)*sin(d2n)*cos(lon2-lon1) + cos(d1n)*cos(d2n)
+        d12 = arccos(cd12)
+
+        # From paper
+        # d12 = 2*arcsin(sin(0.5*(lat1-lat2))**2 + cos(lat1)*cos(lat2)*sin(0.5*(lon1-lon2))**2)
+        # cd12 = cos(d12)
+        
+        cphi = (sin(lat2)-sin(lat1)*cd12) / (cos(lat1)*sin(d12))
+        phi = sign(lon2-lon1) * arccos(cphi)
+        # if abs(lon1-lon2) < 1e-4:
+        #     if lat2 > lat1:
+        #         phi = 0
+        #     else:
+        #         phi = pi 
+        psi12 = pi/2 - phi 
+        return psi12
+
+
     def range(self, lon0, lat0, heading0, lonc, latc, km=False):
         '''Computes the downrange and crossrange between two lat/lon pairs with a given initial heading.'''
         # from numpy import arccos, arcsin, sin, cos, pi, nan_to_num, zeros_like
@@ -121,7 +148,8 @@ class Planet:
         #     return 0,0
         psi12 = heading0
         PHI = sign(lonc-lon0)*arccos( (sin(latc) - sin(lat0)*cos(d13))/(cos(lat0)*sin(d13)) )
-        psi13 = pi/2 - PHI
+        psi13 = pi/2 - PHI  # This is the desired heading angle 
+
         CR = arcsin(sin(d13)*sin(psi12-psi13))
         DR = self.radius*arccos(cos(d13)/cos(CR))
         CR *= self.radius
@@ -170,9 +198,10 @@ def compare():
     import numpy as np
 
     n = 2
-    rho0 = np.linspace(-0.20,0.20,n)
-    sh = np.linspace(-0.025,0.01,n)
-    h = np.linspace(0,127,1000) # kmeters
+    rho0 = np.linspace(-0.20, 0.20, n)
+    sh = np.linspace(-0.025, 0.01, n)
+    h = np.linspace(0, 127, 1000) # kmeters
+    
     plt.figure()
     for rho, s in product(rho0, sh):
         perDiff = getDifference(rho, s)
@@ -185,4 +214,13 @@ def compare():
 
 if __name__ == "__main__":
     # compare()
-    print(Planet().coord(0,0,0, 565e3, 0))
+    # print(Planet().coord(0,0,0, 565e3, 0))
+    import numpy as np 
+    import matplotlib.pyplot as plt 
+
+    lat = np.linspace(-88, 88, 100)
+    # for phi in lat:
+    plt.plot(lat, Planet().heading(0, 0, 600/3397, np.radians(lat))*180/3.14)
+    plt.show()
+    # for phi in lat:
+        # print(Planet().heading(0, 0, phi*3.14/180, phi*3.14/180)*180/3.14)

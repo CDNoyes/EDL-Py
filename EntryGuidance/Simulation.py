@@ -118,12 +118,18 @@ class Simulation(Machine):
             zeta = 0.       # yaw angle
 
         if self._time_constant and len(self.control_history) > 1:
-            sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
+            # sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
+            # what if instead of time constant we use a rate limit
+            limit = np.radians(10)*self.cycle.duration
+            if np.abs(sigma-self.u[0]) > limit: # apply rate limiting 
+                s = np.sign(sigma-self.u[0]) # increasing or decreasing command 
+                sigma = self.u[0] + s*limit
 
         if self._use_da:
             X = RK4(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc),())
         else:
             X = odeint(self.edlModel.dynamics((sigma, throttle, mu)), self.x, np.linspace(self.time,self.time+self.cycle.duration,self.spc))
+
         self.update(X, self.cycle.duration, np.asarray([sigma, throttle, mu]))
 
 
@@ -147,10 +153,10 @@ class Simulation(Machine):
 
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
-            self.edlModel.update_ratios(LR=AeroRatios[0],DR=AeroRatios[1])
+            self.edlModel.update_ratios(LR=AeroRatios[0], DR=AeroRatios[1])
             if self._output:
-                print("L/D: {:.2f}".format(self.edlModel.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
+                print("L/D: {:.3f}".format(self.edlModel.vehicle.LoD))
+                print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -169,16 +175,26 @@ class Simulation(Machine):
     def update(self, x, dt, u):
         if len(x.shape) == 1:
             self.x = x
+            N = 1
         else:
+            N = x.shape[0]
             self.x = x[-1, :]
 
         if u is not None:
             self.u = u
-            self.control_history.append(self.u)
+            if N == 1:
+                self.control_history.append(self.u)
+            else:
+                U = np.tile(u[:,None], (N,)).T
+                self.control_history.extend(U)
 
-        self.history.append(self.x)
+        if N == 1:
+            self.history.append(self.x)
+            self.times.append(self.time)
+        else:
+            self.history.extend(x)
+            self.times.extend(np.linspace(self.time, self.time+dt, self.spc))
         self.time += dt
-        self.times.append(self.time)
         self.triggerInput = self.getDict()
 
 
@@ -188,7 +204,7 @@ class Simulation(Machine):
             self.findTransition()
         if self._output:
             print('Transitioning from state {} to {} because the following condition was met:'.format(self._states[self.index], self.state))
-            print(self._conditions[self.index].dump())
+            self._conditions[self.index].dump()
             for key,value in self.triggerInput.items():
                 if key not in ('vehicle', 'current_state', 'planet'):
                     print('{} : {}\n'.format(key, value))
@@ -481,43 +497,40 @@ class Simulation(Machine):
 
     def findTransition(self):
         n = len(self.times)
+        if n > 1:
+            for i in range(n-2, n-1-self.spc, -1):
+                # Find the states to interpolate between:
+                # print(i)
+                self.time = self.times[i]
+                self.x = self.history[i]
+                self.u = self.control_history[i] 
+                self.triggerInput = self.getDict()
+                if not self._conditions[self.index](self.triggerInput):
+                    break
+                
+            N = max(10, int(1000/self.spc)) # Always use at least 10 points 
+            for j in np.linspace(0.01, 0.99, N): # The number of points used here will determine the accuracy of the final state
+                
+                # Find a better state:
+                self.time = ((1-j)*self.times[i] + j*self.times[i+1])
+                self.x = ((1-j)*self.history[i] + j*self.history[i+1])
+                self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
+                self.triggerInput = self.getDict()
+                
+                if self._conditions[self.index](self.triggerInput):
+                    break
 
-        for i in range(n-2,n-12,-1):
-            self.time = self.times[i]
-            self.x = self.history[i]
-            self.u = self.control_history[i]
-            self.triggerInput = self.getDict()
-            if self._use_da:
-                trigger_input = da.const_dict(self.triggerInput)
-            else:
-                trigger_input = self.triggerInput
-            if not self._conditions[self.index](trigger_input): # Interpolate between i and i+1 states
-                for j in np.linspace(0.01,0.99,50): # The number of points used here will determine the accuracy of the final state
-                    # Find a better state:
-                    self.time = ((1-j)*self.times[i] + j*self.times[i+1])
-                    self.x = ((1-j)*self.history[i] + j*self.history[i+1])
-                    self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
-                    self.triggerInput = self.getDict()
-                    if self._conditions[self.index](trigger_input):
-                        break
+            # Remove the extra states:
+            self.history = self.history[0:i+1]
+            self.times = self.times[0:i+1]
+            self.control_history = self.control_history[0:i+1]
+
+            # Update the final point
+            self.history.append(self.x)
+            self.control_history.append(self.u)
+            self.times.append(self.time)
 
 
-                # Remove the extra states:
-                self.history = self.history[0:i+1]
-                self.times = self.times[0:i+1]
-                self.control_history = self.control_history[0:i+1]
-
-                # Update the final point
-                self.history.append(self.x)
-                self.control_history.append(self.u)
-                self.times.append(self.time)
-
-                return
-        if self._output:
-            print("No better endpoint found")
-        return
-
-    # def save(self): #Create a .mat file
     def gui(self):
         import datetime
         uniq_filename = str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '.')
@@ -740,10 +753,9 @@ def SRP():
 
 def EntrySim(Vf=500):
     ''' Defines conditions for a simple one phase guided entry '''
-    from Triggers import VelocityTrigger,AltitudeTrigger
+    from Triggers import VelocityTrigger
     states = ['Entry']
     trigger = [VelocityTrigger(Vf)]
-    # trigger = [AltitudeTrigger(5.1)]
     return {'states':states, 'conditions':trigger}
 
 def TimedSim(time=30):

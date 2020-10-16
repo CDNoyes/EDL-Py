@@ -19,6 +19,7 @@ class SRPData:
         self.data = loadmat(file) # the original data from file 
         self.hmin = min_alt 
         self.mmax = max_fuel
+        self.mmin = 0
         self.model_data = {} # the data that actually is used to build the model 
         self.trimmed_data = {} # the data after trimming 
     
@@ -96,8 +97,8 @@ class SRPData:
         print("{} trajectories of {} satisfy fuel use <= {} kg".format(np.sum(output_data <= self.mmax), N, self.mmax))
         
         # assuming nominally x is positive and u is negative 
-        m0 = 8500 # can get from data
-        Tmax = 70*m0
+        m0 = self.m0 # obtained from data
+        Tmax = 15*m0
         isp = 290
         g0 = 9.81
         mdot = Tmax/(isp*g0)
@@ -121,9 +122,9 @@ class SRPData:
 #         print("{} trajectories trimmed in total".format(N-np.sum(keep)))
         
         V = np.sqrt(u**2 + v**2 + w**2)
-        slow_enough = V<=800
+        slow_enough = V<=700
         keep = np.logical_and(keep, slow_enough)
-        print("{} trajectories of {} satisfy the ||V|| <= 800 criterion".format(np.sum(slow_enough), N))
+        print("{} trajectories of {} satisfy the ||V|| <= 700 criterion".format(np.sum(slow_enough), N))
         input_data = np.delete(input_data, 4, 0) # removes the all zeros cross track velocity 
         return input_data[:, keep], output_data[keep]
         
@@ -138,6 +139,8 @@ class SRPData:
         from time import time 
         
         input_data = self.data['initial'].T
+        self.m0 = input_data[-1][0]
+
         input_data = input_data[:-1] # drop the mass column 
         output_data = self.data['fuel'].squeeze()
         
@@ -155,7 +158,8 @@ class SRPData:
             
         self.model_data['input'] = input_data
         self.model_data['output'] = output_data 
-            
+
+        self.mmin = np.min(output_data)
         self.bounds = np.array([np.min(input_data, axis=1), np.max(input_data, axis=1)])
         
         print("Building SRP propellant model from data with {} samples...".format(output_data.shape[0]))
@@ -183,7 +187,7 @@ class SRPData:
         input_matrix = {"cartesian": [], "entry": []}
         output_matrix = []
         for Vf in np.linspace(500, 700, resolution[0]):
-            for fpa in np.linspace(-45, 0, resolution[1]):
+            for fpa in np.linspace(-35, 0, resolution[1]):
                 input_matrix['entry'].append([Vf, fpa])
                 
                 fpa = np.radians(fpa)
@@ -191,7 +195,7 @@ class SRPData:
                 Vz = Vf*np.sin(fpa)
                 input_matrix['cartesian'].append([-Vx, Vz])
                 N = 50
-                x = boxgrid([(0, 8000), (0,0), (2000, 4000), (Vx, Vx), (Vz, Vz)], [N,1,N,1,1], True) # Vary only DR and Altitude 
+                x = boxgrid([(8000, self.bounds[1][0]), (0,0), (3000, self.bounds[1][2]), (Vx, Vx), (Vz, Vz)], [N,1,N,1,1], True) # Vary only DR and Altitude 
                 mf = self(x)
 #                 tf = self.time_of_flight(x)
                 imin = np.argmin(mf)
@@ -209,13 +213,14 @@ class SRPData:
                     plt.colorbar()
                 
         if not plot_contours:
+            N = 15
             outs = ['Optimal Fuel Use (kg)','Optimal RTG (km)','Optimal Altitude (km)', 'Optimal Time of Flight (s)']
             output_matrix = np.array(output_matrix).T
             y,x = np.array(input_matrix['entry']).T
             for z, state in zip(output_matrix, outs):
                 plt.figure()
 #                 plt.scatter(x, y, c=z)
-                plt.tricontourf(x,y,z)
+                plt.tricontourf(x,y,z,N)
                 plt.ylabel("Vf (m/s)")
                 plt.xlabel("FPA (deg)")
                 plt.colorbar()
@@ -225,7 +230,7 @@ class SRPData:
             for z, state in zip(output_matrix, outs):
                 plt.figure()
 #                 plt.scatter(x, y, c=z)
-                plt.tricontourf(x,y,z)
+                plt.tricontourf(x,y,z,N)
                 plt.xlabel("Horizontal Velocity (m/s)")
                 plt.ylabel("Vertical Velocity (m/s)")
                 plt.colorbar()
@@ -233,8 +238,19 @@ class SRPData:
             
         plt.show()
         
+    def _obj(self, v, state):
+        x = state(v)
+        m = self(x)
+        if m < self.mmin:
+            return 5000
+        return m
+        
+    def _opt(self, bounds, state,):
+        from scipy.optimize import minimize_scalar 
+        sol = minimize_scalar(self._obj, method='bounded', bounds=bounds, args=(state,))
+        return sol.x, sol.fun
 
-    def srp_trim(self, traj, target, vmax=800, default=100000, full_return=False):
+    def srp_trim(self, traj, target, vmax=800, default=100000, full_return=False, optimize=False, debug=False):
         """ A method for determining the optimal ignition state along a trajectory 
 
             default is the value returned when no suitable ignition state is found
@@ -252,33 +268,49 @@ class SRPData:
         h = x_srp[2]
         hmin = self.hmin
         # These logic checks greatly reduce the number of points to search over in some cases, resulting in a good speed up 
-        high = np.logical_and(h >= hmin, h <= 4000) # 4km is currently the maximum altitude 
-        close = np.logical_and(x_srp[0] <= 8000, x_srp[0] >= 500) # 8 km is currently the RTG limit in the table 
-        close = np.logical_and(close, x_srp[1] <= 5000)   # 5km crossrange is the max in the table 
+        maxes = self.bounds[1]
+        xmax, ymax, hmax, temp, temp = maxes
+
+        high = np.logical_and(h >= hmin, h <= hmax)
+        close = np.logical_and(x_srp[0] <= xmax, x_srp[0] >= 0) 
+        close = np.logical_and(close, x_srp[1] <= ymax)   
         high = np.logical_and(close, high)
 
         if np.any(high):
-            m_srp = self(x_srp.T[high])
-            I = np.argmin(m_srp)
-            vf = np.linalg.norm(x_srp.T[high][I][3:])
+            if optimize and np.sum(high) > 2: # Use optimization of an interpolation function to find the minimum faster
+                vscale = 500
+                bounds = np.array([np.min(v[k][high])+0.1,np.max(v[k][high])-0.1])/vscale
+                # print(bounds)
+                vf, m_opt = self._opt(bounds, interp1d(v[k][high]/vscale, x_srp.T[high], axis=0, bounds_error=True,))
+                vf *=  vscale
+                # v_srp, m_opt = self._opt([np.min(v[k][high]), vmax], interp1d(v[k][high], x_srp.T[high], axis=0, bounds_error=True, fill_value=(x_srp.T[high][-1], x_srp.T[high][0])), srpdata)
+                I = np.argmin(np.abs(v[k][high]-vf))
+                # TODO: Check for m_opt < mmin and return default if so 
+            else:
+                m_srp = self(x_srp.T[high])
+                m_srp[m_srp <= self.mmin] = default # Some models return negative values, clip anything lower than what's in the table 
+                I = np.argmin(m_srp)
+                vf = np.linalg.norm(x_srp.T[high][I][3:])
+                m_opt = m_srp[I]
 
             if full_return:
                 mc_srp = {}
                 mc_srp['traj'] = traj[v <= vf]
                 mc_srp['terminal_state'] = (traj[k][high][I])
-                mc_srp['fuel'] = (m_srp[I])
+                mc_srp['fuel'] = m_opt
                 mc_srp['ignition_state'] = (x_srp[:,high][:,I]) # may need a transpose
                 return mc_srp 
-            return m_srp[I]
+            return m_opt
 
         else: # No suitable state was found
             if full_return:
                 I = 0
                 mc_srp = {}
-                mc_srp['traj'] = (np.concatenate((traj[np.invert(k)], traj[k][high][:I])))
-                mc_srp['terminal_state'] = (traj[k][high][I])
+                mc_srp['traj'] = traj[np.invert(k)]
+                mc_srp['terminal_state'] = (traj[k][I])
                 mc_srp['fuel'] = (default)
-                mc_srp['ignition_state'] = (x_srp[:,high][:,I]) # may need a transpose
+                mc_srp['ignition_state'] = (x_srp[:,I]) # may need a transpose
+                return mc_srp
             return default 
 
     # def time_of_flight(self, state):
@@ -302,14 +334,22 @@ class SRPData:
 #             return self.model(np.asarray(state).T) # for LinearND 
 #             return self.model.predict(np.asarray(state))
 
+    def optimize(self, state_index, x0):
+        """Idea: fix 4 out of the 5 states and perform 1-D
+        Generally CR will be zero. Potentially useful to optimize DR for fixed V,gamma and altitude 
+        
+         """
+        pass
 
-
-def test():
-    srpdata = SRPData(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.mat"), min_alt=1500, max_fuel=5000)
+def generate_pickle():
+    matfile = os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_28k_7200kg.mat")
+    pklfile = os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_7200kg.pkl")
+    # pklfile = matfile.split('.mat')[0] + ".pkl"
+    srpdata = SRPData(matfile, min_alt=3000, max_fuel=3000)
     srpdata.build(28000, rbf_kw={'function': 'linear'})
 
     import pickle
-    pickle.dump(srpdata, open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"), 'wb'))
+    pickle.dump(srpdata, open(pklfile, 'wb'))
 
 def test_pickle():
     """ NOTE: To load this elsewhere, you'll need to import SRPData at the module level, not in the function/method """
@@ -321,11 +361,11 @@ def test_pickle():
 
 def generate_plots():
     import pickle
-    srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_27k_5d.pkl"), 'rb'))
+    srpdata = pickle.load(open(os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_11k_7200kg.pkl"), 'rb'))
     # srpdata.plot((3,3))
-    srpdata.plot((25,25))
+    srpdata.plot((15,15))
 
 if __name__ == "__main__":
-    test()
+    generate_pickle()
     # test_pickle()
     # generate_plots()

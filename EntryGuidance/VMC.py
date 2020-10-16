@@ -206,58 +206,21 @@ class VMC(object):
         self.mc = [traj[:i] for i, traj in zip(xfi, np.transpose(self.mc_full['state'], (2,0,1)))]
         self.mcu = [traj[:i] for i, traj in zip(xfi, np.transpose(self.mc_full['control'], (2,0,1)))]
         self.mca = [traj[:i] for i, traj in zip(xfi, np.transpose(self.mc_full['aero'], (2,0,1)))]
-        
-    def _obj(self, v, state, srp_data):
-        x = state(v)
-        return np.abs(srp_data(x))
-        
-    def _opt(self, bounds, state, srp_data):
-        from scipy.optimize import minimize_scalar 
-        sol = minimize_scalar(self._obj, method='bounded', bounds=bounds, args=(state, srp_data))
-        return sol.x, sol.fun
-        
-    def srp_trim(self, srpdata, target, vmax=800, hmin=2000, optimize=False):
+               
+    def srp_trim(self, srpdata, target, vmax=800, hmin=3000, optimize=False):
         """ Takes an SRP database class, and a pinpoint landing Target class 
             to calculate the optimal ignition point along a trajectory 
         
-        TODO: Replace this will a call to the same method of SRPData 
-
         """
         self.mc_srp = {'traj': [],'control': [],"fuel": [],"ignition_state": [],"terminal_state": [],"target": target}
         
         import time
         t0 = time.time()
         for traj in np.transpose(self.mc_full['state'], (2,0,1)):
-            v = traj[:,3]
-            k = v < vmax
-            rtg,cr = range_from_entry(traj[k], target.coordinates())
-            x_srp = srp_from_entry(traj[k], rtg, cr, target_alt=target.altitude).T # 5 x N
-            h = x_srp[2]
-            high = np.logical_and(h >= hmin, h <= 4000) # 4km is currently the maximum altitude 
-            close = np.logical_and(x_srp[0] <= 8000, x_srp[0] >= 500) # 8km is currently the RTG limit in the table 
-            close = np.logical_and(close, x_srp[1] <= 5000)   # 5km crossrange is the max in the table 
-            high = np.logical_and(close, high)
-            
-            if np.sum(high) >= 2:
-                # Potentially check the length, if more than N elements, use optimization 
-                if optimize: # Use optimization of an interpolation function to find the minimum faster
-                    v_srp, m_opt = self._opt([np.min(v[k][high]), vmax], interp1d(v[k][high], x_srp.T[high], axis=0, bounds_error=False, fill_value=(x_srp.T[high][-1], x_srp.T[high][0])), srpdata)
-                    I = np.argmin(np.abs(v[k][high]-v_srp))
-                else:
-                    m_srp = srpdata(x_srp.T[high])
-                    m_srp[m_srp<=500] = 10000 # for some reason, some models can report masses under zero 
-                    I = np.argmin(np.abs(m_srp))
-                    m_opt = m_srp[I]
-                self.mc_srp['traj'].append(np.concatenate((traj[np.invert(k)], traj[k][high][:I])))
-                self.mc_srp['terminal_state'].append(traj[k][high][I])
-                self.mc_srp['fuel'].append(m_opt)
-                self.mc_srp['ignition_state'].append(x_srp[:,high][:,I]) # may need a transpose
-            
-            else: # No suitable state was found
-                self.mc_srp['traj'].append(np.concatenate(traj[np.invert(k)]))
-                self.mc_srp['terminal_state'].append(traj[k][0])
-                self.mc_srp['fuel'].append(100000)
-                self.mc_srp['ignition_state'].append(x_srp[:,0]) 
+            output = srpdata.srp_trim(traj, target, vmax=vmax, default=100000, full_return=True, optimize=optimize)
+            for key in ['traj', 'terminal_state', 'ignition_state', 'fuel']:
+                self.mc_srp[key].append(output[key])
+
         t1 = time.time()
         print("SRP Trim: {:.1f} s".format(t1-t0))
             

@@ -2,21 +2,18 @@
 
 import numpy as np
 # from numpy import sin, cos 
-from pyaudi import sin, cos 
-from scipy.integrate import odeint 
-from scipy.interpolate import interp1d 
-import matplotlib.pyplot as plt 
+from pyaudi import sin, cos
+from scipy.integrate import odeint
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 
-from HPC import profile 
-from Simulation import Simulation 
-from InitialState import InitialState 
 import sys 
-sys.addPath('./Utils/')
-from Utils.RK4 import RK4
-from Utils.trapz import trapz, cumtrapz
-from Utils.ProjectedNewton import ProjectedNewton as solveQP
-from Utils.Regularize import Regularize 
-import Utils.DA as da 
+sys.path.append('./Utils/')
+from RK4 import RK4
+from trapz import trapz, cumtrapz
+from ProjectedNewton import ProjectedNewton as solveQP
+from Regularize import Regularize 
+import DA as da 
 from pyaudi import gdual_double as gd 
 
 def DDP(simulation, dynamics, mayerCost, lagrangeCost, finalConstraints, finalTime, initialState, controlDim, initialCostate, controlStepsize, costateStepsize, args=None):
@@ -109,19 +106,19 @@ def DDP(simulation, dynamics, mayerCost, lagrangeCost, finalConstraints, finalTi
     Vl = da.const(Vl)
     
     
-    print Vf
-    print Vx 
-    print Vl 
-    print Vxx 
-    print Vxl 
-    print F[-1]
+    # print Vf
+    # print Vx 
+    # print Vl 
+    # print Vxx 
+    # print Vxl 
+    # print F[-1]
     
     # Backward propagation of the Value function (via integration or STM methods) and optimization 
     for step in [N-2]:#range(N)[::-1]: # Could consider steping through fullstate instead of currentstate to get better estimates, and only optimize every Nint steps
         H = L[step] + np.dot(Vx[:n].T, F[step]) # Get the current hamiltonian 
-        print "H: {}".format(H)
+        print("H: {}".format(H))
         Hxu = da.gradient(H, allnames)      # Gradient wrt both state and control
-        print "H gradient: {}".format(Hxu)
+        print("H gradient: {}".format(Hxu))
         Hx = Hxu[:n]
         Hu = Hxu[n:n+m]
         Hxxuu  = da.hessian(H,allnames)     # Hessian wrt both state and control
@@ -129,13 +126,13 @@ def DDP(simulation, dynamics, mayerCost, lagrangeCost, finalConstraints, finalTi
         Huu = Hxxuu[n:n+m][0][n:n+m]
         Hxu = Hxxuu[:n][0][n:n+m]
         # Hux = Hxu.T 
-        print Hxxuu
-        print Hxxuu[n:n+m][0][n:n+m]
-        print "State hessian: {}".format(Hxx)
-        print "Control hessian: {}".format(Huu)
+        print(Hxxuu)
+        print(Hxxuu[n:n+m][0][n:n+m])
+        print("State hessian: {}".format(Hxx))
+        print("Control hessian: {}".format(Huu))
         l = -np.dot(np.linalg.inv(Huu), Hu.T)
         Vdot = -L + 0.5*np.dot(l.T, np.dot(Huu, l))
-        print Vdot 
+        print(Vdot) 
         Vnew = Vf - Vdot*dt  # Try to estimate this same value by STM 
         
         
@@ -238,7 +235,7 @@ class SRP(object):
         T = -m*gam*self.param[1]
         
         
-        U = zip(T,mu)
+        U = list(zip(T,mu))
         U = np.clip(U,self.ul,self.uu)    
         iter = 0
         X = self.propagate(U)
@@ -269,7 +266,7 @@ class SRP(object):
         plt.plot(t,U[:,0])
         plt.show()
         
-        return zip(T,mu)
+        return list(zip(T,mu))
         
         
     def debug(self,time, state, control, L=None):
@@ -310,7 +307,7 @@ class SRP(object):
         
         #iterate 
         for iter in range(self.maxIter):
-            print "Iteration: {}".format(iter+1)
+            print("Iteration: {}".format(iter+1))
             u = np.array([da.const(uu,array=False) for uu in u])
             x = self.propagate(u)
             x = np.array([da.const(xx,array=False) for xx in x])
@@ -450,7 +447,7 @@ class SRP(object):
         g,Ve = self.param 
         T,theta = control 
         x,u,w,m = state 
-        print -u/(w**2)
+        print(-u/(w**2))
         return np.eye(self.nx) + np.array([[0, 1/w, -u/(w**2), 0],
                          [0, 0, -T*cos(theta)/(m*w**2), -T*cos(theta)/(m**2*w)],
                          [0, 0, -(T*sin(theta)/m - g)/w**2, -T*sin(theta)/(m**2*w)],
@@ -547,18 +544,18 @@ class SRP(object):
         X = da.make(x[0], vars, 2, array=True)
         Lda = self.lagrange(np.array([X]),u)
         # print Lda
-        print "L Gradient errors:"
-        print Lx - da.jacobian(Lda,vars)
-        print "L Hessian errors:"
-        print Lxx - da.hessian(Lda[0],vars)
+        print("L Gradient errors:")
+        print(Lx - da.jacobian(Lda,vars))
+        print("L Hessian errors:")
+        print(Lxx - da.hessian(Lda[0],vars))
         
         F = self.step(X,u[0])
         Fx = self.fx(x[0],u[0])
         Fxx = self.fxx(x[0],u[0])
-        print "Dynamic Jacobian errors:"
-        print Fx - da.jacobian(F, vars)
-        print "Dynamic Hessian errors:"
-        print Fxx[0] - da.hessian(F[0], vars)
+        print("Dynamic Jacobian errors:")
+        print(Fx - da.jacobian(F, vars))
+        print("Dynamic Hessian errors:")
+        print(Fxx[0] - da.hessian(F[0], vars))
         
     
 # Specific implementations like this may be better than a general formulation like the above. Too much stuff to pass...
@@ -571,12 +568,12 @@ class testProblem():
     def __init__(self, x0=3, N=31):
         self.x0 = x0 
         self.N = N 
-        self.fx = 0.90 + .04/N + 0.5/N*np.cos(range(N))*(1-np.linspace(0,1,N))
-        self.fu = 1/np.array(range(1,N+1))**0.025 + 0.5*np.sin(range(N))/np.array(range(1,N+1))**4 # time varying control dynamics 
+        self.fx = 0.90 + .04/N + 0.5/N*np.cos(list(range(N)))*(1-np.linspace(0,1,N))
+        self.fu = 1/np.array(list(range(1,N+1)))**0.025 + 0.5*np.sin(list(range(N)))/np.array(list(range(1,N+1)))**4 # time varying control dynamics 
         self.q = 0 
-        self.qf = 1
+        self.qf = 10
         self.r = 1/500.
-        self.umax = 0.25
+        self.umax = 0.15
         self.convergenceTolerance = 1e-14
         self.maxIter = 50
     
@@ -588,10 +585,10 @@ class testProblem():
             # u = np.linspace(0,self.umax,self.N) #linear guess
 
         u = np.clip(u,-self.umax,self.umax)
-        plt.figure()
+        
         J = []
         for iter in range(self.maxIter):
-            print "Iteration {}".format(iter)
+            print("Iteration {}".format(iter))
             # Forward propagation 
             x = self.forward(self.x0, u, self.N)
             L = self.lagrange(x,u)
@@ -605,13 +602,13 @@ class testProblem():
             if len(J) > 1:
                 if np.abs(J[-1]-J[-2]) < self.convergenceTolerance:
                     break
-            if iter < 4 or not (iter+1)%10:            
+            if iter < 10 or not (iter+1)%10:            
                 plt.figure(1)
-                plt.plot(range(self.N),x,'--',label="{}".format(iter))
+                plt.plot(list(range(self.N)),x,'--',label="{}".format(iter))
                 plt.figure(2)
-                plt.plot(range(self.N),u, '--',label="{}".format(iter))
-                plt.figure(4)
-                plt.plot(L, 'o',label="{}".format(iter))
+                plt.plot(list(range(self.N)),u, '--',label="{}".format(iter))
+                # plt.figure(4)
+                # plt.plot(L, 'o', label="{}".format(iter))
             # Final conditions on Value function and its derivs
             V = LN  
             Vx = self.mx(x[-1])
@@ -633,33 +630,31 @@ class testProblem():
                     K[i] = (-Qux/Quu)
                 # Bounded controls:
                 else:
-                    # if Quu < 0:
-                        # Quu = 0.1 
-                    k[i], Quuf = solveQP([0], [[Quu]], [Qu], ([-self.umax-u[i]], [self.umax-u[i]]), debug=False)
-                    if len(Quuf):
-                        Quuf = Quuf.flatten()[0] 
-                        if Quuf != 0: 
-                            K[i] = -Qux/Quuf
-                    else:
-                        K[i] = 0
+                    k[i], Quu = solveQP([0], Quu, Qu, ([-self.umax-u[i]], [self.umax-u[i]]), verbose=False)
+                    if not Quu == 0:
+                        K[i] = -Qux/Quu
+
                 
                 V += -0.5*k[i]*Quu*k[i]
                 Vx = Qx-K[i]*Quu*k[i]
                 Vxx = Qxx-K[i]*Quu*K[i] 
             
             # Forward correction
-            x,u = self.correct(x,u,k,K)
+            if True:
+                x,u = self.correct(x,u,k,K)  # Backtracking line search, simply looks to reduce cost
+            else:
+                x,u = self.exact_ls(x,u,k,K) # Exact, optimization based line search finds the true minimum stepsize 
             
         plt.figure(1)    
-        plt.plot(range(self.N), x,label='Final')
+        plt.plot(list(range(self.N)), x,label='Final')
         plt.title('State')
         plt.legend()
         plt.figure(2)
-        plt.plot(range(self.N), u, label='Final')
+        plt.plot(list(range(self.N)), u, label='Final')
         plt.title('Control')
         plt.legend()
         plt.figure(3)
-        plt.plot(J,'o')
+        plt.semilogy(J,'o')
         plt.title('Cost vs Iteration')
         plt.show()
             
@@ -668,7 +663,7 @@ class testProblem():
     def correct(self, x, u, k, K):
     
         step = 1
-        J = self.evalCost(x,u)
+        J = self.evalCost(x, u)
         Jnew = J+1
         while Jnew > J: # should put a max iteration limit as well 
             xnew = [self.x0]
@@ -677,10 +672,34 @@ class testProblem():
                 unew.append(np.clip(u[i] + step*k[i] + K[i]*(xnew[i]-x[i]),-self.umax,self.umax)) # This line search is actually essential to convergence 
                 xnew.append(self.transition(xnew[i],unew[i],i))    
             unew.append(unew[-1]) # Just so it has the correct number of elements   
-            Jnew = self.evalCost(np.array(xnew),np.array(unew).flatten())
+            Jnew = self.evalCost(np.array(xnew), np.array(unew).squeeze())
             step *= 0.8
-        return np.array(xnew),np.array(unew).flatten()
+        return np.array(xnew), np.array(unew).squeeze()
         
+    def exact_ls(self, x, u, k, K):
+        from scipy.optimize import minimize_scalar
+
+        def fun(step):
+            xnew = [self.x0]
+            unew = []
+            for i in range(self.N-1):
+                unew.append(np.clip(u[i] + step*k[i] + K[i]*(xnew[i]-x[i]),-self.umax,self.umax)) # This line search is actually essential to convergence 
+                xnew.append(self.transition(xnew[i],unew[i],i))    
+            unew.append(unew[-1]) # Just so it has the correct number of elements   
+            return self.evalCost(np.array(xnew), np.array(unew).squeeze())
+
+        sol = minimize_scalar(fun, bounds=(0,1), method="bounded", tol=1e-3)
+        step = sol.x 
+
+        xnew = [self.x0]
+        unew = []
+        for i in range(self.N-1):
+            unew.append(np.clip(u[i] + step*k[i] + K[i]*(xnew[i]-x[i]),-self.umax,self.umax)) # This line search is actually essential to convergence 
+            xnew.append(self.transition(xnew[i],unew[i],i))    
+        unew.append(unew[-1]) # Just so it has the correct number of elements   
+
+        return np.array(xnew), np.array(unew).squeeze()
+
         
     def evalCost(self,x,u):
             L = self.lagrange(x,u)
@@ -709,7 +728,7 @@ class testProblem():
         return 0
     
     def mayer(self,x):
-        return self.qf*(x-1)**2      # Focus on stabilizing the state to the origin 
+        return self.qf*(x-1)**2      # Drive to x = 1
     
     def mx(self,x):
         return 2*self.qf*(x-1) 
@@ -754,12 +773,12 @@ if __name__ == "__main__":
     
     
     # Simplest test problem imaginable 
-    # system = testProblem()
-    # uOpt = system.DDP()
+    system = testProblem()
+    uOpt = system.DDP()
     
-    srp = SRP()
+    # srp = SRP()
     # srp.estimate()
-    uSRP = srp.DDP()
+    # uSRP = srp.DDP()
     
     # Confirm backward integration 
     # dx = lambda x: -x 

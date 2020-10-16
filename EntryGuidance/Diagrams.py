@@ -78,9 +78,10 @@ def srp_landing(figsize=(15,10)):
 
     lines = {'linewidth': 3, }
     markers = {'markersize': 10}
-    text = {'fontsize': 12}
+    text = {'fontsize': 16}
     text_labels =  {'fontsize': 20}
     numbers = False   # whether to show numerical values or not 
+    show_text = False
 
     for v_plot in [625,]:
 
@@ -97,14 +98,17 @@ def srp_landing(figsize=(15,10)):
         rtg = dr-s[v <= v_srp+dv_srp]
         plt.plot(rtg[rtg>=0], h[v <= v_srp+dv_srp][rtg>=0], 'darkorange', label="Predicted Unpowered Flight", **lines)
         plt.plot(*interp1d(v, np.array([dr-s, h]))(v_srp+dv_srp), 'k*', **markers)
-        plt.text(10.2, 4., "Current Estimated State", **text)
+        if show_text:
+            plt.text(10.2, 3.9, "Current estimated state", **text)
 
         if first is not None:
             plt.plot(*first, 'mo', **markers) # based on fuel availability i.e. max velocity 
-            plt.text(first[0]+0.1, first[1]-0.2,"Maximum ignition velocity", **text)
+            if show_text:
+                plt.text(first[0]+0.1, first[1]-0.4,"Maximum ignition \nvelocity", **text)
 
         plt.plot(dr-s[v>=v_srp][-1], h[v>=v_srp][-1], 'ro', **markers)
-        plt.annotate("Optimal\nIgnition\nState", xy=(dr-s[v>=v_srp][-1], h[v>=v_srp][-1]),xytext=(dr-s[v>=v_srp][-1]-1, h[v>=v_srp][-1]+0.15), **text)
+        if show_text:
+            plt.annotate("Optimal\nignition\nstate", xy=(dr-s[v>=v_srp][-1], h[v>=v_srp][-1]),xytext=(dr-s[v>=v_srp][-1]-1, h[v>=v_srp][-1]+0.15), **text)
 
         # s_srp = np.linalg.norm(srp_traj.T[0:2], axis=0)/1000
         s_srp = np.abs(srp_traj.T[0])/1000 * 0.97225
@@ -112,27 +116,33 @@ def srp_landing(figsize=(15,10)):
 
         plt.plot(s_srp, h_srp, 'r', label="Powered Flight", **lines)
         plt.plot(0, 0, 'ko', **markers)
-        plt.text(0.3, -0.1, 'Powered \nApproach \nTarget', **text)
+        if show_text:
+
+            plt.text(0.45, -0.1, 'Powered \ndescent \ntarget', **text)
+            plt.text(10, 1.6, "Minimum ignition altitude", **text)
+            plt.text(2.8, 4.4, "Maximum ignition\ndistance to target", **text)
 
         plt.hlines(1.8, 0, np.max(dr-s[v>=v_srp+dv_srp]), 'm', '--')
-        plt.text(10, 1.6, "Minimum ignition altitude", **text)
 
         plt.vlines(7, 0, np.max(h[v>=v_srp+dv_srp]), 'g', '--')
-        plt.text(4.2, 5, "Maximum ignition\ndistance to target", **text)
 
         x = 4.5
-        plt.annotate('States checked for fuel costs', xy=(x, 3.5), xytext=(x, 3.75),
-            fontsize=text['fontsize'], ha='center', va='bottom',
-            # bbox=dict(boxstyle='square', fc='white'),
-            arrowprops=dict(arrowstyle='-[, widthB=8.0, lengthB=1.5', lw=2.0))
+        if show_text:
+        
+            plt.annotate('States checked \nfor propellant costs', xy=(x, 3.5), xytext=(x, 3.75),
+                fontsize=text['fontsize'], ha='center', va='bottom',
+                # bbox=dict(boxstyle='square', fc='white'),
+                arrowprops=dict(arrowstyle='-[, widthB=8.0, lengthB=1.5', lw=2.0))
 
         plt.legend(loc='best', **text)
         if numbers:
             plt.xlabel("Range to go (km)", **text_labels)
             plt.ylabel("Altitude (km)", **text_labels)
         else:
-            plt.xlabel("Range to go", **text_labels)
-            plt.ylabel("Altitude", **text_labels)
+            if show_text:
+            
+                plt.xlabel("Range to go", **text_labels)
+                plt.ylabel("Altitude", **text_labels)
             
             plt.tick_params(
             axis='both',       # changes apply to the x-axis
@@ -146,11 +156,33 @@ def srp_landing(figsize=(15,10)):
         plt.savefig("./Documents/FuelOptimal/H_Vs_S_{}.png".format(v_plot), bbox_inches='tight')
 
 
-
-
     plt.show()
 
 
+def two_phase_edl():
+    """ Creates a plot of the two phases - Entry vs SRP 
+        Color the two sides of the plot 
+    
+    """
+
+    plt.figure()
+    plt.fill_between([0, 1], 1, 0, alpha=0.1, color='b')
+    plt.fill_between([1, 2], 1, 0, alpha=0.1, color='r')
+
+    plt.tick_params(
+    axis='both',       # changes apply to the x-axis
+    which='both',      # both major and minor ticks are affected
+    bottom=False,      # ticks along the bottom edge are off
+    # top=False,         # ticks along the top edge are off
+    left=False,
+    labelbottom=False, # labels along the bottom edge are off
+    labelleft=False,) # labels along the left edge are off
+    plt.text(0.25, 0.9, "Entry Phase")
+    plt.text(1.15, 0.9, "Powered Descent Phase")
+
+    plt.savefig("./Documents/FuelOptimal/EDLPhaseDiagramBackdrop.png", bbox_inches='tight')
+    plt.show()
 
 if __name__ == "__main__":
     srp_landing()
+    # two_phase_edl()
