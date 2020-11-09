@@ -29,10 +29,10 @@ def compare(x1, y1, x2, y2, N=None, plot=False):
         axes[0].plot(x1,y1,'b')
         axes[0].plot(x2,y2,'r')
         axes[0].set_title("Original curves")
-        
+        axes[0].grid(True)
         axes[1].plot(X,E)
         axes[1].set_title("Error on the common domain (red-blue)")
-        plt.show()
+        plt.grid(True)
 
     return X, E
 
@@ -43,6 +43,7 @@ def test():
     y1 = np.sin(3*x1)
     y2 = np.sin(2.*x2)
     compare(x1,y1,x2,y2, plot=True)
+    plt.show()
 
 
 if __name__ == "__main__":
