@@ -105,8 +105,7 @@ class VMC(object):
         except:
             adaptive = False 
         
-        edl = EDL(self.samples, Energy=True)
-        
+        edl = EDL(InputSample=self.samples, Energy=True)
         self.model = edl
         optSize = self.samples.shape[1]
         if x.ndim == 1:  # Allows a single initial condition or an array
@@ -142,9 +141,15 @@ class VMC(object):
                 
 
             # Control
-            u = self.control(energys, Xc, lift, drag)
+            u = self.control(energys, Xc, lift, drag).squeeze()
+            
             if U and time_constant:
-                u = U[-1] + (u - U[-1])/time_constant * stepsize  # Smooth the control 
+                limit = np.radians(10)*stepsize
+                sat = np.abs(u-U[-1]).squeeze() > limit # apply rate limiting 
+                if np.any(sat):
+                    s = np.sign(u-U[-1].squeeze()) # increasing or decreasing command 
+                    u[sat] = U[-1].squeeze()[sat] + s[sat]*limit
+                # u = U[-1] + (u - U[-1])/time_constant * stepsize  # Smooth the control 
             U.append(u)
 #             if debug:
 #                 print(energys)
@@ -180,7 +185,10 @@ class VMC(object):
         X = np.array(X)
         U = np.array(U)
         Aero = np.array(Aero)
-        S = np.array(S)
+        if adaptive:
+            S = np.array(S)
+        else:
+            S = []
         if debug:
             print("MC shape")
             print(X.shape)

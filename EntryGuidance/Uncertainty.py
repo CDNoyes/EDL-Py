@@ -19,7 +19,7 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
         CL          = cp.Normal(0, 0.10/3)   # CL
         rho0        = cp.Normal(0, 0.0333)      # rho0
         # scaleHeight = cp.Uniform(-0.02,0.01)      # scaleheight
-        scaleHeight = cp.Normal(0, 0.002/3)           # scaleheight        # Positive delta scale height results in slower decay, i.e. thicker atm at the same altitude
+        scaleHeight = cp.Normal(0, 0.02/3)           # scaleheight        # Positive delta scale height results in slower decay, i.e. thicker atm at the same altitude
         perturbations['parametric'] = cp.J(CD, CL, rho0, scaleHeight)
 
     if knowledge:
@@ -28,8 +28,8 @@ def getUncertainty(parametric=True, initial=False, knowledge=False):
 
     if initial:
         R     = cp.Normal(0, 1)            # Entry velocity deviation
-        theta     = cp.Normal(0, 1/3397)            # Entry velocity deviation
-        phi     = cp.Normal(0, 1/3397)            # Entry velocity deviation
+        theta     = cp.Normal(0, 2/3397)            # Entry velocity deviation
+        phi     = cp.Normal(0, 2/3397)            # Entry velocity deviation
         V     = cp.Normal(0, 1)            # Entry velocity deviation
         gamma = cp.Normal(0, np.radians(0.25/3.0))       # Entry FPA deviation, +- 0.15 deg 3-sigma
         azi = cp.Normal(0, np.radians(0.25/3.0))       # Entry Azimuth deviation, +- 0.15 deg 3-sigma

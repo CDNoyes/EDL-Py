@@ -18,6 +18,7 @@ def Transform(mean, covariance, k=0.01):
             cov weights
     """
     mean = np.array(mean, ndmin=2)
+    covariance = np.array(covariance, ndmin=2)
     n = mean.shape[1]
     # lamb = alpha**2 * (n+k) - n
 
