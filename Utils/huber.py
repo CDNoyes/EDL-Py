@@ -12,6 +12,9 @@ def PseudoHuber(p, k=0.05):
     """
     return np.sqrt(p**2 + k**2) - k
 
+huber = PseudoHuber
+smooth_abs = lambda x: PseudoHuber(x, 0.05)
+
 if __name__ == "__main__":      
     import matplotlib.pyplot as plt
 

@@ -86,6 +86,7 @@ def compare_error():
 
     plt.semilogy(x, ecosh, label='Cosh')
     plt.semilogy(x, esqrt, label='Sqrt')
+    plt.vlines([-1,1], 1e-6, 1)
     plt.legend()
     plt.show()
 
@@ -134,5 +135,5 @@ def compare():
 if __name__ == "__main__":
     # opt()
     # test()
-    # compare_error()
-    compare()
+    compare_error()
+    # compare()

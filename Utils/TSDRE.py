@@ -324,7 +324,7 @@ def test2d():
 
 
 if __name__ == "__main__":
-    test()
-    # test2d()
+    # test()
+    test2d()
 
 

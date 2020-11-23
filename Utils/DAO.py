@@ -23,7 +23,8 @@ def constraint_satisfaction(funs, guess, order=3, max_iter=50, linesearch=True, 
     vars = ['x{}'.format(i) for i in range(len(guess))]
     pvars = ['p{}'.format(i) for i in range(len(guess))]
 
-    if verbose: print("(guess)  constraint satisfaction value: {}".format(np.max([fun(guess) for fun in funs])))
+    if verbose: 
+        print("(guess)  constraint satisfaction value: {}".format(np.max([fun(guess) for fun in funs])))
 
     for it in range(max_iter):
         x = [gd(val, var, order) for val, var in zip(guess, vars)]
@@ -51,14 +52,15 @@ def constraint_satisfaction(funs, guess, order=3, max_iter=50, linesearch=True, 
         gradient_history.append(dxy/np.linalg.norm(dxy))
         if linesearch:
             nsteps = 50  # should always be even so that zero is not an option
-            steps = np.linspace(-2, 2, nsteps)  # Its essential to use a value > 1 otherwise the iterations will only approach the boundary 
+            steps = np.linspace(-3, 3, nsteps)  # Its essential to use a value > 1 otherwise the iterations will only approach the boundary 
             violation = []
             found = False
             for step in steps:
                 guess_new = guess + step*dxy
                 con = np.array([fun(guess_new) for fun in funs])
-                violation.append(np.linalg.norm(con[con>=0]))
+                violation.append(np.linalg.norm(con[con >= 0]))
                 if np.all(con <= 0):  # Should also potentially break if step gets too small
+                    print(step)
                     found = True
                     break
             # should do a check if no feasible point, take that step with the lowest violation to continue improving
@@ -79,7 +81,7 @@ def constraint_satisfaction(funs, guess, order=3, max_iter=50, linesearch=True, 
 
         history.append(guess.copy())
         if verbose: 
-            print("(iter {}) constraint satisfaction value: {:3g}".format(it+1,np.max([fun(guess) for fun in funs])))
+            print("(iter {}) constraint satisfaction value: {:3g}".format(it+1, np.max([fun(guess) for fun in funs])))
     if it == max_iter-1:
         if verbose: 
             print("Max iterations reached")
@@ -87,7 +89,10 @@ def constraint_satisfaction(funs, guess, order=3, max_iter=50, linesearch=True, 
 
     return guess, history, gradient_history
 
-def gradient_descent(obj, cons, guess, xtol=1e-4, max_iter=50, verbose=True):
+
+def gradient_descent(obj, cons, guess, xtol=1e-4, Jtol=1e-5, max_iter=50, verbose=True, scale=True):
+    """ Scale normalizes the gradient at each step """
+
     history = []
     gradient_history = []
 
@@ -113,15 +118,22 @@ def gradient_descent(obj, cons, guess, xtol=1e-4, max_iter=50, verbose=True):
         # scale = np.abs(da.const(con, True)).max() * 1.1
         # con = np.array([log(-c/scale) for c in con])
         # con = np.array([log(-fun(x)) for fun in cons]) # paper version
-        con = np.array([log(-fun(x)) for fun in cons if x<-1])
+        # con = np.array([log(-fun(x)) for fun in cons if fun(da.const(x))>0])
         # con = np.array([-log((1-fun(x))**2) for fun in cons]) # my version
         # con = np.array([-1/fun(x) for fun in cons[active]])
         # con = log(-con[cmax])
+        
+        con = np.array([fun(x) for fun in cons])
+        active = da.const(con, True) > -0.1
+        print("Constraints active: {}".format(active))
         alpha *= k
         g = f + np.sum(con)/alpha          # sum of logarithm of constraints scaled and added to original objective
 
-        # g = f + con/alpha          # sum of logarithm of constraints scaled and added to original objective
         dxy = -da.gradient(g, vars)      # gradient
+        if scale: # even if scale is true, we only scale the gradient if it is very small, large gradients can usually be trusted locally 
+            N = np.linalg.norm(dxy)
+            if N < 1:
+                dxy /= N
 
         if np.any(np.isnan(dxy)):
             print("Something went wrong")
@@ -132,7 +144,10 @@ def gradient_descent(obj, cons, guess, xtol=1e-4, max_iter=50, verbose=True):
         while True:
             guess_new = guess + step*dxy
             con = np.array([fun(guess_new) for fun in cons])
-            if np.all(con < 0):
+            J0 = f.constant_cf
+            J = obj(guess_new)
+            dJ = J-J0
+            if np.all(con < 0) and dJ < 0:
                 break
             step *= 0.8
         guess = guess_new
@@ -141,6 +156,9 @@ def gradient_descent(obj, cons, guess, xtol=1e-4, max_iter=50, verbose=True):
 
         if np.linalg.norm(step*dxy) < xtol:
             if verbose: print("Terminating: change in solution smaller than requested tolerance.")
+            break
+        if np.abs(dJ) < Jtol:
+            if verbose: print("Terminating: change in objective smaller than requested tolerance.")
             break
         if verbose: print("(iter {}) objective value: {}".format(it+1, obj(guess)))
     return guess, history
@@ -197,7 +215,7 @@ def SFNewton(obj, cons, guess, xtol=1e-4, ftol=1e-3, max_iter=50, verbose=True):
         # linesearch to optimize subject to constraint satisfaction 
 
         nsteps = 1000  # this many points will be checked, so a balance is needed. 
-        steps = np.linspace(-3, 3, nsteps)
+        steps = np.linspace(-2, 2, nsteps)
         feasible = []
         feval = []
         for step in steps:
@@ -259,7 +277,7 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
     k = 1.e2
     fail_list = []
     for it in range(max_iter):
-        x = [gd(val, var, order) for val,var in zip(guess, vars)]
+        x = [gd(val, var, order) for val, var in zip(guess, vars)]
 
         f = obj(x)
 
@@ -267,7 +285,8 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
         # cmax = np.argmax(da.const(con, True))
         # scale = np.abs(da.const(con, True)).max() * 1.1
         # con = np.array([log(-c/scale) for c in con])
-        # active = da.const(con, True) > -1.
+        # active = da.const(con, True) > -0.1
+        # con = con[active]
         # fcon = np.array([fun(x) for fun in cons])
         # con = np.array([log(-fc)  np.abs(da.const(fc)) for fc in fcon]) # paper version
         # con = np.array([-log((1-fun(x))**2) for fun in cons]) # my version
@@ -281,6 +300,7 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
         dgp = gp-da.const(gp, True)         # change in gradient
 
         try:
+            print(dgp)
             h = invert_map(dgp)
         except ValueError:
             if it:
@@ -297,9 +317,10 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
             break
 
         # linesearch to optimize subject to constraint satisfaction 
+        # the other option would be to project the new point onto the nearest constraint 
 
         nsteps = 200  # this many points will be checked, so a balance is needed. 
-        steps = np.linspace(-2, 2, nsteps)
+        steps = np.linspace(-3, 3, nsteps)
         feasible = []
         feval = []
         for step in steps:
@@ -345,22 +366,28 @@ def optimize(obj, cons, guess, order=3, xtol=1e-4, ftol=1e-3, max_iter=50, verbo
 
 def example_2d():
     import matplotlib.pyplot as plt
-    from pyaudi import sqrt 
+    from pyaudi import sqrt, log 
     import time 
 
-    obj = lambda x: (x[0]-1)**4 + (x[1]-1)**4 + sqrt(x[0]) - 5*x[0]**2
+    # obj = lambda x: log((x[0]-1)**4 + (x[1]-1)**4 + 1e-3) 
+    # obj = lambda x: (x[0]-1)**2 + (x[1]-1)**2 + (x[1])**3
+    obj = lambda x: (x[0]-1)**4 + (x[1]-1)**4 
     f = [lambda x: 1-x[0]**2-x[1]**2, lambda x: x[0]**2+x[1]**2-2, lambda x: -x[0], lambda x: -x[1]]
 
-    # x0 = np.array([0.7,0.5])
-    x0 = np.array([0.1, 0.9])
+    x0 = np.array([0.7,0.5])
+    # x0 = np.array([0.1, 0.9])
 
     t0 = time.time()
-    x_f, h_f, g_f = constraint_satisfaction(f, x0, order=2, max_iter=10, linesearch=True, verbose=True)
+    x_f, h_f, g_f = constraint_satisfaction(f, x0, order=2, max_iter=20, linesearch=True, verbose=True)
     t_cs = time.time()
     if x_f is not None:
-        # x_o, h_gd = gradient_descent(obj, f, x_f,  xtol=1e-4, max_iter=30, verbose=True)
-        x_o, h_o = optimize(obj, f, x_f, order=5, xtol=1e-9, ftol=1e-12, max_iter=200, verbose=True)
-        # x_o, h_o = SFNewton(obj, f, x_f, xtol=1e-9, ftol=1e-12, max_iter=200, verbose=True)
+        if 1: # start with gd then finish with higher order 
+            x_gd, h_gd = gradient_descent(obj, f, x_f,  xtol=1e-4, max_iter=15, verbose=True, scale=True)
+            x_o, h_o = optimize(obj, f, x_gd, order=3, xtol=1e-9, ftol=1e-12, max_iter=5, verbose=True)
+            h_o = h_gd + h_o # assuming these are lists...
+        else:
+            x_o, h_o = optimize(obj, f, x_f, order=3, xtol=1e-9, ftol=1e-12, max_iter=10, verbose=True)
+            # x_o, h_o = SFNewton(obj, f, x_f, xtol=1e-9, ftol=1e-12, max_iter=200, verbose=True)
         t_opt = time.time()
         print("\nOpt: {}".format(x_o))
         print("Constraint Satisfaction:          {:.4g} s".format(t_cs-t0))
@@ -369,6 +396,8 @@ def example_2d():
     else:
         h_o = []
 
+    plt.figure(figsize=(12,12))
+    sol = x_o
     x_f = np.array(h_f)
     x_o = np.array(h_o)
     g_f = np.array(g_f)
@@ -377,15 +406,27 @@ def example_2d():
     x2_1 = np.sqrt(1-x1[x1<=1]**2)
     x2_2 = np.sqrt(2-x1**2)
 
-    # plt.plot(x_f[:,0],x_f[:,1],'bx', label='Feasibility Iterates')
 
-    # if h_o:
-    #     plt.plot(x_o[:,0],x_o[:,1],'mo', label='Optimality Iterates')
-    # plt.plot(x1[x1<=1], x2_1,'k--', label='Constraints')
-    # plt.plot(x1, x2_2, 'k--')
+    plt.plot(x_f[:,0],x_f[:,1],'bx-', label='Feasibility Iterates')
+    delta = 0.025
+    x = np.arange(0, 1.5, delta)
+    X, Y = np.meshgrid(x, x)
+
+    if h_o:
+        plt.plot(x_o[:,0],x_o[:,1],'mo-', label='Optimality Iterates')
+    plt.plot(x1[x1<=1], x2_1,'k--', label='Constraints')
+    plt.plot(x1, x2_2, 'k--')
     # plt.plot(1, 1, 'r*', label='True optimum')
-    # plt.legend()
-    # plt.show()
+    try:
+        plt.contourf(X,Y, np.log(obj([X,Y])+1e-3), levels=50) # log really pops by comparison, small shift avoids inf values near zero 
+    except:
+        pass 
+    plt.plot(*sol, 'x', markersize=8, label="Solution")
+
+    # plt.contourf(X,Y, obj([X,Y]), levels=25)
+
+    plt.legend()
+    plt.show()
 
 
 def example_rosenbrock(a=1, b=100):

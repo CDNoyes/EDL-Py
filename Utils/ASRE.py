@@ -8,7 +8,7 @@ from scipy.integrate import simps as trapz
 from scipy.interpolate import interp1d
 from itertools import product
 
-from RK4 import RK4 as odeint 
+from .RK4 import RK4 as odeint 
 
 interp_type = 'cubic'
 
@@ -21,10 +21,10 @@ interp_type = 'cubic'
 # TODO: Implement SRP with integral control and compare 
 
 
-def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
+def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None, verbose=False):
     """ Approximating Sequence of Riccati Equations with Terminal Constraints Cx=z """
     # Problem size
-    n = x0.size
+    n = np.asarray(x0).size
     E = lambda t,x: np.zeros((n,1))
     sigma = 0 
 
@@ -33,7 +33,7 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
     tb = t[::-1]                            # For integrating backward in time
 
     converge = tol + 1
-    print("Approximating Sequence of Riccati Equations")
+    if verbose: print("Approximating Sequence of Riccati Equations")
     start_iter = 0
     if guess is not None:
         start_iter = 1
@@ -41,7 +41,7 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         u = guess['control']
         
     for iter in range(start_iter, max_iter):
-        print("Current iteration: {}".format(iter))
+        if verbose: print("Current iteration: {}".format(iter))
         
         if not iter: # LTI iteration
             u = [np.zeros((m,))]*n_discretize
@@ -49,7 +49,8 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
 
         # Riccati equation for feedback solution
         Pf = F
-        P = odeint(dP, Pf, tb, args=(A, B, lambda t,x: np.eye(n), Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0)(T), lambda T: interp1d(t,u,kind=interp_type, axis=0)(T), E, sigma))[::-1]
+        P = odeint(dP, Pf, tb, args=(
+            A, B, lambda t,x: np.eye(n), Q, R, lambda T: interp1d(t,x,kind=interp_type, axis=0, bounds_error=False, fill_value=(x[0], x[-1]))(T), lambda T: interp1d(t,u,kind=interp_type, axis=0, bounds_error=False, fill_value=(u[0],u[-1]))(T), E, sigma))[::-1]
         K = asre_feedback(t, x, u, B, R, P)
         V = asre_integrateV(t, C.T, A, B, K, x, u)[::-1]
         P = asre_integrateP(t, V, B, R, x, u)[::-1]  # This P has nothing to do with the previous one 
@@ -67,11 +68,13 @@ def ASREC(x0, t, A, B, C, Q, R, F, z, m, max_iter=50, tol=0.01, guess=None):
         u[-1] *= 0
         J = asrec_cost(t, x, u, Q, R, lambda xf: F)
         converge = np.max(np.abs(np.array(x)-xold))
-        print("Current cost: {}".format(J))
-        print("Convergence criteria: {:.3g}\n".format(converge))
+        if verbose: 
+            print("Current cost: {}".format(J))
+            print("Convergence criteria: {:.3g}\n".format(converge))
 
         if converge <= tol:
-            print("Convergence achieved. ")
+            if verbose: 
+                print("Convergence achieved. ")
             break
     u[-1] = u[-2]
     return np.array(x), np.array(u), np.array(K)

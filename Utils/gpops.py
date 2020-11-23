@@ -5,6 +5,7 @@ import matlab.engine
 # gpops_path = "C:\Users\cdnoyes\Documents\MATLAB\GPOPS-II"
 doc_path = "E:\Documents"
 gpops_path = "E:\Documents\GPOPS-II"
+matlab_name = "pymatlab"
 
 def EG(inputs):
     """ Calls GPOPS-II with the given input structure (dict in python)
@@ -58,9 +59,10 @@ def srp(inputs):
         instance, you must call "matlab.engine.shareEngine" in Matlab.
 
     """
+    import matlab.engine 
 
     try:
-        engine = matlab.engine.connect_matlab()
+        engine = matlab.engine.connect_matlab(matlab_name)
         # print("Connected to existing (shared) Matlab instance.")
     except:
         print("No shared Matlab instance found, creating a new instance...")

@@ -2,7 +2,7 @@ import numpy as np
 from scipy.interpolate import interp1d 
 
 # TODO: now that a generalized step method exists, we can simply write two general solvers: fixed step and adaptive 
-
+# TODO: consider a warning if nans are returned for numeric data. try-except for DA case 
 
 # For SDE, we assume the function returns the time derivative first, and the wiener process coefficients second
 def EulerS(fun, x0, iv, args=()):

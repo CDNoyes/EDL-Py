@@ -8,6 +8,7 @@ import pdb
 import DA as da 
 from submatrix import submatrix
 from ProjectedNewton import ProjectedNewton as solveQP
+from QP import TRQP 
 from Regularize import Regularize, AbsRegularize
 
 class DDP:
@@ -138,6 +139,7 @@ class DDP:
                 reg *= dreg * float(reg > reg_min)
                 reg = np.clip(reg, 0, 1e8)
 
+                # Convergence checks 
                 if g_norm < gradient_tol and reg < 1e-3:
                     if verbose:
                         print("Success: gradient norm less than tolerance with minimal regularization")
@@ -157,7 +159,7 @@ class DDP:
                     break
 
             else:
-                trials +=  1
+                trials += 1
                 dreg = np.maximum(dreg*reg_factor, reg_factor)
                 reg = np.maximum(reg*reg_factor, reg_min)  # minimum regulation 
                 if reg > 1e8:
@@ -187,6 +189,14 @@ class DDP:
             
         return x, u, K     
             
+    def correctQP(self, x, u, k, K):
+        """ Solves a QP at each stage of the forward pass to compute the optimal update
+            while respecting linearized constraints
+        See DDP w/ nonlinear constraints for details
+        """
+        pass 
+
+
     def correct(self, x, u, k, K):
         min_step = 1e-4
         step = 1
@@ -276,7 +286,7 @@ class DDP:
 
         return da.const(M), da.gradient(M, self.xnames), da.hessian(M, self.xnames)
 
-    def Lagrange(self, x, u, order=1):
+    def Lagrange(self, x, u, order):
         
         p = self.n+self.m
         xrows = list(range(self.n))
@@ -333,6 +343,7 @@ def iter_print(iter, cost, reduction, expected, gradient, regularization, trials
         L = np.log10(regularization)
     print("   {:<2}        {:<13.4g}{:<13.3g}{:<13.3g}{:<13.3g}{:<18.3g}{:<5.0f}".format(iter, cost, reduction, expected, gradient, L, trials))
 
+def history_plot(history):
 
 class Test(DDP):
     """ Inverted pendulum example from DDP with Terminal Constraints..."""
@@ -415,9 +426,9 @@ if __name__ == "__main__":
     # u0 = np.ones((N,m))*0.1
     bounds = np.ones((2, m))*0.6
     bounds[0] *= -1
-    x,u,K = test.solve(x0, N, bounds=None, u=u0, maxIter=5, lambda0=0, order=2)  # Unconstrained version
+    # x,u,K = test.solve(x0, N, bounds=None, u=u0, maxIter=5, lambda0=0, order=2)  # Unconstrained version
     # x,u,K = test.solve(x0, N, bounds=None, u=u0, maxIter=15, lambda0=1, order=1)  # Unconstrained version
-    # x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=10, order=1) 
-    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=20, order=2) 
+    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=10, order=1) 
+    x,u,K = test.solve(x0, N, bounds=bounds, u=u0, maxIter=10, order=2) 
 
     plt.show()
