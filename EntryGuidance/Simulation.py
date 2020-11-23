@@ -101,7 +101,7 @@ class Simulation(Machine):
     def integrate(self):
 
         while not self._conditions[self.index](da.const_dict(self.triggerInput)):
-            if self._output and not (len(self.history)-1*self.cycle.rate)%int(10*self.cycle.rate):
+            if self._output and not (len(self.history)-1*self.cycle.rate) % int(10*self.cycle.rate):
                 print("current simulation time = {} s".format(int(self.time))) # Should define a pretty print function and call that here
             temp = self.__step() #Advance the numerical simulation, save resulting states for next check etc
 
@@ -117,7 +117,7 @@ class Simulation(Machine):
             mu = 0.         # pitch angle
             zeta = 0.       # yaw angle
 
-        if self._time_constant and len(self.control_history) > 1:
+        if not self._use_da and self._time_constant and len(self.control_history) > 1:
             # sigma = self.u[0] + (sigma - self.u[0])/self._time_constant * self.cycle.duration
             # what if instead of time constant we use a rate limit
             limit = np.radians(10)*self.cycle.duration
@@ -148,15 +148,24 @@ class Simulation(Machine):
         if self.fullEDL:
             self.edlModel = System(InputSample=InputSample)     # Need to eventually pass knowledge error here
             if self._output:
-                print("L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD))
-                print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[6])))
+                try:
+                    print("L/D: {:.2f}".format(self.edlModel.truth.vehicle.LoD))
+                    print("BC : {:.1f} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[6])))
+                except TypeError:
+                    print("L/D: {}".format(self.edlModel.truth.vehicle.LoD))
+                    print("BC : {} kg/m^2".format(self.edlModel.truth.vehicle.BC(InitialState[6])))
+
 
         else:
             self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
             self.edlModel.update_ratios(LR=AeroRatios[0], DR=AeroRatios[1])
             if self._output:
-                print("L/D: {:.3f}".format(self.edlModel.vehicle.LoD))
-                print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
+                try:
+                    print("L/D: {:.3f}".format(self.edlModel.vehicle.LoD))
+                    print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
+                except TypeError: # Da variables
+                    print("L/D: {}".format(self.edlModel.vehicle.LoD))
+                    print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -505,6 +514,8 @@ class Simulation(Machine):
                 self.x = self.history[i]
                 self.u = self.control_history[i] 
                 self.triggerInput = self.getDict()
+                if self._use_da:
+                    self.triggerInput = da.const_dict(self.triggerInput)
                 if not self._conditions[self.index](self.triggerInput):
                     break
                 
@@ -516,6 +527,8 @@ class Simulation(Machine):
                 self.x = ((1-j)*self.history[i] + j*self.history[i+1])
                 self.u = ((1-j)*self.control_history[i] + j*self.control_history[i+1])
                 self.triggerInput = self.getDict()
+                if self._use_da:
+                    self.triggerInput = da.const_dict(self.triggerInput)
                 
                 if self._conditions[self.index](self.triggerInput):
                     break
@@ -640,6 +653,16 @@ def simPlot(edlModel, time, history, control_history, plotEvents, fsm_states, ie
     if legend:
         plt.legend(loc='best')
     plt.xlabel(label+'Energy (s)')
+    plt.ylabel(label+'Bank Angle (deg)')
+    # vs velocity
+    plt.figure(fignum)
+    fignum += 1
+    plt.plot(history[:,3], np.degrees(control_history[:]))
+    for i in ie:
+        plt.plot(history[i,3], np.degrees(control_history[i]),'o',label = fsm_states[ie.index(i)])
+    if legend:
+        plt.legend(loc='best')
+    plt.xlabel(label+'Velocity (m/s)')
     plt.ylabel(label+'Bank Angle (deg)')
     # Control vs Velocity Profile
     # plt.figure(fignum)
@@ -812,6 +835,25 @@ def testNMPCSim():
     sim.run(x0,c)
     return sim
 
+def testDASim(x0, control_profile):
+    from Utils import DA as da 
+    from pyaudi import gdual_double
+
+    r0, theta0, phi0, v0, gamma0, psi0,s0 = (3540.0e3, np.radians(-90.07), np.radians(-43.90),
+                                             5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
+    
+    if x0 is None:
+        x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, 8500.0])
+    Vf = 500
+    dasim = Simulation(cycle=Cycle(1), output=True, use_da=True, **EntrySim(Vf=Vf), )
+    names = ['r', 'theta', 'phi', 'V', 'fpa', 'psi', 'm']
+    x0d = da.make(x0, names, 1)
+    u = gdual_double(0, 'u', 1)
+    ref_profile = lambda **args: u
+
+    res = dasim.run(x0d, [ref_profile])
+    return dasim
+
 def constant(value, **kwargs):
     return value
 
@@ -879,6 +921,7 @@ def fsmGif(states = range(4)):
 
 if __name__ == '__main__':
 
-    sim = testFullSim()
-    sim.plot(compare=False)
-    sim.show()
+    testDASim(None, None)
+    # sim = testFullSim()
+    # sim.plot(compare=False)
+    # sim.show()

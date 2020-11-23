@@ -213,14 +213,15 @@ def compare():
 
 
 if __name__ == "__main__":
-    # compare()
-    # print(Planet().coord(0,0,0, 565e3, 0))
     import numpy as np 
     import matplotlib.pyplot as plt 
+    # compare()
+    print(np.degrees(Planet().coord(*np.radians([66.026, 21.481, 90-103.6]), -48e3, 0)))
+    # print(Planet().coord(*np.radians([66.026, 21.481, 90-103.6]), -48e3, 0))
 
     lat = np.linspace(-88, 88, 100)
     # for phi in lat:
-    plt.plot(lat, Planet().heading(0, 0, 600/3397, np.radians(lat))*180/3.14)
+    # plt.plot(lat, Planet().heading(0, 0, 600/3397, np.radians(lat))*180/3.14)
     plt.show()
     # for phi in lat:
         # print(Planet().heading(0, 0, phi*3.14/180, phi*3.14/180)*180/3.14)

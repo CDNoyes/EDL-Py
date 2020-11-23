@@ -1,5 +1,6 @@
 import numpy as np
-
+import sys
+sys.path.append("./")
 from EntryGuidance.EntryVehicle import EntryVehicle
 from EntryGuidance.Planet import Planet
 
@@ -97,7 +98,8 @@ class Entry(object):
         rho, a = self.planet.atmosphere(h*self.dist_scale)
         M = v*self.vel_scale/a
         cD, cL = self.vehicle.aerodynamic_coefficients(M)
-        f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale  # vel_scale**2/acc_scale = dist_scale 
+        # f = np.squeeze(0.5*rho*self.vehicle.area*(v*self.vel_scale)**2/m)/self.acc_scale  # vel_scale**2/acc_scale = dist_scale 
+        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)*self.dist_scale  # vel_scale**2/acc_scale = dist_scale 
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
 
@@ -303,6 +305,23 @@ def EDL(InputSample=np.zeros(4), **kwargs):
     return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL), **kwargs)
 
 
+class EntryInPlane(Entry):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.nx = 5 # [r, s, v gamma]
+
+    def __expand(self, x4):
+        # expands 5 element state to 7 element state to call original dynamics
+        x7 = np.array([x4[0], 0, 0, x4[2], x4[3], 0, x4[4]])
+        return x7
+
+    def dynamics(self, u):
+            # return lambda x,t: self.dyn_model(self.__expand(x), t, u)[]
+        def dfun(x,t):
+            dx7 = self.dyn_model(self.__expand(x), t, u)
+            dx5 = np.array([dx7[0], x[2]*np.cos(x[3]), dx7[3], dx7[4], dx7[6]])
+            return dx5 
+        return dfun
 
 class System(object):
 
@@ -435,4 +454,26 @@ def CompareJacobian():
     print("Conclusion: Always use pyaudi when possible!\n")
 
 if __name__ == "__main__":
-    CompareJacobian()
+
+    model = EntryInPlane()
+    # print(model)
+    # print(model.planet)
+    t = np.linspace(0, 200)
+    fun = model.dynamics([0,0,0])
+    from scipy.integrate import odeint 
+    x0 = [3397e3+127e3, 0, 5505, np.radians(-14.5), 7200]
+    x = odeint(fun, x0, t)
+
+    import matplotlib.pyplot as plt
+    r,s,v,gamma,m = x.T 
+    h = r/1000 - 3397
+    s /= 1000
+    plt.figure()
+    plt.plot(v, h)
+    plt.ylabel('Alt')
+    plt.xlabel('Vel')
+    plt.figure()
+    plt.plot(s, h)
+    plt.xlabel('DR')
+    plt.ylabel('Alt')
+    plt.show()
