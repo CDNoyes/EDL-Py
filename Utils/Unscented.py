@@ -20,7 +20,6 @@ def Transform(mean, covariance, k=0.01):
     mean = np.array(mean, ndmin=2)
     covariance = np.array(covariance, ndmin=2)
     n = mean.shape[1]
-    # lamb = alpha**2 * (n+k) - n
 
     # Compute sigma points
     x0 = np.tile(mean, (n,1))
@@ -47,20 +46,21 @@ if __name__ == "__main__":
     f = lambda x: np.vstack((x[0]**2,x[1]*x[0]))
     for k in [0,2,5,8,10]:
         X,Wm,Wc = Transform(m, P, k=k)
-        X = f(X.T).T
-        mean = Wm.dot(X)
-        E = X.T-mean[:,None]
-        cov = E.dot((Wc*E).T)
-        print("----------------")
-        print(mean)
-        print(cov)
-        print(" ")
-        # plt.title('$\mu=${}, P={}'.format(mean,cov))
-        plt.plot(X.T[0],X.T[1],'x',label="k={}".format(k))
-    S = f(S)
-    print("----------------")
-    print("Truth, estimated from {} samples".format(S[0].size))
-    print(S.mean(axis=1))
-    print( np.cov(S))
-    plt.scatter(S[0],S[1],10)
-    plt.show()
+        print(X,Wm)
+    #     X = f(X.T).T
+    #     mean = Wm.dot(X)
+    #     E = X.T-mean[:,None]
+    #     cov = E.dot((Wc*E).T)
+    #     print("----------------")
+    #     print(mean)
+    #     print(cov)
+    #     print(" ")
+    #     # plt.title('$\mu=${}, P={}'.format(mean,cov))
+    #     plt.plot(X.T[0],X.T[1],'x',label="k={}".format(k))
+    # S = f(S)
+    # print("----------------")
+    # print("Truth, estimated from {} samples".format(S[0].size))
+    # print(S.mean(axis=1))
+    # print( np.cov(S))
+    # plt.scatter(S[0],S[1],10)
+    # plt.show()

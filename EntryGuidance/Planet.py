@@ -20,7 +20,7 @@ class Planet:
             self.mu = 3.98600e14
 
         elif self.name == 'Mars':
-            self.radius = 3397e3
+            self.radius = 3396.2e3
             self.omega = 7.095e-5
             self.mu = 4.2830e13
 

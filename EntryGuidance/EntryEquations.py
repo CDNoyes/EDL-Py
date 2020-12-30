@@ -8,7 +8,7 @@ from EntryGuidance.Planet import Planet
 class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
 
-    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Altitude=False, DifferentialAlgebra=False, Scale=False):
+    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Altitude=False, DifferentialAlgebra=False, Scale=False, Longitudinal=False):
 
 
         # TODO: Simplify while generalizing the independent variable. By default it should be time, but it could accept an argument which
@@ -19,7 +19,11 @@ class Entry(object):
         self.powered = Powered
         self.drag_ratio = 1
         self.lift_ratio = 1
-        self.nx = 7  # [r,lon,lat,v,gamma,psi,m]
+        self.long = Longitudinal
+        if self.long:
+            self.nx = 5  # [r,s,v,gamma,m] # TODO: remove mass from states and add to EntryVehicle again
+        else:
+            self.nx = 7  # [r,lon,lat,v,gamma,psi,m]
         self.nu = 3  # bank command, throttle, thrust angle
         self.__jacobian = None  # If the jacobian method is called, the Jacobian object is stored to prevent recreating it each time. It is not constructed by default.
         self.__jacobianb = None
@@ -42,10 +46,13 @@ class Entry(object):
             self.vel_scale = 1
             self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, 1])
 
-        if Coriolis:
-            self.dyn_model = self.__entry_vinhs
+        if self.long:
+            self.dyn_model = self.__entry_long
         else:
-            self.dyn_model = self.__entry_3dof
+            if Coriolis:
+                self.dyn_model = self.__entry_vinhs
+            else:
+                self.dyn_model = self.__entry_3dof
 
         self.use_energy = Energy
         if self.use_energy:
@@ -80,6 +87,42 @@ class Entry(object):
             return lambda x,t: self.dyn_model(x, t, u)
 
     # Dynamic Models
+
+    def __entry_long(self, x, t, u):
+        if self._da:
+            from pyaudi import sin, cos, tan
+        else:
+            from numpy import sin, cos, tan
+
+        r,s,v,gamma,m = x
+        csigma, throttle, mu = u
+
+        h = r - self.planet.radius/self.dist_scale
+
+        g = self.gravity(r)
+
+        rho, a = self.planet.atmosphere(h*self.dist_scale)
+        M = v*self.vel_scale/a
+        cD, cL = self.vehicle.aerodynamic_coefficients(M)
+        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)*self.dist_scale  # vel_scale**2/acc_scale = dist_scale 
+        L = f*cL*self.lift_ratio
+        D = f*cD*self.drag_ratio
+
+        dh = v*sin(gamma)
+        ds = v*cos(gamma)
+        dv = -D - g*sin(gamma)
+        dgamma = L/v*csigma + cos(gamma)*(v/r - g/v)
+        dm = np.zeros_like(dh)
+
+        if self.use_energy:
+            if np.ndim(v) <= 1:
+                self.dE = -v*D
+            else:
+                self.dE = (-v*D)[:, None].T
+        if self.use_altitude:
+            self.dE = np.tile(dh, (self.nx,))
+
+        return np.array([dh, ds, dv, dgamma, dm])/self.dE
 
     # 3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
     def __entry_3dof(self, x, t, u):
@@ -302,7 +345,13 @@ def EDL(InputSample=np.zeros(4), **kwargs):
     ''' A non-member utility to generate an EDL model for a given realization of uncertain parameters. '''
 
     CD, CL, rho0, sh = InputSample
-    return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL), **kwargs)
+    if 'VehicleModel' not in kwargs:
+        return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), VehicleModel=EntryVehicle(CD=CD, CL=CL), **kwargs)
+    else:
+        kwargs['VehicleModel'] = kwargs['VehicleModel'](CD=CD, CL=CL)
+
+        return Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh), **kwargs)
+
 
 
 class EntryInPlane(Entry):

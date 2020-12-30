@@ -97,7 +97,7 @@ class VMC(object):
 
         savemat(fullfilename, {'xf': self.xf, 'states': self.mc, 'samples': self.samples, 'pdf': self.psamples})
 
-    def _run(self, x, stepsize, Ef, time_constant, debug):
+    def _run(self, x, stepsize, Ef, time_constant, debug, edl_kwargs={}):
         
         try:
             adaptive = len(stepsize) == 3
@@ -105,13 +105,17 @@ class VMC(object):
         except:
             adaptive = False 
         
-        edl = EDL(InputSample=self.samples, Energy=True)
+        edl = EDL(InputSample=self.samples, Energy=True, **edl_kwargs)
         self.model = edl
+        if self.model.long:
+            iv = 2
+        else:
+            iv = 3
         optSize = self.samples.shape[1]
         if x.ndim == 1:  # Allows a single initial condition or an array
             x = np.tile(x, (optSize, 1)).T
         X = [x]
-        energy = np.mean(edl.energy(x[0], x[3], False))
+        energy = np.mean(edl.energy(x[0], x[iv], False))
 #         print("E0 {:.1f}".format(energy))
         if Ef is None:
             energyf = 0 #edl.energy(edl.planet.radius-6000, 200, False)  # go down to low energy then parse afterward
@@ -129,8 +133,8 @@ class VMC(object):
                 print("\nE: {:.1f}".format(energy))
             Xc = X[-1]
 
-            energys = edl.energy(Xc[0], Xc[3], False)
-            lift, drag = edl.aeroforces(Xc[0], Xc[3], Xc[6])
+            energys = edl.energy(Xc[0], Xc[iv], False)
+            lift, drag = edl.aeroforces(Xc[0], Xc[iv], Xc[-1])
             Aero.append(np.array([lift,drag]))
             
             if adaptive:
@@ -157,7 +161,7 @@ class VMC(object):
             u.shape = (1, optSize)
             u = np.vstack((u, np.zeros((2, optSize))))
 #             de = -np.mean(drag)*np.mean(Xc[3]) * stepsize # This makes the average stepsize 1 s 
-            de = -np.min(drag*Xc[3]) * stepsize  # This makes the largest stepsize 1 s for the slowest energy rate cases, smallest for the fastest cases 
+            de = -np.min(drag*Xc[iv]) * stepsize  # This makes the largest stepsize 1 s for the slowest energy rate cases, smallest for the fastest cases 
             if debug:
                 print(Xc.T[0])
                 print("D: {:.4f}".format(drag[0]))
@@ -391,8 +395,13 @@ def getFileName(name, save_dir):
 def velocity_trigger(Vf=550):
     
     def _trigger(traj):
+        if np.shape(traj)[1] > 5:
+            iv = 3
+        else:
+            iv = 2
+
         for idx, state in enumerate(traj):
-            if state[3] <= Vf:  
+            if state[iv] <= Vf:  
                 return idx
         return -1
     return _trigger 

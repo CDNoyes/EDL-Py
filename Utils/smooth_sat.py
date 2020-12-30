@@ -134,6 +134,6 @@ def compare():
 
 if __name__ == "__main__":
     # opt()
-    # test()
-    compare_error()
+    test()
+    # compare_error()
     # compare()

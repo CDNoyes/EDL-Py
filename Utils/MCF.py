@@ -26,8 +26,8 @@ def mcfilter(B, NB, input_names=None, ks_threshold=0, p_threshold=1e-3, plot=Fal
         return
     if input_names is None or (len(input_names) != B.shape[0]):
         input_names = ["Input{}".format(i) for i in range(B.shape[0])]  # Generic names
-    else:
-        input_names = [inp for inp in input_names]
+    # else:
+    #     input_names = [inp for inp in input_names]
 
     max_len = np.max([len(name) for name in input_names]+[5])    
     max_str = '<{}'.format(max_len)

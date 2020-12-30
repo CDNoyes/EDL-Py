@@ -65,6 +65,17 @@ class EntryVehicle(object):
     def BC(self, mass, Mach=24):
         return mass/self.area/self.aerodynamic_coefficients(Mach)[0]
 
+class ConstantAeroEV(EntryVehicle):
+
+    def __init__(self, Cd0, Cl0, **EV_kwargs):
+        self.CD0 = Cd0 
+        self.CL0 = Cl0 
+        super().__init__(**EV_kwargs)
+
+    def aerodynamic_coefficients(self, M):
+        return self.CD0*(1+self.CD), self.CL0*(1+self.CL)
+
+
 if __name__ == "__main__":
     import numpy as np 
     # print(EntryVehicle().aerodynamic_coefficients(np.linspace(1,35,100)))
