@@ -8,7 +8,7 @@ from EntryGuidance.Planet import Planet
 class Entry(object):
     """  Basic equations of motion for unpowered and powered flight through an atmosphere. """
 
-    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Altitude=False, DifferentialAlgebra=False, Scale=False, Longitudinal=False):
+    def __init__(self, PlanetModel=Planet('Mars'), VehicleModel=EntryVehicle(), Coriolis=False, Powered=False, Energy=False, Altitude=False, DifferentialAlgebra=False, Scale=False, Longitudinal=False, Velocity=False):
 
 
         # TODO: Simplify while generalizing the independent variable. By default it should be time, but it could accept an argument which
@@ -21,7 +21,11 @@ class Entry(object):
         self.lift_ratio = 1
         self.long = Longitudinal
         if self.long:
-            self.nx = 5  # [r,s,v,gamma,m] # TODO: remove mass from states and add to EntryVehicle again
+            if Velocity:
+                self.nx = 4  # [r,s,gamma,m] # TODO: remove mass from states and add to EntryVehicle again
+            
+            else:
+                self.nx = 5  # [r,s,v,gamma,m] # TODO: remove mass from states and add to EntryVehicle again
         else:
             self.nx = 7  # [r,lon,lat,v,gamma,psi,m]
         self.nu = 3  # bank command, throttle, thrust angle
@@ -47,7 +51,10 @@ class Entry(object):
             self._scale = np.array([self.dist_scale, 1, 1, self.vel_scale, 1, 1, 1])
 
         if self.long:
-            self.dyn_model = self.__entry_long
+            if Velocity:
+                self.dyn_model = self.__entry_long_vel
+            else:
+                self.dyn_model = self.__entry_long
         else:
             if Coriolis:
                 self.dyn_model = self.__entry_vinhs
@@ -123,6 +130,37 @@ class Entry(object):
             self.dE = np.tile(dh, (self.nx,))
 
         return np.array([dh, ds, dv, dgamma, dm])/self.dE
+
+
+    def __entry_long_vel(self, x, v, u):
+        if self._da:
+            from pyaudi import sin, cos, tan
+        else:
+            from numpy import sin, cos, tan
+
+        h,s,gamma,m = x.squeeze()
+        csigma, throttle, mu = u
+        r = h + self.planet.radius/self.dist_scale
+
+        g = self.gravity(r)
+
+        rho, a = self.planet.atmosphere(h*self.dist_scale)
+        M = v*self.vel_scale/a
+        cD, cL = self.vehicle.aerodynamic_coefficients(M)
+        f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)*self.dist_scale  # vel_scale**2/acc_scale = dist_scale 
+        L = f*cL*self.lift_ratio
+        D = f*cD*self.drag_ratio
+
+        dh = v*sin(gamma)
+        ds = v*cos(gamma)
+        dv = -D - g*sin(gamma)
+        dgamma = np.squeeze(L/v*csigma + cos(gamma)*(v/r - g/v))
+        dm = np.zeros_like(dh)
+        self.dE = np.tile(dv, (4,))
+
+        dx = np.squeeze(np.array([dh, ds, dgamma, dm])/dv)
+        return dx
+
 
     # 3DOF, Non-rotating Planet (i.e. Coriolis terms are excluded)
     def __entry_3dof(self, x, t, u):
@@ -354,23 +392,6 @@ def EDL(InputSample=np.zeros(4), **kwargs):
 
 
 
-class EntryInPlane(Entry):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.nx = 5 # [r, s, v gamma]
-
-    def __expand(self, x4):
-        # expands 5 element state to 7 element state to call original dynamics
-        x7 = np.array([x4[0], 0, 0, x4[2], x4[3], 0, x4[4]])
-        return x7
-
-    def dynamics(self, u):
-            # return lambda x,t: self.dyn_model(self.__expand(x), t, u)[]
-        def dfun(x,t):
-            dx7 = self.dyn_model(self.__expand(x), t, u)
-            dx5 = np.array([dx7[0], x[2]*np.cos(x[3]), dx7[3], dx7[4], dx7[6]])
-            return dx5 
-        return dfun
 
 class System(object):
 
@@ -502,27 +523,71 @@ def CompareJacobian():
 
     print("Conclusion: Always use pyaudi when possible!\n")
 
+
+def test_stupid():
+    from temp_funs import ddp_controller
+    from scipy.io import loadmat, savemat
+    from Utils import DA as da
+    from Utils.RK4 import RK4
+    import os
+    from EntryGuidance.EntryVehicle import ConstantAeroEV
+
+    mdir = 'E:\\Documents\\GitHub\\Research\\Matlab\iLQR\solutions\\linear_comparison' 
+    fname = "open_loop.mat"
+
+    data = loadmat(os.path.join(mdir, fname))
+
+    mass = 5000.
+    x0 = np.append(data['mean'].T[0], mass)
+    V0 = data['v'][0]
+    Vf = data['v'][-1]
+
+    P0 = np.zeros((4,4))
+    P0[:3, :3] = data['input'][0][0][3]  # h fpa s (no velocity term) 
+
+    names = ['r', 's', 'fpa', 'm']
+    x0d = da.make(x0, names, 1)
+
+
+    vehicle = ConstantAeroEV(1.408, 0.357)
+    model = Entry(VehicleModel=vehicle, DifferentialAlgebra=True, Velocity=True, Longitudinal=True)
+    controller = ddp_controller(data)
+
+    X = [x0d]
+    V = V0
+    N = 1000
+    dv = (Vf-V0)/N
+    for i in range(N):
+        print(i, X[-1])
+        L,D = model.aeroforces(X[-1][0], V, mass)
+        u = controller(V, X[-1], L, D) # (self, E, x, L, D)
+        X = RK4(model.dynamics((u.squeeze(), [], [])), X[-1], np.linspace(V, V+dv[0], 5).squeeze(), ())
+        V += dv
+
+    STM = da.jacobian(X[-1], names)
+    P = STM.dot(P0).dot(STM.T)
+    print(np.diag(P)**0.5)
+
+
 if __name__ == "__main__":
+    test_stupid()
 
-    model = EntryInPlane()
-    # print(model)
-    # print(model.planet)
-    t = np.linspace(0, 200)
-    fun = model.dynamics([0,0,0])
-    from scipy.integrate import odeint 
-    x0 = [3397e3+127e3, 0, 5505, np.radians(-14.5), 7200]
-    x = odeint(fun, x0, t)
+    # t = np.linspace(0, 200)
+    # fun = model.dynamics([0,0,0])
+    # from scipy.integrate import odeint 
+    # x0 = [3397e3+127e3, 0, 5505, np.radians(-14.5), 7200]
+    # x = odeint(fun, x0, t)
 
-    import matplotlib.pyplot as plt
-    r,s,v,gamma,m = x.T 
-    h = r/1000 - 3397
-    s /= 1000
-    plt.figure()
-    plt.plot(v, h)
-    plt.ylabel('Alt')
-    plt.xlabel('Vel')
-    plt.figure()
-    plt.plot(s, h)
-    plt.xlabel('DR')
-    plt.ylabel('Alt')
-    plt.show()
+    # import matplotlib.pyplot as plt
+    # r,s,v,gamma,m = x.T 
+    # h = r/1000 - 3397
+    # s /= 1000
+    # plt.figure()
+    # plt.plot(v, h)
+    # plt.ylabel('Alt')
+    # plt.xlabel('Vel')
+    # plt.figure()
+    # plt.plot(s, h)
+    # plt.xlabel('DR')
+    # plt.ylabel('Alt')
+    # plt.show()

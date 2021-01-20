@@ -80,7 +80,7 @@ def gains(sim, use_energy=False, use_drag_rate=False):
     lat = np.radians(traj[:,6])
     vel = traj[:,7]
     fpa = np.radians(traj[:,8])
-    azi = np.radians(traj[:,9])
+    # azi = np.radians(traj[:,9])
     rtgo = traj[-1,10]-traj[:,10]
     lift = traj[:,12]
     drag = traj[:,13]

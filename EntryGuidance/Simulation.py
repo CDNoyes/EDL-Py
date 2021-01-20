@@ -157,15 +157,16 @@ class Simulation(Machine):
 
 
         else:
-            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da)
+            Longitudinal = len(InitialState) < 7
+            self.edlModel = Entry(PlanetModel=Planet(rho0=rho0, scaleHeight=sh, da=self._use_da), VehicleModel=EntryVehicle(CD=CD, CL=CL), DifferentialAlgebra=self._use_da, Longitudinal=Longitudinal)
             self.edlModel.update_ratios(LR=AeroRatios[0], DR=AeroRatios[1])
             if self._output:
                 try:
                     print("L/D: {:.3f}".format(self.edlModel.vehicle.LoD))
-                    print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
+                    print("BC : {:.1f} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[-1])))
                 except TypeError: # Da variables
                     print("L/D: {}".format(self.edlModel.vehicle.LoD))
-                    print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[6])))
+                    print("BC : {} kg/m^2".format(self.edlModel.vehicle.BC(InitialState[-1])))
         self.update(np.asarray(InitialState),0.0,np.asarray([0]*3))
         self.control = Controllers
         while not self.is_Complete():
@@ -178,7 +179,11 @@ class Simulation(Machine):
         if not self.simulations % 10:
             print("{} simulations complete.".format(self.simulations))
         # print self.x[0]
-        return self.postProcess()
+        try:
+            return self.postProcess()
+        except:
+            print("Could not post process (not implemented for longitudinal model)")
+            return None
 
 
     def update(self, x, dt, u):
@@ -247,19 +252,34 @@ class Simulation(Machine):
 
 
         else:
-            L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[6])
-            rtg = self.x[2]*self.edlModel.planet.radius #self.edlModel.planet.range() # TODO: Compute this 
+            if np.size(self.x, 0) == 7:
+                r,theta,phi,v,gamma,psi,m = self.x 
+                L,D = self.edlModel.aeroforces(self.x[0],self.x[3],self.x[6])
+                E = self.edlModel.energy(self.x[0],self.x[3],Normalized=False)
+                rtg = 0
+                s = theta * 3396.2 # approximation 
+            else:
+                r,s,v,gamma,m = self.x 
+                L,D = self.edlModel.aeroforces(self.x[0],self.x[2],self.x[4])
+                E = self.edlModel.energy(self.x[0],self.x[2],Normalized=False)
+                phi = 0
+                theta = s/3396.2e3
+                psi = 0
+                rtg = 0
+
+            # rtg = self.x[2]*self.edlModel.planet.radius #self.edlModel.planet.range() # TODO: Compute this 
 
             d =  {
                   'time'            : self.time,
                   'altitude'        : self.edlModel.altitude(self.x[0]),
-                  'longitude'       : self.x[1],
-                  'latitude'        : self.x[2],
-                  'velocity'        : self.x[3],
-                  'fpa'             : self.x[4],
-                  'heading'         : self.x[5],
+                  'longitude'       : theta,
+                  'latitude'        : phi,
+                  'velocity'        : v,
+                  'fpa'             : gamma,
+                  'heading'         : psi,
                   'rangeToGo'       : rtg,
-                  'mass'            : self.x[6],
+                  'range'           : s,
+                  'mass'            : m,
                   'drag'            : D,
                   'lift'            : L,
                   'vehicle'         : self.edlModel.vehicle,
@@ -267,8 +287,7 @@ class Simulation(Machine):
                   'current_state'   : self.x,
                   'aero_ratios'     : (self.edlModel.lift_ratio, self.edlModel.drag_ratio),
                   'bank'            : self.u[0],
-                  'energy'          : self.edlModel.energy(self.x[0],self.x[3],Normalized=False),
-                  'disturbance'     : 0,
+                  'energy'          : E,
                   }
 
         return d
@@ -299,7 +318,7 @@ class Simulation(Machine):
 
     def plot(self, plotEvents=True, compare=True, legend=True, plotEnergy=False):
         import matplotlib.pyplot as plt
-
+        from Utils import DA 
         # To do: replace calls to self.history etc with data that can be passed in; If data=None, data = self.postProcess()
 
         if self.fullEDL:
@@ -316,7 +335,7 @@ class Simulation(Machine):
             plt.title('Aerodynamic Filter Ratios')
 
         else:
-            simPlot(self.edlModel, self.times, self.history, self.control_history[:,0], plotEvents, self._states, self.ie, fignum=1, plotEnergy=plotEnergy, legend=legend)
+            simPlot(self.edlModel, self.times, DA.const(self.history), DA.const(self.control_history[:,0]), plotEvents, self._states, self.ie, fignum=1, plotEnergy=plotEnergy, legend=legend)
 
 
     def show(self):
@@ -843,15 +862,31 @@ def testDASim(x0, control_profile):
                                              5505.0,   np.radians(-14.15), np.radians(4.99),   1180e3)
     
     if x0 is None:
-        x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, 8500.0])
-    Vf = 500
+        # x0 = np.array([r0, theta0, phi0, v0, gamma0, psi0, 8500.0])
+        # names = ['r', 'theta', 'phi', 'V', 'fpa', 'psi', 'm']
+        r0 = 3396.2e3 + 39.4497e3
+        x0 = np.array([r0, 0, 5461.4, np.radians(-10.604), 5000.0]) # longitudinal state 
+        names = ['r', 's', 'V', 'fpa', 'm']
+
+    Vf = 480
     dasim = Simulation(cycle=Cycle(1), output=True, use_da=True, **EntrySim(Vf=Vf), )
-    names = ['r', 'theta', 'phi', 'V', 'fpa', 'psi', 'm']
     x0d = da.make(x0, names, 1)
     u = gdual_double(0, 'u', 1)
-    ref_profile = lambda **args: u
 
-    res = dasim.run(x0d, [ref_profile])
+    def test_profile(velocity, **args):
+        if velocity.constant_cf > 3600:
+            return 0 + u 
+        return 1 + u 
+
+    # ref_profile = lambda **args: u
+    print(x0d)
+    res = dasim.run(x0d, [test_profile])
+    print(dasim.x)
+    # dasim.plot()
+    STM = da.jacobian(dasim.x, names)
+    P0 = np.diag([2500, 10000, 0, np.radians(0.25), 0])**2
+    P = STM.dot(P0).dot(STM.T)
+    print(np.diag(P)**0.5)
     return dasim
 
 def constant(value, **kwargs):
