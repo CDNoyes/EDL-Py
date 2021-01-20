@@ -160,7 +160,7 @@ def vhessian(da_array, da_vars):
     return np.array([hessian(da, da_vars) for da in da_array])
 
 
-def const(da_array, array=False):
+def const(da_array, array=True):
     """ Collects the constant part of each generalized dual variable and returns a list or numpy array. """
     try:
         da_array[0]  # Check to see if its a scalar
