@@ -9,5 +9,6 @@
 *.vscode
 *.ipynb_checkpoints
 *.bak
+*.bbl
+*.blg
 data/*
-Documents/*

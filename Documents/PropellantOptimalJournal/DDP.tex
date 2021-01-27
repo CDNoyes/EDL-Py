@@ -159,7 +159,7 @@ The saturation function is required to ensure that, regardless of the value of t
 	0 \le \ur(v) \le 1 \label{eq_control_bounds}
 \end{align}
 which disallows bank angle magnitudes greater than $90^\circ$.
-The state deviations in Eq.~\ref{eq_feedback} are computed with respect to the mean state at the current velocity, e.g., $\delta D(v) = D(v) - \E{D(v)}$.
+The state deviations in Eq.~(\ref{eq_feedback}) are computed with respect to the mean state at the current velocity, e.g., $\delta D(v) = D(v) - \E{D(v)}$.
 %Two scenarios will be considered. In the first, only the open-loop control $u_0$ is determined by the optimal control solution; the feedback gains are not included as optimization variables, but may still be functions of the planned trajectory, as in e.g. Apollo guidance, which computes influence coefficients around a nominal trajectory. In this setting, DDP searches for the most robust path subject to a given guidance approach. In the second scenario, the gains are included as controls to be determined via DDP. 
 
 The optimal control problem is to determine the piece-wise constant reference control $\ur\left[v_0,v_f\right]$ that minimizes the objective functional
@@ -168,11 +168,11 @@ The optimal control problem is to determine the piece-wise constant reference co
 %J(\ur\left[v_0,v_f\right]) &= -\E{h(v_f)} + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \label{eq_objective}
 J &= -\E{h(v_f)} + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \label{eq_objective}
 \end{align}
-subject to the equations of motion $\ref{eq_dynamics_altitude}-\ref{eq_dynamics_fpa}$, the initial conditions~\ref{eq_ic_mean}-\ref{eq_ic_cov}, and the bounded control \ref{eq_control_bounds}. 
-In addition to the mean altitude component, a weight $w_h\ge0$ multiplies the altitude deviation and thus allows for additional emphasis on maximizing a measure of the low end of the distribution. Additionally, while the mean downrange distance is unconstrained, there is a penalty $w_s\ge0$ on standard deviation of the downrange distance. For small $w_s$, this term is used to discourage solutions from sacrificing downrange accuracy for small altitude improvements. Larger weights encourage greater reduction in downrange errors at the expense of altitude performance.  
+subject to the equations of motion $(\ref{eq_dynamics_altitude})-(\ref{eq_dynamics_fpa})$, the initial conditions~(\ref{eq_ic_mean})-(\ref{eq_ic_cov}), and the bounded control (\ref{eq_control_bounds}). 
+In addition to the mean altitude component, a weight $w_h\ge0$ multiplies the altitude deviation and thus allows for additional emphasis on maximizing a measure of the low end of the distribution. Additionally, while the mean downrange distance is unconstrained, there is a penalty $w_s\ge0$ on standard deviation of the downrange distance. For small $w_s$, this term is used to discourage solutions from sacrificing downrange accuracy for small altitude improvements. Larger weights encourage greater reduction in downrange errors at the expense of altitude performance. The solution consists of the reference controls and the mean trajectory
 %There are no terminal constraints.
 
-\subsubsection*{Remark} Either variances or standard deviations may be used in Eq.~\ref{eq_objective}. In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but both in theory and in practice, the terminal standard deviations are never exactly zero since the covariance matrix is positive definite.
+\subsubsection*{Remark} Either variances or standard deviations may be used in Eq.(~\ref{eq_objective}). In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but both in theory and in practice, the terminal standard deviations are never exactly zero since the covariance matrix is positive definite.
 \subsubsection*{Remark} Uncertainty in the parameters in governing differential equations can be included by appending the parameters $\param$ to the state vector with trivial dynamics, $\param'=\bf0$.
 
 %In summary, the optimal control problem under consideration is 
@@ -186,11 +186,11 @@ In addition to the mean altitude component, a weight $w_h\ge0$ multiplies the al
 %	\end{align}
 
 \section*{Optimal Control Solution via Unscented Transform and DDP}
-A key issue in solving the optimal control problem is computing the expected values and standard deviations in the objective functional and feedback terms. Broadly, uncertainty quantification (UQ) methods trade between accuracy and the amount of computation required. For example, linear covariance propagation is one of the most efficient UQ methods for the two probability moments, but its accuracy depends on the nonlinearity of the system dynamics. Monte Carlo simulation can achieve arbitrary accuracy, but may require a huge number of samples in order to do so. Since UQ will be performed at each optimal control solver iteration, the method chosen must strike a careful balance these two aspects. For very fast but inaccurate methods, the solution may not perform as expected in a higher fidelity UQ, such as Monte Carlo simulation, and the benefit of the approach may be diminished or lost entirely. At the other extreme, slow but accurate methods will result in very long solution times. In this work, the unscented transform (UT) \cite{UT1997} is chosen to compute the required statistics. The UT is preferable to linear covariance techniques because the sigma points are propagated through the full nonlinear, saturated dynamics, and are thus able to capture their effects on the distribution more accurately than linearization. 
+A key issue in solving the optimal control problem is computing the expected values and standard deviations in the objective functional and feedback terms. Broadly, uncertainty quantification (UQ) methods trade between accuracy and the amount of computation required. For example, linear covariance propagation is one of the most efficient UQ methods for computing the first two probability moments, but its accuracy depends on the nonlinearity of the system dynamics. At the other extreme, Monte Carlo simulation can estimate higher order moments to arbitrary accuracy, but may require a huge number of samples in order to do so. Since UQ will be performed at each optimal control solver iteration, the method chosen must strike a careful balance these two aspects. For very fast but inaccurate methods, the solution may not perform as expected in a higher fidelity UQ, such as Monte Carlo simulation, and the benefit of the approach may be diminished or lost entirely. On the other hand, slow but accurate methods will result in very long solution times. In this work, the unscented transform (UT) \cite{UT1997} is chosen to compute the required statistics. The UT is preferable to linear covariance techniques because the sigma points are propagated through the full nonlinear, saturated dynamics, and are thus able to capture their effects on the distribution more accurately than linearization. 
 %While random sampling can produce more accurate estimates than either linear propagation or the unscented transform,
 It is also preferable to random sampling because the number of sigma points is generally lower than the number of samples required for equivalent precision, and the sigma points are given deterministically by the UT algorithm. %TODO: citation?
 
-Next, because control saturation is a key issue in the closed-loop dynamics, the control-limited box-DDP algorithm \cite{DDP_ControlLimited} is employed to solve for the control updates during the backward pass. While this approach results in reference controls that satisfy the control limits, the saturation function is required in the forward pass to ensure the closed-loop sigma point trajectories also respect the control limits, or the predicted covariance will be inaccurate.
+Next, because control saturation is a key issue in the closed-loop dynamics, the control-limited box-DDP algorithm \cite{DDP_ControlLimited} is employed to solve for the control updates during the backward pass. While this approach results in reference controls that satisfy the control limits, the saturation function is required in the forward integration to ensure the closed-loop sigma point trajectories also respect the control limits.
 
 \subsection*{Unscented Transform}
 The unscented transform is a method to approximate the first two moments of a nonlinear transformation of a probability distribution. Consider a scalar quantity $q\in\mathbb{R}$ given by a nonlinear transformation $q = F(\param)$ of a vector $\param\in\mathbb{R}^n$ with known mean and covariance
@@ -235,7 +235,7 @@ The Value function at timestep $i$ is the optimal cost-to-go at \state
 \begin{align}
 V_i(\state) = \min_{\Control_i} J(\state, \Control_i)
 \end{align}
-and at the final timestep the Value function is equal to the terminal objective. The Dynamic Programming principle reduces the problem of minimization over $\Control_i$ to a sequence of minimizations over $u$ at each timestep 
+and at the final timestep the Value function is equal to the terminal objective. The Dynamic Programming principle reduces the problem of minimization over $\Control_i$ to a sequence of minimization problems over $u$ at each timestep 
 \begin{align}
 V(\state) = \min_{\control}\left[l(\state,\control) + V^+(\mathbf{f}(\state,\control))\right] \label{eq_dynamic_programming}
 \end{align}
@@ -244,17 +244,17 @@ Let the pseudo-Hamiltonian $Q(\delta\state,\delta\control)$ be the change in Val
 \begin{align}
 Q(\delta\state,\delta\control) = l(\state+\delta\state,\control+\delta\control) + V^+(\mathbf{f}(\state+\delta\state,\control+\delta\control))
 \end{align}
-The second order expansion of $ Q $ is given by
+The second-order expansion of $ Q $ is given by
 \begin{align}
 Q_\state &= l_\state + \mathbf{f}_\state^T V^+_\state \\
 Q_\control &= l_\control + \mathbf{f}_\control^T V^+_\state \\
-Q_{\state\state} &= l_{\state\state} + \mathbf{f}_\state^T V^+_{\state\state}\mathbf{f}_\state + V^+_\state \mathbf{f}_{\state\state} \\
-Q_{\control\state} &= l_{\control\state} + \mathbf{f}_\control^T V^+_{\state\state}\mathbf{f}_\state + V^+_\state \mathbf{f}_{\control\state} \\
-Q_{\control\control} &= l_{\control\control} + \mathbf{f}_\control^T V^+_{\state\state}\mathbf{f}_\control + V^+_\state \mathbf{f}_{\control\control}
+Q_{\state\state} &= l_{\state\state} + \mathbf{f}_\state^T V^+_{\state\state}\mathbf{f}_\state + V^+_\state \mathbf{f}_{\state\state} \label{eq_hessian1}\\
+Q_{\control\state} &= l_{\control\state} + \mathbf{f}_\control^T V^+_{\state\state}\mathbf{f}_\state + V^+_\state \mathbf{f}_{\control\state} \label{eq_hessian2}\\
+Q_{\control\control} &= l_{\control\control} + \mathbf{f}_\control^T V^+_{\state\state}\mathbf{f}_\control + V^+_\state \mathbf{f}_{\control\control} \label{eq_hessian3}
 \end{align}
-where the subscripts denote partial derivatives with respect to that quantity, and the final term in each of the Hessians are tensor-vector contractions. %TODO: rewrite them as sums over the 'pages' of the hessian
+where the subscripts denote partial derivatives with respect to that quantity, and the final term in each of the Hessian equations (\ref{eq_hessian1})-(\ref{eq_hessian3}) are tensor-vector contractions. %TODO: rewrite them as sums over the 'pages' of the hessian
 
-\subsubsection*{Remark} The terms $\mathbf{f}_{\state\state},\, \mathbf{f}_{\state\control}$ are $n\times n\times n$ and $n\times n\times m$ tensors, respectively, that must either be stored at $N$ timesteps, or else recomputed in the event the backward pass must be repeated with increased regularization. For large $n$, both computing and storing these quantities is problematic. Unfortunately, removing these terms entirely, as is done in the iterative Linear Quadratic Gaussian method \cite{iLQG}, leads to poor performance for the problem under consideration. In particular, the first-order algorithm has a noticeably smaller radius of convergence, and different guesses at the initial control sequence often lead to different local minima. In contrast, the full second-order DDP algorithm consistently converges to a single minimum from most guesses. Thus, we propose a compromise in which only the $n\times m \times m$ tensor $f_{\control\control}$ is retained in the above equations. Numerical experiments suggest this is sufficient to avoid poor solutions, at the expense of a slower convergence rate than the full algorithm with all second-order terms included. However, in the situation at hand, in which the number of controls $m$ is fixed and small ($ \le4 $), and the state dimension, which depends on the number of uncertainties under consideration, is large ($20 < n <60$), this modification proves to be enabling for $n\ge 30$ with $N=1000$. A limited-memory version of the Quasi-Newton approximations to these terms proposed in \cite{QNDDP} may also be a good choice to obtain superlinear convergence properties of the approximated second order algorithm while reducing the memory required. 
+\subsubsection*{Remark} The second derivatives $\mathbf{f}_{\state\state},\, \mathbf{f}_{\control\state}$ in Eq.~(\ref{eq_hessian1}),(\ref{eq_hessian2}) are $n\times n\times n$ and $m\times n\times n$ tensors, respectively, that must either be stored at $N$ timesteps, or else recomputed in the event the backward pass must be repeated with increased regularization. For large $n$, both computing and storing these quantities is problematic. Unfortunately, removing these terms entirely, as is done in the iterative Linear Quadratic Gaussian method \cite{iLQG}, leads to poor performance for the problem under consideration. In particular, the first-order algorithm has a noticeably smaller radius of convergence, and different guesses at the initial control sequence often lead to different local minima. In contrast, the full second-order DDP algorithm consistently converges to a single minimum from most guesses. Thus, we propose a compromise in which only the $n\times m \times m$ tensor $f_{\control\control}$ is retained in the above equations. Numerical experiments suggest this is sufficient to avoid poor solutions, at the expense of a slower convergence rate than the full algorithm with all second-order terms included. However, in the situation at hand, in which the number of controls $m$ is fixed and small ($ \le4 $), and the state dimension, which depends on the number of uncertainties under consideration, is large ($20 < n <60$), this modification proves to be enabling for $n\ge 30$ with $N=1000$. A limited-memory version of the Quasi-Newton approximations to these terms proposed in \cite{QNDDP} may also be a good choice to obtain superlinear convergence properties of the approximated second order algorithm while reducing the memory required. 
 %(This reduces complexity from cubic in $n$ to linear)
 
 The optimal control modification $\delta\control^*$ for some perturbation $\delta\state$ is a locally-linear feedback control $\delta\control^* = \mathbf{k} + K\delta\state$ obtained by minimizing the quadratic model subject to linear bounds on the controls
@@ -276,10 +276,10 @@ The backward pass is performed by initializing $V$ and its derivatives with the 
 The forward pass uses the newly computed control policy to integrate the new trajectory, subject to a backtracking line search
 \begin{align}
 \hat{\state}_0 &= \state_0 \\
-\hat{\control}_{i} &= \control_i + \alpha \mathbf{k}_i + K_i(\hat{\state}_i - \state_i)\\
+\hat{\control}_{i} &= \control_i + \epsilon \mathbf{k}_i + K_i(\hat{\state}_i - \state_i)\\
 \hat{\state}_0 &= f(\hat{\state}_i,\hat{\control}_i)
 \end{align}
-where parameter $\alpha$ is a search parameter initialized to 1 and reduced until the Value function shows improvement. The backward-forward iterations are repeated until convergence to a locally optimal trajectory.
+where $\epsilon$ is a search parameter initialized to 1 and reduced until the Value function shows improvement. The backward-forward iterations are repeated until convergence to a locally optimal trajectory. In the event 
 %TODO: talk about regularization of the solution and failed backward passes.
 \subsection*{Objective Reformulation}
 In order for DDP to be applied to this problem for arbitrary $w_h,w_s\ge 0$, it is essential to reformulate some or all of the objective terms as running costs rather than terminal costs. This is because the terminal formulation results in singularity of the Hessian of the pseudo-Hamiltonian with respect to the control, and this quantity must be invertible for the algorithm to proceed. In practice, one could also add a small control regularization term to the objective, but experience has shown that reformulating the mean altitude objective is sufficient. Due to linearity of the expectation operator, we have the following relationships for the time rate of change of the first two moments
@@ -304,7 +304,10 @@ l(\state,\control) = -\E{h'} +  2w_h(\E{hh'}-\E{h}\E{h'}) + 2w_s(\E{ss'}-\E{s}\E
 \mathrm{sat}_{[0,1]}(x) \approx \frac{1}{2} + \frac{1}{4K}\log\left(\frac{\cosh (2Kx)}{\cosh (2K(x-1))}\right) 
 \end{align*}
 where $K$ is a tuning parameter. $K=20$ in our implementation.
+\subsubsection*{Remark}
+Prior to solving the challenging optimal control problem under uncertainty, we applied DDP to altitude-optimal control without considering uncertainty. This was done so that we could verify it recovers the optimal bang-bang solutions, which could also be computed using a different method such as GPOPS-II\cite{GPOPS2}.
 
+In addition to eliminating a terminal constraint, using velocity as the independent variable was also advantageous in solving the optimal control problem via DDP. Although we have not done a full analysis, one possibility is that, because DDP respects the temporal structure of the optimal control solution, this removes derivatives with respect to velocity. Because the aerodynamic accelerations are quadratic in velocity, this may have a large impact on the problem sensitivity. We also examined downrange distance as the independent variable, and found that convergence was poor unless a very close guess at the optimal control was used. In contrast to velocity, downrange distance does not appear in the equations of motion. 
 %\section*{Uncertainty Quantification}
 %Show that in the presence of saturation and with a closed-loop, linearization isn't appropriate. 
 %
@@ -336,7 +339,8 @@ where $K$ is a tuning parameter. $K=20$ in our implementation.
 A series of numerical experiments are conducted to illustrate the approach. The first section compares the presented approach to conventional reference trajectories designed by nominal optimal control and fixed bank angle margins. The second section investigates how the optimal trajectories change with the weights $w_h,\,w_s$, incorporating both initial state uncertainty and parametric uncertainty.
 %The final set of numerical experiments compares the use of two different methods of generating time-varying gains tailored to the entry problem: linear quadratic regulator and modified Apollo guidance gains flown on MSL and Mars2020. Additionally, we validate our use of the unscented transform by comparison with Monte Carlo simulations.
 
-All simulations are conducted on a five metric ton entry vehicle with a nominal $L/D=0.28$, i.e., in the same class as the Sample Retrieval Lander considered for the Mars Sample Return campaign \cite{MSR}. In order to contend with the issue that the entry velocity is not generally monotonically decreasing from the entry interface, we propagate the initial state and covariance matrix using time as the independent variable to the point where it does become monotonic and compute the mean and covariance at that point. The resulting nominal (or mean) entry state at $v_0 = 5525$ m/s is $x_0 = [54.5\,\mathrm{km},\,-11.5^{\circ}, 0\,\mathrm{km}]^T$. The initial state uncertainty around the mean is $\sigma_h = 2.5$ km, $\sigma_{\gamma} = 0.25^{\circ}$, $\sigma_s = 10$ km. Uncertainty is also modeled in the vehicle $L/D$ ratio, ballistic coefficient, and atmospheric density with $\sigma_{L/D} = 5\%$ km, $\sigma_{\beta} = 5\%$, $\sigma_{\rho} = 6.66\%$. The feedback gains are constants $[k_D, k_{\gamma}, k_s] = [0.0725, -0.025, -0.004]$. With uncertainty in each state variable as well as in three model parameters, there are six uncertainties under consideration and the unscented transform yields 13 sigma points, for a total of 78 states (half of which have trivial dynamics). The problem is discretized into $N=250$ fixed velocity increments, and the control is assumed to be constant on each interval. Four Euler integration steps are taken over each velocity step. The value of N and the number of integration steps were chosen by validating the terminal altitude and range against adaptive stepsize integration using MATLAB's \textit{ode45} function. The unscented transform tuning parameter $\alpha=12$. This value was chosen by starting with $\alpha=3$ and increasing it until the 3$\sigma$-low altitude performance was underestimated relative to the Monte Carlo results. 
+All simulations are conducted on a five metric ton entry vehicle with a nominal $L/D=0.28$, i.e., in the same class as the Sample Retrieval Lander considered for the Mars Sample Return campaign \cite{MSR}. In order to contend with the issue that the entry velocity is not generally monotonically decreasing from the entry interface, we propagate the initial state and covariance matrix using time as the independent variable to the point where it does become monotonic and compute the mean and covariance at that point. The resulting nominal (or mean) entry state at $v_0 = 5525$ m/s is $x_0 = [54.5\,\mathrm{km},\,-11.5^{\circ}, 0\,\mathrm{km}]^T$. The initial state uncertainty around the mean is $\sigma_h = 2.5$ km, $\sigma_{\gamma} = 0.25^{\circ}$, $\sigma_s = 10$ km. Uncertainty is also modeled in the vehicle $L/D$ ratio, ballistic coefficient, and atmospheric density with $\sigma_{L/D} = 5\%$ km, $\sigma_{\beta} = 5\%$, $\sigma_{\rho} = 6.66\%$. The feedback gains are constants $[k_D, k_{\gamma}, k_s] = [0.0725, -0.025, -0.004]$. With uncertainty in each state variable as well as in three model parameters, there are six uncertainties under consideration and the unscented transform yields 13 sigma points, for a total of 78 states (half of which have trivial dynamics). The problem is discretized into $N=250$ fixed velocity increments, and the control is assumed to be constant on each interval. Four Euler integration steps are taken over each velocity step. The value of N and the number of integration steps were chosen by validating the terminal altitude and range against adaptive stepsize integration using MATLAB's \textit{ode45} function. The unscented transform tuning parameter $\alpha=12$. 
+%This value was chosen by starting with $\alpha=3$ and increasing it until the 3$\sigma$-low altitude performance was underestimated relative to the Monte Carlo results. 
 %TODO: Talk about the corresponding time steps? 
 
 \subsection*{Reference Trajectory Comparison}
@@ -348,25 +352,25 @@ In this section we compare the results of closed-loop optimization under uncerta
 	\caption{The profiles from deterministic optimal control (left) exhibit the well known bang-bang structure of altitude optimal trajectories. In comparison, the robust control histories (right) exhibit significantly behavior depending on the weights applied. Note that a significant amount of saturation of the reference control still exists in each of the robust reference designs.}
 	\label{fig_control_comparison}
 \end{figure}
-Figure~\ref{fig_control_comparison} shows the resulting control profiles for the six cases. The altitude-optimal controls resulting from standard optimal control exhibit the well known bang-bang profile while the robust optimal control profiles are quite varied depending on the weights selected. For pure mean optimization, the result is somewhat similar to the bang-bang profiles, but retains margin at high velocities. An interesting feature of the robust profiles is that saturation still occurs at some velocities. One perspective is that the optimal amount of margin is a quantity that varies along the trajectory, which suggests using a fixed margin will produce inferior results.
+Figure~\ref{fig_control_comparison} shows the resulting control profiles for the six cases. The altitude-optimal controls resulting from standard optimal control exhibit the well known bang-bang profile while the robust optimal control profiles are quite varied depending on the weights selected. For pure mean optimization, the result is somewhat similar to the bang-bang profiles, but retains margin at high velocities and has a slower transition to the lift up ($u=1$) orientation. An interesting feature of the robust profiles is that saturation still occurs at some velocities. One perspective is that the optimal amount of margin is a quantity that varies along the trajectory, which suggests using a fixed margin will produce inferior results.
 
 %A key observation is that saturation still occurs to some extent in these robust optimal trajectories. Margin is preserved only at key velocities, while at other times the distribution is allowed to grow in order to fly full lift up and raise the terminal altitude. Methods that incorporate chance constraints on the control in order to reduce saturation cannot accomplish this.
 
 For each case, a Monte Carlo simulation with 2000 sample trajectories is conducted to evaluate the performance of each reference. The samples are drawn using Latin Hypercube sampling. The results are summarized in Tables~\ref{table_deterministic}-\ref{table_robust}. Case 1 preserves no margin at all, and as a result has the highest nominal terminal altitude of the three cases. This translates into the highest mean altitude of the three cases, despite the lack of margin. However, the lack of margin causes poor range control performance in dispersed trajectories, leading to unacceptably large range errors. As the amount of control margin increases in Cases 2 and 3, the range errors drop dramatically while the mean altitude also decreases. The 3$\sigma$-low altitudes display non-monotonic behavior with respect to bank margin because the mean altitude loss may be offset by the reduction in altitude deviation. This is true for Case 2, which has a higher 3$\sigma$-low altitude relative to Case 1. In Case 3, the drop in mean altitude is greater than the drop in the 3$\sigma$-low altitude because the altitude deviation has decreased further. 
 
-Case 4 ($ w_h=w_s=0 $) optimizes the mean altitude with knowledge of the problem uncertainty and guidance gains and indeed produces the highest mean altitude of all six cases. Case 5 ($ w_h=3,w_s=0 $) adds additional weight to the altitude standard deviations, which resulted in a 500 meter increase to the 3$\sigma$ low altitude despite a 300 meter drop in mean altitude relative to Case 4. Case 5 has the highest 3$\sigma$-low altitude of the six cases, with more than a kilometer increase over the best of the three profiles designed without incorporating uncertainty. Case 6 ($ w_h=0, w_s=3$) places no weight on altitude standard deviation, but weights range errors heavily, and produces a dramatic decrease in 3$\sigma$ range errors as a result. It has the lowest range error of the six cases, and compared to the large margined case 3, still produces a higher 3$\sigma$-low altitude.
+Case 4 ($ w_h=w_s=0 $) optimizes the mean altitude with knowledge of the problem uncertainty and guidance gains and indeed produces the highest mean altitude of all six cases. Case 5 ($ w_h=3,w_s=0 $) adds additional weight to the altitude standard deviations, which resulted in a 500 meter increase to the 3$\sigma$ low altitude despite a 300 meter drop in mean altitude relative to Case 4. Case 5 has the highest 3$\sigma$-low altitude of the six cases, with more than a kilometer increase over the best of the three profiles designed without incorporating uncertainty. Case 6 ($ w_h=0, w_s=3$) places no weight on altitude standard deviation, but weights range errors heavily, and produces a dramatic decrease in 3$\sigma$ range errors as a result. It has the lowest range error of the six cases, and compared to the large margins of case 3, still produces a higher 3$\sigma$-low altitude.
 
 This demonstrates the applicability of optimal control under uncertainty to designing robust reference trajectories. Additionally, the flexibility of the weights allows the trajectory designer to trade between range errors and altitude performance to the extent that the reference trajectory can alter closed-loop performance. 
 \begin{table}[h!]
 	\centering
-	\caption{As the bank angle margin is increased during the reference trajectory design, there is a loss in mean altitude while the range errors decrease dramatically. The low end of the altitude distribution is non-monotonic because adding margin can result in a smaller standard deviation, and offset the mean loss (as in Case 2) until the mean loss is too great (as in Case 3).}
-	\includegraphics[width=0.8\textwidth]{ddp/table_deterministic}
+	\caption{As the bank angle margin is increased during the reference trajectory design, range errors decrease dramatically at the expense of a loss in mean altitude. The low end of the altitude distribution is non-monotonic because adding margin can result in a smaller standard deviation, and offset the mean loss (as in Case 2) until the mean loss is too great (as in Case 3).}
+	\includegraphics[width=0.75\textwidth]{ddp/table_deterministic}
 	\label{table_deterministic}
 \end{table}
 \begin{table}[h!]
 	\centering
-	\caption{The robust trajectories designed with knowledge of the problem uncertainty outperform y designed reference trajectories in $3\sigma$ low altitude and range errors.}
-	\includegraphics[width=0.8\textwidth]{ddp/table_robust}
+	\caption{The trajectories designed with knowledge of the problem uncertainty can outperform Cases 1-3 in each column by appropriate choice of the weights.}
+	\includegraphics[width=0.75\textwidth]{ddp/table_robust} %
 	\label{table_robust}
 \end{table}
 %Figures~\ref{fig_robust_alt}-\ref{fig_robust_range} show the estimated $3\sigma$ deviations around the mean as well as the sigma point trajectories for scenario 1.
@@ -392,11 +396,20 @@ This demonstrates the applicability of optimal control under uncertainty to desi
 
 \subsection*{Standard Deviation Weighting Study}
 From the previous section it is evident there exists a design space where weights on deviations produce superior results to simply optimizing the mean altitude when tail behavior of the distribution is important. This section investigates the extent to which weighting the standard deviations can alter the trajectory performance. The optimal control problem is solved for a variety of weights. The results are summarized in Fig.~\ref{fig_weight_sweep}. Again the advantages of weighting the standard deviations compared with optimizing only the mean are made clear. Comparing $w_h=w_s=0$ with, e.g., $w_h=1,\,w_s = 1$ demonstrates that a 50\% reduction in the standard deviation of downrange distance can be obtained with no loss in the low end of the terminal altitude distribution. Additionally, we can numerically determine the trade between terminal altitude and downrange robustness. The minimum downrange standard deviation achieved ($w_h=0,w_s=3$) was 2.1 km, nearly a 70\% reduction from the mean optimization with $\sigma_s(v_f)=6.7$ km. These trajectories show clear improvements with no change to the guidance gains - simply a different trajectory through the atmosphere is used to improve the results.
-This was achieved with constant gains; the result suggests more sophisticated methods of choosing gains, or even joint optimization of the feedback gains, could produce even greater synergistic improvements to the trajectory design. 
+
+%This also highlights the power of the approach as a design tool. If, for example, the $3\sigma$-low terminal altitude is not sufficient for any values of $w_h,\,w_s$, then some aspect of the mission must be reconsidered: increase the terminal velocity, increase the vehicle $L/D$, decrease ballistic coefficient, etc. If a $3\sigma$-low altitude limit is known, then only points that satisfy this limit are considered, and the point with the lowest downrange error may be selected. 
+
+Furthermore, this was achieved using constant feedback gains; this suggests more sophisticated methods of generating gains, such as the Linear-Quadratic Regulator, Apollo influence coefficients, or joint optimization of the feedback gains in the optimal control problem, could produce even greater synergistic improvements to the trajectory design. 
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width=1\textwidth]{ddp/weight_sweeps}
+%	\caption{Contours of the unscented transform estimated 3$\sigma$ low altitude (left) and downrange distance standard deviation (right) as a function of the weights $w_h$ and $w_s$. The total range of low altitudes variations is about 1 km, while range errors rapidly improve as $w_s$ is raised to 1, and diminishing returns occur for larger values.}
+%	\label{fig_weight_sweep}
+%\end{figure}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=1\textwidth]{ddp/weight_sweeps}
-	\caption{Contours of the unscented transform estimated 3$\sigma$ low altitude (left) and downrange distance standard deviation (right) as a function of the weights $w_h$ and $w_s$. The total range of low altitudes variations is about 1 km, while range errors rapidly improve as $w_s$ is raised to 1, and diminishing returns occur for larger values.}
+	\includegraphics[width=1\textwidth]{ddp/weight_sweeps_mc}
+	\caption{Contours of the Monte Carlo 3$\sigma$ low altitude (left) and 3$\sigma$ downrange distance error (right) as a function of the weights $w_h$ and $w_s$. The total range of low altitudes variations is about 1.5 km, while range errors rapidly improve as $w_s$ is raised to 1, and diminishing returns occur for larger values.}
 	\label{fig_weight_sweep}
 \end{figure}
 %\begin{figure}[h!]
@@ -416,7 +429,8 @@ This was achieved with constant gains; the result suggests more sophisticated me
 %	\includegraphics[width=1\textwidth]{ddp/control}
 %	\caption{Both solutions display a lower lift segment at high velocities before transitioning to a full lift up arc until the terminal velocity is reached. The primary difference is the closed-loop control leaves substantial margin for feedback control early on until the trajectory errors have been reduced. Once parametric uncertainty is introduced, margin is expected to be required throughout the trajectory.}
 %\end{figure}
-This also highlights the power of the approach as a design tool. If, for example, the $3\sigma$-low terminal altitude is not sufficient for any values of $w_h,\,w_s$, then some aspect of the mission must be reconsidered: increase the terminal velocity, increase the vehicle $L/D$, decrease ballistic coefficient, etc. If a $3\sigma$-low altitude limit is known, then only points that satisfy this limit are considered, and the point with the lowest downrange error may be selected. 
+
+
 
 %\subsection{open-loop vs closed-loop}
 %The problem is solved with the weights $w_h = 0.001$, $w_s = 0.01$ and assuming the initial state covariance $\cov = \mathrm{diag}([2500^2,0.25^2,1000^2])$. In the closed-loop scenario, drag, flight path angle, and range-to-go are the feedback states, and the feedback gains are constants $[0.1, -50, 0.1]$. 
@@ -451,20 +465,20 @@ This also highlights the power of the approach as a design tool. If, for example
 %Compare scenarios with the same weights: open-loop, CL with fixed gains, CL with optimized gains. Also add results for flying the open-loop profile but with either/both the fixed gains or the optimized gains. Show that both sets of gains improve the results of course, but the optimized gains are only "optimal" in conjunction with the reference profile - synergy between the two improves the net result.
 
 
-\subsubsection*{Uncertainty Quantification Validation}
-Although we have demonstrated that the trajectories designed using the propsed method with UT estimated statistics do translate into improved performance in Monte Carlo simulation, one question remaining is how accurate the unscented transform estimates are relative to the Monte Carlo results. Additionally, could linear propagation suffice in place of the unscented transform? The two objectives of this section are
-\begin{enumerate}
-	\item Verify that the mean and standard deviations computed via Unscented Transform are sufficiently close to MC results
-	\item Demonstrate that in the presence of saturation, linear covariance propagation produces poor estimates
-\end{enumerate}
+%\subsubsection*{Uncertainty Quantification Validation}
+%Although we have demonstrated that the trajectories designed using the propsed method with UT estimated statistics do translate into improved performance in Monte Carlo simulation, one question remaining is how accurate the unscented transform estimates are relative to the Monte Carlo results. Additionally, could linear propagation suffice in place of the unscented transform? The two objectives of this section are
+%\begin{enumerate}
+%	\item Verify that the mean and standard deviations computed via Unscented Transform are sufficiently close to MC results
+%	\item Demonstrate that in the presence of saturation, linear covariance propagation produces poor estimates
+%\end{enumerate}
 
-Figure~\ref{fig_sweep_errors}
-\begin{figure}[h!]
-	\centering
-	\includegraphics[width=1\textwidth]{ddp/weight_sweep_errors}
-	\caption{The low altitudes are uniformly underestimated, while the range errors show both over- and under-estimates, depending on the weights. }
-	\label{fig_sweep_errors}
-\end{figure}
+%Figure~\ref{fig_sweep_errors}
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width=1\textwidth]{ddp/weight_sweep_errors}
+%	\caption{The low altitudes are uniformly underestimated, while the range errors show both over- and under-estimates, depending on the weights. }
+%	\label{fig_sweep_errors}
+%\end{figure}
 
 
 %\subsection*{LQR and Apollo Gains}
@@ -474,6 +488,10 @@ Figure~\ref{fig_sweep_errors}
 %The second order method consistently finds the same solution for open-loop and closed-loop when the gains are not optimization variables. When the gains are also optimized, the initial guess has a large effect on the solution found, suggesting a difficult optimization landscape with many local minima. 
 
 \section*{Conclusion}
+%Although a conclusion may review the main points of the paper, it must not replicate the abstract. A conclusion
+%might elaborate on the importance of the work or suggest applications and extensions. Do not cite references in the
+%conclusion. Note that the conclusion section is the last section of the paper to be numbered. The appendix (if present), funding information, other acknowledgments, and references are listed without numbers
+
 We have presented a new approach to generating robust, altitude-optimal reference trajectories for Mars entry guidance. The entry guidance problem is posed as an optimal control problem with uncertain initial state and parameters. The statistics required to evaluate the objective function are estimated with sample trajectories computed via the unscented transform. Differential dynamic programming is demonstrated to be an effective way to solve the resulting large-scale optimal control problem. By weighting the altitude optimization objective with standard deviations on altitude and downrange distance, entry trajectories robust to the modeled uncertainties are generated. Monte Carlo simulations were conducted to verify the improvement over conventional design techniques based on deterministic optimal control. 
 %\bibliographystyle{AAS_publication}
 \bibliography{bib}
