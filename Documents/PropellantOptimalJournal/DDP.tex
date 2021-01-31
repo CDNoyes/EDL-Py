@@ -172,9 +172,8 @@ subject to the equations of motion $(\ref{eq_dynamics_altitude})-(\ref{eq_dynami
 In addition to the mean altitude component, a weight $w_h\ge0$ multiplies the altitude deviation and thus allows for additional emphasis on maximizing a measure of the low end of the distribution. Additionally, while the mean downrange distance is unconstrained, there is a penalty $w_s\ge0$ on standard deviation of the downrange distance. For small $w_s$, this term is used to discourage solutions from sacrificing downrange accuracy for small altitude improvements. Larger weights encourage greater reduction in downrange errors at the expense of altitude performance. The solution consists of the reference controls and the mean trajectory
 %There are no terminal constraints.
 
-\subsubsection*{Remark} Either variances or standard deviations may be used in Eq.(~\ref{eq_objective}). In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but both in theory and in practice, the terminal standard deviations are never exactly zero since the covariance matrix is positive definite.
+\subsubsection*{Remark} Either variances or standard deviations may be used in Eq.~(\ref{eq_objective}). In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but both in theory and in practice, the terminal standard deviations are never exactly zero since the covariance matrix is positive definite.
 \subsubsection*{Remark} Uncertainty in the parameters in governing differential equations can be included by appending the parameters $\param$ to the state vector with trivial dynamics, $\param'=\bf0$.
-
 %In summary, the optimal control problem under consideration is 
 %	\begin{align}
 %	\min_{\ur\left[v_0,v_f\right]}\ J\\  % 
@@ -196,7 +195,7 @@ Next, because control saturation is a key issue in the closed-loop dynamics, the
 The unscented transform is a method to approximate the first two moments of a nonlinear transformation of a probability distribution. Consider a scalar quantity $q\in\mathbb{R}$ given by a nonlinear transformation $q = F(\param)$ of a vector $\param\in\mathbb{R}^n$ with known mean and covariance
 \begin{align*}
 \E{\param} &= \bar{\param}\\
-\V{\param} &= \cov_{\param}.
+\V{\param} &= \cov_{\param}
 \end{align*}
 A set of $2n+1$ sigma points and associated weights are computed 
 \begin{align*}
