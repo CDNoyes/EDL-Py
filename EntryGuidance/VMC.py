@@ -177,7 +177,7 @@ class VMC(object):
             E.append(energy)
 
             if np.isnan(energy):
-                print("Something wrong")
+                print("Something wrong, pre-nan energy = {}".format(E[-2]))
                 break
 
             if energy <= energyf:
