@@ -1,0 +1,24 @@
+\chapter{Guidance Strategy}
+At its core, the guidance strategy for longitudinal range control is extremely simple, consisting of an open-loop vertical $L/D$ and a feedback law, subject to physical- and safety-related constraints. Thus, to design the guidance means to design the reference vertical $L/D$ and corresponding reference trajectory, and the feedback gains. 
+
+The physical constraint is that the available lift is limited, so the most vertical lift that can be achieved is with zero bank angle, or $u=\cos\sigma=1$. The lower bound is dependent on the mission and vehicle characteristics. Physics again limits the magnitude to $u=-1$, but it is often prudent to further limit the lower bound due to the low $L/D$ of typical Mars entry vehicles.
+
+\section{}
+\subsection{Objective Function}
+The first objective is to maximize the mean altitude at the final velocity while minimizing the altitude standard deviation
+\begin{equation}
+	\max J_h = \bar{h}(v_f) - w_h\sigma_h(v_f) \label{Eq:AltitudeObjective}
+\end{equation}
+where $w_h\ge0$ is a penalty on the standard deviation. Maximizing Eq.~(\ref{Eq:AltitudeObjective}) for $w_h$ results in an optimal mean altitude, while 
+
+The second objective is to minimize the standard deviation of trajectory length, consistent with the range control objective, is 
+\begin{equation}
+	\min J_s = w_s\sigma_s(v_f) \label{Eq:RangeObjective}
+\end{equation}
+
+\section{}
+
+%%% Local Variables: ***
+%%% mode: latex ***
+%%% TeX-master: "thesis.tex" ***
+%%% End: ***
