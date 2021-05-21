@@ -1,0 +1,27 @@
+\chapter{Guidance Assessment Conditions}\label{Ch:AssessmentConditions}
+
+%Also talk about algorithm parameters used to generate trajectories
+\section{Robust Optimal Control Solution Parameters}
+Linesearch rules? M = 20 for smooth saturation. N=250 velocity steps, with four Euler integration steps per velocity step. 
+
+%Guess trajectory, show it and discuss. 
+In all numerical examples, the initial guess at the optimal reference control is a linear ramp. This guess is motivated by experience with altitude optimal trajectories, which feature an initial zero lift arc followed by a full lift up arc. Such a control has zero margin (in one direction) at every velocity. Our choice is motivated by a similar lift down to lift up change, but more gradual and with significant margin throughout. 
+
+All solutions consider static gains. In the first section we consider a single set of gains $=[]$ to highlight the impact of the reference trajectory. Later results use jointly optimized gains. For these cases, the initial guess at the optimal gains is the same set.
+
+\subsection{Selecting the UT Parameter}
+Show results for a fixed profile sweeping alpha and show that the estimates are monotonic wrt to the parameter. As result, there exists an alpha that minimizes the error in altitude and range, generally not the same alpha. 
+
+Our earlier example showed that selecting $\alpha$ is important, especially for the range variable. In the numerical assessment, we consider vary weight combinations on the grid $w_h\timesw_s = [0,3]\times[0,3]$. As such, we selected $\alpha$ to minimize the UT-estimation error in $\sigma_s$ for the optimal solution with $w_h=w_s=1.5$, i.e., at the center point of the grid. 
+
+\section{Simulation}
+Monte Carlo setup - integration wrt time, 1Hz integration rate, 
+
+%Primary metrics include the 3$\sigma$ low altitude and the 3$\sigma$ range error at the terminal velocity. Some discussion of the mean altitude and range as well. 
+
+Monte Carlo simulation with 3000 sample trajectories is conducted. The samples are drawn using Latin Hypercube sampling. The bank angle command is updated at a rate of 1 Hz. Range error is the distance between the terminal downrange distance defined by the reference trajectory and the downrange distance flown. The primary metrics we will examine are the 3$\sigma$-low altitude $=\bar{h}-3\sigma_h$ and 3$\sigma$ range error $= 3\sigma_s$ at the final velocity. The terminal state distributions are generally non-Gaussian, and in practice percentiles are used to specify mission requirements. However, metrics based on the mean and standard deviation are presented, because these are the values estimated by the unscented transform, which allows for a direct comparison with the Monte Carlo results.
+
+%%% Local Variables: ***
+%%% mode: latex ***
+%%% TeX-master: "thesis.tex" ***
+%%% End: ***

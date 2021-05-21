@@ -1,22 +1,111 @@
 \chapter{Guidance Strategy}
-At its core, the guidance strategy for longitudinal range control is extremely simple, consisting of an open-loop vertical $L/D$ and a feedback law, subject to physical- and safety-related constraints. Thus, to design the guidance means to design the reference vertical $L/D$ and corresponding reference trajectory, and the feedback gains. 
+%TODO: Define open-loop and closed-loop once the feedback equation is written down. 
+% Say we are only considering longitudinal dynamics, give the form of the control, gi
+In this chapter we present the guidance strategy, which is to pose the guidance problem as a robust optimal control problem. 
+The guidance law for longitudinal range control has a simple structure, consisting of an open-loop vertical $L/D$ profile and a feedback control law, subject to physical- and safety-related constraints. Thus, to design the guidance means to design the reference vertical $L/D$ and corresponding longitudinal reference trajectory, and the feedback gains. 
+%
+%The physical constraint is that the available lift is limited, so the most vertical lift that can be achieved is with zero bank angle, or $u=\cos\sigma=1$. The lower bound is dependent on the mission and vehicle characteristics. Physics again limits the magnitude to $u=-1$, but it is often prudent to further limit the lower bound due to the low $L/D$ of typical Mars entry vehicles.
 
-The physical constraint is that the available lift is limited, so the most vertical lift that can be achieved is with zero bank angle, or $u=\cos\sigma=1$. The lower bound is dependent on the mission and vehicle characteristics. Physics again limits the magnitude to $u=-1$, but it is often prudent to further limit the lower bound due to the low $L/D$ of typical Mars entry vehicles.
+\section{Independent Variable}
+Following from the assumption that the entry phase is terminated at a fixed velocity, it is essential to use velocity as the independent variable. If time were used, at best we could constrain the mean velocity at the final time to be equal to the terminal velocity, but there would nevertheless be a distribution of final velocities. Using velocity at the independent variable naturally guarantees that the entire distribution of trajectories will terminate at the same velocity.
+Redefining $\state_{\mathrm{lon}} = [h,\,s,\,\gamma]^T$ to remove the velocity state variable, the dynamics with respect to velocity are 
+\begin{align}
+	\state_{\mathrm{lon}}'(v,\param) &= \dynamics_v(v,\xl(v,\param),u(v),\param) \label{Eq:DynamicsWRTVel}\\
+	&= \begin{pmatrix}
+		\frac{\dot{h}}{\dot{v}} \\
+		\frac{\dot{s}}{\dot{v}} \\
+		\frac{\dot{\gamma}}{\dot{v}} 
+	\end{pmatrix}
+%&= \frac{\dot{\state}_{\mathrm{lon}}}{\dot{v}} \\
+\end{align}
+%TODO: Monotonicity discussion here rather in the numerical assessment?
+One issue with this choice, however, is that velocity may not be monotonically decreasing at the entry interface because, at high altitudes, $D\approx0$ and so $\dot{v}=-D-g\sin\gamma$ is dominated by the gravity term until the vehicle descends into denser atmosphere. Because the gains used by MSL and M2020 during range control were interpolated as functions of the velocity magnitude, they had to contend with a similar issue.
 
-\section{}
-\subsection{Objective Function}
+Recall that MSL and Mars 2020 had a pre-bank phase prior to range control; this phase ended when the magnitude of vehicle sensed drag acceleration exceeded 1.96 m$/\mathrm{s}^2$ \cite{MSL_EDL2}.
+With Martian gravity approximately $3.71$ m/s$^2$, this is sufficient drag to ensure monotonicity for $\gamma$ as steep as $-30^{\circ}$, noting that both MSL and Mars 2020 had entry flight path angles around $-15.5^{\circ}$. 
+
+Because drag is a function of both altitude and velocity, the point at which $D$ reaches its threshold value is not at a single velocity for all realizations of $\param$. Thus, we can consider a very similar solution except that pre-bank ends at a fixed velocity rather than a fixed drag magnitude. Denoting this velocity by $v_0$, this value is essentially the highest velocity for which $D(v_0,\state,\param)>D_{\mathrm{threshold}}$ and is driven by the lowest drag scenario (high altitude, low density, high ballistic coefficient). 
+Since the entry uncertainties are generally specified at the entry interface and not at the start of range control, an ensemble of points is propagated from the entry interface to $v_0$, and the mean and covariance matrix at this point become the initial state and covariance used in the robust guidance problem. 
+
+%Given $\bar{\state},\cov_{\state}$ at the EI altitude $\sigma_h=0$, simulate $u = \cos\sigma_{\mathrm{pre}}$ to a ``low" velocity, determine $v_0$, and finally compute $\state_0$ and $\cov_{\state_0}$. 
+
+
+\section{Feedback Control Form}
+As a result of considering uncertainty, the state variables are random variables and the goal is to optimize a distribution of trajectories rather than a single trajectory.
+In designing the reference trajectory, the effects of feedback terms in the control are accounted for. Thus the closed-loop control $u$ consists of both a reference control $\ur$, and a feedback term $\delta u$, in contrast to open-loop design methods where $u=\ur$. 
+The control law is assumed to be to a saturated linear state feedback 
+\begin{align}
+	u(v,\state_{\mathrm{lon}}) &= \mathrm{sat}_{[0,1]}\left(\frac{\frac{L}{D})_{\mathrm{ref}}\ur(v)}{\frac{L}{D}} + \delta u(v,\state_{\mathrm{lon}})\right) \label{Eq:Control}\\
+	\delta u &= k_D\delta D + k_{\gamma}\delta\gamma + k_s\delta s \label{Eq:Feedback}
+\end{align}
+%TODO: L/D control, reference Eq.3 in MSL design paper, talk about the "strange" form of the open loop component
+where we note that, consistent with state-of-the-practice EDL operations on Mars, drag acceleration has been used as a feedback term in place of altitude. 
+%This is due to relationship between drag and $s$,
+%\begin{align}
+%	s = -\int_{E_0}^{E_f}$\frac{\cos\gamma}{D}\mathrm{d}E \approx -\int_{E_0}^{E_f}$\frac{1}{D}\mathrm{d}E
+%\end{align}
+The gains $k_i$ in Eq.~\eqref{Eq:Feedback} may be functions of velocity. 
+In principle the feedback control law used for MSL and M2020 could be adopted, but it would require computing influence coefficients by backward integration at each iteration of solving the optimal control problem. By using the feedback control in Eq.~\eqref{Eq:Feedback}, the computation is reduced significantly in line with one of our primary objectives, and we will demonstrate that good guidance performance can be achieved.
+The saturation function is defined
+\begin{align*}
+	\mathrm{sat}_{[a,b]}(x) = \left\{\begin{array}{lc}
+		a, &  x < a\\
+		x, &  a\le x \le b\\
+		b, &  b < x
+	\end{array} \right. % The period stops a warning about not closing the left 
+\end{align*}
+The saturation function is required to ensure that, regardless of the value of the reference control $ \ur $, the feedback control $u(v,\state)$ always satisfies the control limits. Because the control variable is the cosine of an angle, its magnitude must be bounded by one. Due to the low lift capability of current generation Mars entry capsules, it may be prudent to further restrict the vehicle from bank angles that orient the lift vector downward, so in our application we apply
+\begin{align}
+	0 \le \ur(v) \le 1 \label{Eq:Control_bounds}
+\end{align}
+which disallows bank angle magnitudes greater than $90^\circ$. Since vertical $L/D$ is equal to $\frac{L}{D}u$, Eq.~\eqref{Eq:Control_bounds} serves the same function as the $L/D$ limiter used on MSL and Mars 2020 \cite{MSL_EDL2}.
+The state deviations in Eq.~\eqref{Eq:Feedback} are computed with respect to the reference state at the current velocity, e.g., $\delta D(v) = D(v) - D_{\mathrm{ref}}(v)$.
+The form of Eq.~\eqref{Eq:Control} may be unfamiliar but notice that when the control is not saturated, Eq.~\eqref{Eq:Control} may be rearranged as
+\begin{align}
+	\frac{L}{D}u(v,\state_{\mathrm{lon}}) &= \frac{L}{D}_{\mathrm{ref}}\ur(v) + \frac{L}{D}\delta u(v,\state_{\mathrm{lon}}) \label{Eq:Control_rearranged}
+\end{align}
+Compared with the MSL approach (see Eq.~(2) in Ref.~\cite{MSL_EDL2}), the only difference lies only in the feedback terms $\delta u$. Just like the ETPC, the control in Eq.~\eqref{Eq:Control} commands the reference vertical $ L/D $, rather than a reference fraction of the available $ L/D $, which turns out to be a more robust choice in the presence of aerodynamic uncertainty.
+
+\section{Defining the Objective Function}
 The first objective is to maximize the mean altitude at the final velocity while minimizing the altitude standard deviation
 \begin{equation}
 	\max J_h = \bar{h}(v_f) - w_h\sigma_h(v_f) \label{Eq:AltitudeObjective}
 \end{equation}
-where $w_h\ge0$ is a penalty on the standard deviation. Maximizing Eq.~(\ref{Eq:AltitudeObjective}) for $w_h$ results in an optimal mean altitude, while 
+where $w_h\ge0$ is a penalty on the standard deviation. Maximizing Eq.~(\ref{Eq:AltitudeObjective}) for $w_h=0$ results in an optimal mean altitude, while $w_h>0$ maximizes a measure of the low end of the altitude distribution. For example, $w_h=3$ maximizes the 3$\sigma$-low altitude. 
 
-The second objective is to minimize the standard deviation of trajectory length, consistent with the range control objective, is 
+The second objective, consistent with the range control objective, is to minimize the standard deviation of range 
 \begin{equation}
 	\min J_s = w_s\sigma_s(v_f) \label{Eq:RangeObjective}
 \end{equation}
+In contrast to Eq.\eqref{Eq:AltitudeObjective}, the mean range is not included in the objective. This is because for altitude, achieving a very tight altitude distribution is not sufficient; the mean altitude must also be high for the low end of the distribution to have sufficient timeline margin. On the other hand, the targeted range is a design parameter; regardless of the length of the trajectory flown, the goal is to minimize the standard deviation to achieve a tight distribution. While the target location on the ground may be fixed, the entry point can adjusted to accommodate the optimal trajectory length. 
 
-\section{}
+The overall objective is simply the sum of $J_h$ and $J_s$, posed as a minimization problem
+\begin{align}
+	\min J = -\bar{h}(v_f) + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \label{Eq:Objective}
+\end{align}
+Due to the nonlinear dynamics, the state distribution will not remain normally distributed; nevertheless we assume that standard deviations remain an appropriate measure of the spread of the distribution. That is, that a reduction in standard deviation will lead to a tighter distribution regardless of the shape of the distribution. Either variances or standard deviations may be used in Eq.~(\ref{Eq:Objective}). In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but in practice, the terminal standard deviations are never exactly zero. Additionally, a small term $\epsilon<<1$ can be added to safeguard against this issue in the event the terminal covariance matrix is only positive semidefinite.
+%, as might be the case at the initial velocity when considering a certain initial state subject to parametric uncertainty. 
+
+
+\section{The Robust Optimal Guidance Problem}
+In summary, the robust optimal guidance problem is to determine $u[v_0,v_f]$, parametrized by $\ur(v)$ and $K(v)$, that minimizes
+\begin{align}
+	&\min J = -\bar{h}(v_f) + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \nonumber\\
+	&\quad\quad\qquad\mathrm{subject\, to }\nonumber \\
+	&\dot{\xl}(v,\param) = \dynamics_v(v, \xl(v,\param), u(v), \param),\quad
+	\xl(v_0,\param) = \state_0(\param) \nonumber\\
+	&\param\sim \normal(\mathbf{0},\cov_{\param}) \nonumber\\
+	&0 \le \ur(v) \le 1 \quad \forall\,v\in [v_0, v_f] \nonumber
+\end{align}
+The robust optimal guidance solution consists of the reference control and the reference trajectory, and the feedback gains. The reference trajectory is defined to be the mean trajectory, rather than the nominal trajectory. 
+
+The succinct form of Eq.~\eqref{Eq:Objective} perhaps belies the challenging, highly nonlinear nature of the objective functional, which features multiple integrals over the uncertainty space
+\begin{align}
+	\min J = &-\int_{\mathbb{R}^{n_p}}h(v_f,\param)\mu(\param)\dee\param \nonumber\\
+	&+ w_h\left[\int_{\mathbb{R}^{n_p}}\left(h(v_f,\param) - \bar{h}(v_f)\right)^2\mu(\param)\dee\param\right]^{\frac{1}{2}} \\
+	&+ w_s\left[\int_{\mathbb{R}^{n_p}}\left(s(v_f,\param) - \bar{s}(v_f)\right)^2\mu(\param)\dee\param\right]^{\frac{1}{2}}\nonumber
+\end{align}
+where we recall that $\mu = \normal(\mathbf{0},\cov_{\param})$ is the probability density function of $\param$. The following chapter will discuss the use of the unscented transform to form a tractable, finite-dimensional approximation to the objective functional. If the UT estimates the mean downrange distance accurately, then by using the mean range as the target range, the mean error should be very nearly zero in the Monte Carlo assessment results. 
 
 %%% Local Variables: ***
 %%% mode: latex ***

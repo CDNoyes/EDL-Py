@@ -9,10 +9,11 @@
 % Notes: Add short title to figures, sections, via square brackets,
 % e.g. \section[short]{long}.
 %
-\documentclass[12pt,fleqn]{ucithesis}
-
+%\documentclass[12pt,fleqn]{ucithesis} % Orig
+\documentclass[12pt]{ucithesis} % CDN - centered equations by default? are they supposed to be left justified?
 % A few common packages
 \usepackage{amsmath}
+\usepackage{amssymb} % CDN added, didn't have mathbb command without it
 \usepackage{amsthm}
 \usepackage{array}
 \usepackage{graphicx}
@@ -64,6 +65,37 @@
 \newtheorem{theorem}{\textsc{Theorem}}[chapter]
 \newtheorem{definition}{\textsc{Definition}}[chapter]
 \newtheorem{example}{\textsc{Example}}[chapter]
+%%%%% CDN added commands
+\newcommand{\state}{\ensuremath{\mathbf{x}}}
+\newcommand{\xut}{\ensuremath{\mathbf{z}}}
+\newcommand{\xl}{\ensuremath{\mathbf{x}_{\mathrm{lon}}}}
+\newcommand{\control}{\ensuremath{\mathbf{u}}}
+\newcommand{\ur}{\ensuremath{u_{\mathrm{ref}}}}
+\newcommand{\State}{\ensuremath{\mathbf{X}}}
+\newcommand{\Control}{\ensuremath{\mathbf{U}}}
+\newcommand{\param}{\ensuremath{\mathbf{p}}}
+\newcommand{\Param}{\ensuremath{\mathbf{P}}}
+\newcommand{\E}[1]{\mathbb{E}\left[#1\right]}
+\newcommand{\V}[1]{\mathbb{V}[#1]}
+\newcommand{\EUT}[1]{\sum_{i=0}^{2n}\left[#1\right]}
+\newcommand{\mean}{\mathbf{m}}
+\newcommand{\cov}{C}
+\newcommand{\std}{S}
+\newcommand{\rtg}{R}
+\newcommand{\y}{\ensuremath{\mathbf{y}}}
+\newcommand{\dynamics}{\mathbf{f}}
+\newcommand\bigzero{\makebox(0,0){\text{\huge0}}}
+\newcommand{\normal}{\mathcal{N}}
+\newcommand{\trace}{\mathrm{tr}}
+\newcommand{\zero}{\mathbf{0}}
+\newcommand{\design}{\mathbf{d}}
+\newcommand{\dee}{\mathrm{d}}
+%\newcommand{\sample}{\ensuremath{\mathbf{z}}}
+%\newcommand{\costate}{\mathbf{\lambda}}
+%\newcommand{\multiplier}{\mathbf{\nu}}
+%\newcommand{\costate}{\mathbf{p}}
+%\newcommand{\multiplier}{\mathbf{\lambda}}
+%%%%%
 
 % Macros for title, author, abstract, etc.
 \input{preliminaries}
@@ -84,7 +116,7 @@
 % Very handy to speed up compilation if you're working on a certain
 % part of your thesis. It conserves page numbers, references, etc.
 % even for non-included files.
-%\includeonly{chapter1}
+%\includeonly{chapter5}
 
 \begin{document}
 
@@ -97,6 +129,10 @@
 \include{chapter2}
 \include{chapter3}
 \include{chapter4}
+\include{chapter5}
+\include{chapter6}
+\include{chapter7}
+\include{chapter8}
 % ... and so on
 
 % These commands fix an odd problem in which the bibliography line
@@ -107,7 +143,7 @@
 % "References should be formatted in style most common in discipline",
 % abbrv is only a suggestion.
 \bibliographystyle{abbrv}
-\bibliography{thesis}
+\bibliography{bib}
 
 % The Thesis Manual says not to include appendix figures and tables in
 % the List of Figures and Tables, respectively, so these commands from
@@ -117,8 +153,8 @@
 \captionsetup[table]{list=no}
 
 % If you have an appendix, it should come after the references.
-\begin{appendices}
-\include{appendix}
-\end{appendices}
+%\begin{appendices}
+%\include{appendix}
+%\end{appendices}
 
 \end{document}
