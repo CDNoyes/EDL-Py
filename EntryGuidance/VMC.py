@@ -107,7 +107,7 @@ class VMC(object):
         
         edl = EDL(InputSample=self.samples, Energy=True, **edl_kwargs)
         self.model = edl
-        if self.model.long:
+        if self.model.long: # set the correct index for velocity state 
             iv = 2
         else:
             iv = 3
