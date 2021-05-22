@@ -5,7 +5,7 @@ In this section we solve the ROGP for a variety of objective weights $(w_h,\,w_s
 \subsection{Open-Loop Optimization}
 \begin{figure}[h!]
 	\centering
-	\includegraphics[width=1\textwidth]{Images/Reoptimized_WeightSweepMCResults}
+	\includegraphics[width=1\textwidth]{Images/OpenLoop_WeightSweepMCResults}
 	\caption{}
 	\label{Fig:MCResultsOpenLoop}
 \end{figure}
@@ -53,6 +53,9 @@ Additional 800 meters of low altitude but at the expense of a huge footprint. Si
 
 \section{Detailed Comparison}
 Other sections are input-output, examining the tradeoffs enabled by varying the weights in the performance index. In this section we present an in-depth look at a single solution, including visualizing the samples over time. We also perform further analysis to determine which uncertainties most strongly affect performance. 
+
+\section{Convergence}
+Compare convergence of solutions with and without the modification proposed in Subsection~\ref{Sec:DDP_Simplification}. Maybe just one of each? Have to remove either state or parameter uncertainty to be able to use the full derivatives formulation.
 
 \section{As Vehicle Design Tool}
 What L/D is required to achieve similar entry altitudes for a heavier vehicle of $\beta=200$? We use a simple scaling of the L/D profile $L/D$. The gains are jointly optimized, and additionally, the entry flight path angle is treated as a design variable. To estimate a useful lower bound on the L/D, we select $w_h=3, w_s=0$; the desired solution will likely place non-zero weight on the range errors, and thus need even more L/D. 
