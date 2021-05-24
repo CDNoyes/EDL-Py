@@ -67,7 +67,7 @@ def ellipse(center, major, minor, rotation, ci=[0.95], fignum=None, show=False, 
         else:
             label = "{}, CI={}".format(legtext, interval)
 
-        plt.plot(XY[0,:], XY[1,:], linespec, label=label)
+        plt.plot(XY[0,:], XY[1,:], linespec, label=label, linewidth=4)
 
     # plt.xlabel(xlabel)
     # plt.ylabel(ylabel)
