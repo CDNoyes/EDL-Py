@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from .Planet import Planet
+from Planet import Planet
 
 
 def Draw(figure=None, show=False, label=False, figsize=None, fontsize=16):

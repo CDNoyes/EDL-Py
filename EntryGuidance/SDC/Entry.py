@@ -78,6 +78,7 @@ class Time(SDCBase):
         L = self.model.aeroforces(r, v*self.model.vel_scale, self.mass)[0]/self.model.acc_scale
         return np.array([[0, 0, 0, L/v]]).T
 
+
 class Range(SDCBase):
     """
     x = [h, v, fpa]
@@ -98,15 +99,15 @@ class Range(SDCBase):
         return 1
 
     def set_weights(self, w):
-        assert np.allclose(np.sum(self.w[1:3,0:2], axis=1), np.ones((2))), "Row weights must sum to 1"   
+        assert np.allclose(np.sum(self.w[1:3, 0:2], axis=1), np.ones((2))), "Row weights must sum to 1"   
         self.w = w 
 
     def randomize_weights(self):
         r = np.random.random((2, 2))
-        w = np.zeros((3,3))
-        w[0:2,2] = 1
+        w = np.zeros((3, 3))
+        w[0:2, 2] = 1
         T = np.sum(r, axis=1)
-        w[1:3,0:2] = r/T[:, None] 
+        w[1:3, 0:2] = r/T[:, None] 
         self.set_weights(w) 
 
 
@@ -114,11 +115,10 @@ class Range(SDCBase):
         # Default weights:
         w = np.zeros((3,3))
         w[0:2,2] = 1
-        # w[1:3,0:2] = 0.5 
-        w[1:3,0] = -1
-        w[1:3,1] = 2
+        w[1:3,0:2] = 0.5 
+        # w[1:3,0] = -1
+        # w[1:3,1] = 2
         self.w = w 
-        # self.randomize_weights()
         self.model = model 
         self.mass = entry_mass
 
@@ -224,7 +224,7 @@ class Energy(SDCBase):
     def B(self, t, x):
         h, s, v, fpa = x
         r = self.model.radius(h*self.model.dist_scale) 
-        L, D = self.model.aeroforces(r, v*self.model.vel_scale, self.mass) # dont need to scale since we use their ratio anyway 
+        L, D = self.model.aeroforces(r, v*self.model.vel_scale, self.mass)  # dont need to scale since we use their ratio anyway 
         return np.array([[0, 0, 0, L/(D*v**2)]]).T
 
     def C(self, t, x):  
@@ -264,6 +264,7 @@ def verify_time():
     dx_sdc = sdc_model.dynamics([np.cos(sigma)])(x0_sdc, 0)
 
     print("SDC derivatives:    {}".format(dx_sdc))
+
 
 def verify_energy():
     # Compare true dynamics and SDC factorization
@@ -364,7 +365,7 @@ def test_range(randomize=False):
     controller = TSDRE()
 
     # h_target = 8    
-    s_range = [720, 800] # for 8 km. The higher the target, the lower the downrange needed to achieve lower velocities 
+    s_range = [720, 825] # for 8 km. The higher the target, the lower the downrange needed to achieve lower velocities 
     # h_target = 3
     # s_range = [785, 885]
     def altitude_constraint(h):
@@ -374,11 +375,10 @@ def test_range(randomize=False):
 
 
     # for h_target in [6, 8, 10]:
-    for h_target in [8]:
-        # for sf in np.linspace(*s_range, num=20):
-        for sf in [775]:
-            # problem = {'tf': sf*1000/model.dist_scale, 'Q': lambda y: np.diag([0, 0.01, 0.1])*0, 'R': lambda x: [[1]], 'constraint': altitude_constraint(h_target*1000/model.dist_scale)}
-            # problem = {'tf': sf*1000/model.dist_scale, 'Q': lambda y: np.diag([0, 0.01, 0.1])*0, 'R': lambda x: [[1]], 'constraint': fpa_constraint(np.radians(-8))}
+    for h_target in [7, 8, 9]:
+        for sf in np.linspace(*s_range, num=20):
+        # for sf in [775]:
+            problem = {'tf': sf*1000/model.dist_scale, 'Q': lambda y: np.diag([0, 0.01, 0.1])*0, 'R': lambda x: [[1]], 'constraint': altitude_constraint((h_target+0.05)*1000/model.dist_scale)}
 
             X = [x0_sdc]
             U = []
@@ -386,7 +386,7 @@ def test_range(randomize=False):
 
             while True: # 1 second update interval 
                 # u = [0.5]
-                u = controller(S[-1], X[-1], sdc_model, problem, integration_steps=10)
+                u = controller(S[-1], X[-1], sdc_model, problem, integration_steps=20)
                 if 1:
                     u = np.clip(u, 0, 1)  # Optional saturation effects
                 Snew = S[-1] + X[-1][1]*np.cos(X[-1][2])
@@ -397,19 +397,17 @@ def test_range(randomize=False):
                     X.append(xi[-1])
                 else:
                     xc = np.array([X[-1][0], S[-1], X[-1][1], X[-1][2]])
-                    xi = RK4(sdc_time.dynamics(u), xc, np.linspace(0, 1, 10))  # _ steps per control update 
+                    xi = RK4(sdc_time.dynamics(u), xc, np.linspace(0, 1, 3))  # _ steps per control update 
                     X.append(xi[-1][[0,2,3]])
                     S.append(xi[-1][1])
-                    # print("Current range: {} km".format(S[-1]/1000))
                 U.append(u)
                 if np.abs(S[-1]-sf*1000) < 1 or S[-1]/1000 >= sf:
                     break
 
-
             # Prepare the outputs     
             U.append(U[-1])
             S = np.array(S)
-            x = np.array(X).T * np.array([model.dist_scale/1000, model.vel_scale, 1])[:,None]
+            x = np.array(X).T * np.array([model.dist_scale/1000, model.vel_scale, 1])[:, None]
             keep = x[0]/1000 > 0 # min altitude 
             # keep = x[1] > 0 
             h, v, fpa = x[:, keep] 
@@ -448,10 +446,17 @@ def test_range(randomize=False):
             plt.figure(5)
             plt.plot(sf, h_target, 'ko')
             plt.plot(s[-1], h[-1], 'rx')
+            plt.ylabel("Altitude (km)")
+            plt.xlabel("Range flown (km)")
+
             plt.figure(6)
             plt.plot(v[-1], h[-1], 'rx')
             plt.xlabel("Velocity (m/s)")
             plt.ylabel("Altitude (km)")
+
+            if h[-1] < (h_target - 0.5): # 500 m error allowance, break after
+                break
+
     plt.show()
 
 
@@ -625,6 +630,134 @@ def validate():
     plt.xlabel("Range flown (km)")
     plt.ylabel("FPA")
 
+def range_mc(randomize=False):
+    from scipy.integrate import trapz 
+    from matplotlib import pyplot as plt 
+    import pandas as pd 
+    import sys 
+    sys.path.append("./Utils")
+    sys.path.append("./EntryGuidance")
+
+    from EntryEquations import Entry, EDL 
+    from InitialState import InitialState
+    from Uncertainty import getUncertainty 
+    from RK4 import RK4
+    from TSDRE import TSDRE 
+
+    x0 = InitialState()
+    model = Entry(Scale=False)
+    # x0 = model.scale(x0)
+
+    idx = [0, 3, 4]  # grabs the longitudinal states in the correct order 
+    x0_sdc = x0[idx]
+    x0_sdc[0] = model.altitude(x0_sdc[0]*model.dist_scale)/model.dist_scale
+
+    controller = TSDRE()
+
+    def altitude_constraint(h):
+        def constraint(x):
+            return x[0]-h, np.array([1, 0, 0])
+        return constraint 
+
+    h_target = 8
+    sf = 775 
+    problem = {'tf': sf*1000/model.dist_scale, 'Q': lambda y: np.diag([0, 0.01, 0.1])*0, 'R': lambda x: [[1]], 'constraint': altitude_constraint((h_target+0.05)*1000/model.dist_scale)}
+    unc = getUncertainty()['parametric']
+    p = unc.sample(2000, 'S').T
+    MC = []
+    for case, delta in enumerate(p):
+        # Have to construct both the model used by controller and the integration model.
+        # Can model prescient knowledge of uncertainty, or keep the info from the controller by instead using a nominal model 
+        print("Running {}".format(case))
+        model = EDL(delta)
+        sdc_model = Range(model, x0[-1])  
+        sdc_time = Time(model, x0[-1]) 
+
+        if randomize:
+            sdc_model.randomize_weights()
+            print(sdc_model.w)
+
+        X = [x0_sdc]
+        U = []
+        S = [0]
+
+        while True: 
+            u = controller(S[-1], X[-1], sdc_model, problem, integration_steps=20)
+            if 1:
+                u = np.clip(u, 0, 1)  # Necessary saturation effects
+            if 0:
+                Snew = S[-1] + X[-1][1]*np.cos(X[-1][2])
+                Snew = min(Snew, sf*1000/model.dist_scale)
+                S.append(Snew)
+                xi = RK4(sdc_model.dynamics(u), X[-1], np.linspace(S[-2], S[-1], 3))  # _ steps per control update 
+                X.append(xi[-1])
+            else:
+                xc = np.array([X[-1][0], S[-1], X[-1][1], X[-1][2]])
+                xi = RK4(sdc_time.dynamics(u), xc, np.linspace(0, 1, 3))  # 1 second update interval, _ steps per control update 
+                X.append(xi[-1][[0,2,3]])
+                S.append(xi[-1][1])
+            U.append(u)
+            if np.abs(S[-1]-sf*1000) < 1 or S[-1]/1000 >= sf: # within 1 m or having overshot 
+                break
+
+        # Prepare the outputs     
+        U.append(U[-1])
+        S = np.array(S)
+        x = np.array(X).T * np.array([model.dist_scale/1000, model.vel_scale, 1])[:, None]
+        h, v, fpa = x
+        s = S/1000*model.dist_scale 
+        u = np.array(U)
+
+        data = {'h': h.squeeze(), 'u': u.squeeze(), 's': s.squeeze(), 'fpa': fpa.squeeze(), 'v': v.squeeze()}
+        df = pd.DataFrame(data)
+        MC.append(df)
+        # df.to_pickle("Range_S805_U0p5.zip")
+
+        print("Target Altitude = {:.2f} km".format(h_target))
+        print("Final Range = {:.2f} km".format(sf))
+        print("Final Altitude = {:.2f} km".format(h[-1]))
+        print("Final Velocity = {:.1f} m/s\n".format(v[-1]))
+        # J = trapz(x=t, y=u.squeeze()**2)
+
+        # Graph the results 
+        plt.figure(1)
+        plt.plot(s, h)
+        plt.xlabel("Range flown (km)")
+        plt.ylabel("Altitude (km)")
+        plt.figure(2)
+        plt.plot(s, v)
+        plt.xlabel("Range flown (km)")
+        plt.ylabel("Velocity (m/s)")
+        plt.figure(3)
+        plt.plot(s, np.degrees(fpa))
+        plt.xlabel("Range flown (km)")
+        plt.ylabel("FPA")
+
+        plt.figure(4)
+        plt.plot(s, u)
+        plt.xlabel("Range flown (km)")
+        plt.ylabel("Control")
+
+        plt.figure(5)
+        plt.plot(sf, h_target, 'ko')
+        plt.plot(s[-1], h[-1], 'rx')
+        plt.ylabel("Altitude (km)")
+        plt.xlabel("Range flown (km)")
+
+        plt.figure(6)
+        plt.plot(v[-1], h[-1], 'rx')
+        plt.xlabel("Velocity (m/s)")
+        plt.ylabel("Altitude (km)")
+
+    # import pdb 
+    # pdb.set_trace()
+    dfp = pd.DataFrame(p, columns=['cd','cl','rho0','sh'])
+    DF = pd.concat(MC, axis=1)
+    # print(DF)
+    dfp.to_pickle("SDCRE_MC_inputs_{}".format(p.shape[0]))
+    DF.to_pickle("SDRE_MC_{}".format(p.shape[0]))
+
+    plt.show()
 
 if __name__ == "__main__":
 
@@ -633,8 +766,29 @@ if __name__ == "__main__":
     # validate()
     # test_range()
     # test_range(True)
+    range_mc()
     
     # verify_energy()
-    test_energy()
+    # test_energy()
 
 
+""" Adaptive use of TASRE for Propellant Optimal EG 
+
+    TASRE can hit certain (h, s) pairs within the vehicle's reachable set
+    The vehicle arrives with an undetermined (V, gamma)
+
+    Goal: Determine an appropriate target state (h_target, s_target)
+    such that under TSDRE control, the terminal state
+    (h, s, v, fpa) is approximately equal to
+    an optimal state (h*(v, fpa), s*(v, fpa))
+
+    It may not be possible to reach exactly.
+
+    How to adapt? 
+    For fixed altitude, longer downrange means lower velocity (monotnic relationships)
+    We can also alter the altitude target to achieve a different FPA 
+
+
+    Integrate to s_target
+
+"""

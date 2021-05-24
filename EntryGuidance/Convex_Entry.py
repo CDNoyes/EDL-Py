@@ -4,8 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cvx
 import time
-from Mesh import Mesh
 from numpy import pi
+
+from .Mesh import Mesh
 
 
 def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region, xf, umax, solver='ECOS'):
@@ -66,7 +67,7 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region, xf, umax, solver='ECO
     states = []
     for d,xi,f,a,b,xr,ur,ui,w,vi in zip(mesh.diffs,X,F,A,B,Xr,Ur,U,mesh.weights,V): # Iteration over the segments of the mesh
         L = 0.0001*(ur-ui)**2
-        L = 0.0001*cvx.abs(ur-ui)
+        # L = 0.0001*cvx.abs(ur-ui)
         cost = -w*L                                            # Lagrange integrands for a single mesh
         # cost = cvx.abs(w*L/np.sum(w))                                            # Clenshaw-Curtis quadrature
         # cost = 0
@@ -89,8 +90,9 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region, xf, umax, solver='ECO
     hf = x[-1][0]/1000 - 3397.
     vf = x[-1][3]
     miss = 0*(x[-1][1]-xf[1])**2 + cvx.power(x[-1][2]-xf[2],2)
+
     # miss = 0*cvx.abs(x[-1][1]-xf[1]) + cvx.abs(x[-1][2]-xf[2])
-    weight = 3397*0
+    weight = 3397*50
     Phi = cvx.Problem(cvx.Minimize(weight*miss + 0*(x[-1][0]-xf[0]+350)**2))
     Penalty = cvx.Problem(cvx.Minimize(1e3*cvx.norm(cvx.vstack(*v),'inf') ))
     # Penalty = cvx.Problem(cvx.Minimize(1e5*cvx.norm(cvx.vstack(*v),1)))
@@ -100,27 +102,26 @@ def LTV(x0, A, B, f_ref, x_ref, u_ref, mesh, trust_region, xf, umax, solver='ECO
     prob.constraints += constr
 
     t1 = time.time()
-    prob.solve(solver='MOSEK')
-    # prob.solve(solver=solver)
+    prob.solve(solver=solver)
     t2 = time.time()
 
-    print "status:        ", prob.status
-    print "optimal value: ", np.around(prob.value,3)
-    print "solution time:  {} s".format(np.around(t2-t1,3))
-    print "setup time:     {} s".format(np.around(t1-t0,3))
+    print("status:        {}".format(prob.status))
+    print("optimal value: {}".format(np.around(prob.value,3)))
+    print("solution time:  {} s".format(np.around(t2-t1,3)))
+    print("setup time:     {} s".format(np.around(t1-t0,3)))
 
     try:
         x_sol = np.array([xi.value.A for xi in x]).squeeze()
         u_sol = u.value.A.squeeze()
         try:
             v_sol = np.array([xi.value.A for xi in v]).squeeze()
-            print "penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(), np.inf))
+            print("penalty value:  {}\n".format(np.linalg.norm(v_sol.flatten(), np.inf)))
             # for v in v_sol.T:
             #     plt.figure()
             #     plt.plot(x_sol.T[3], v)
             # plt.show()
         except:
-            print "Could not compute penalty value"
+            print("Could not compute penalty value")
 
         return x_sol.T, u_sol, prob.value
     except:

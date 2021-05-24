@@ -15,7 +15,7 @@ def cost(x, E, D, m, model):
     r,v = x
     
     e = model.energy(r, v, Normalized=False)
-    l,d = model.aeroforces(np.array([r]), np.array([v]),np.array([m]))
+    l,d = model.aeroforces(np.array([r]), np.array([v]), np.array([m]))
     
     g = [e-E, d[0]-D]
     return g
@@ -25,14 +25,14 @@ def solve(E, D, m, model):
     guess = [model.planet.radius + 85e3, 5500]
     r = []
     v = []
-    for e,d in zip(E,D): 
+    for e, d in zip(E, D): 
         sol = root(cost, guess, args=(e,d,m,model), tol=1e-5, options={'eps': 1e-8, 'diag':(3e-7,2e-4)})
         r.append(sol['x'][0])
         v.append(sol['x'][1])
         guess = sol['x']
     
-    h = model.altitude(np.array(r),km=True)
-    return h,v
+    h = model.altitude(np.array(r), km=True)
+    return h,np.array(v)
   
 
 def reconstruct(E,D,h,v,m,model):
@@ -97,17 +97,19 @@ def reconstruct_rs(r,s,gamma,v0,m,model):
     
     return v, u, t
     
-def v_prime(v,s,r,gamma,m,model):
+
+def v_prime(v, s, r, gamma, m, model):
     g = model.planet.mu/r(s)**2
     L,D = model.aeroforces(np.asarray([r(s)]),[v],[m])
     Vdot = -D - g*np.sin(gamma(s))
     sdot = v*np.cos(gamma(s))
     return Vdot/sdot
     
+
 if __name__ == '__main__':
 
     from Simulation import Simulation, Cycle, EntrySim
-    from ParametrizedPlanner import HEPBank,HEPBankSmooth
+    from ParametrizedPlanner import profile
     from Uncertainty import getUncertainty
     from InitialState import InitialState
     from MCF import mcsplit, mcfilter
@@ -115,10 +117,10 @@ if __name__ == '__main__':
     
     # Plan the nominal profile:
     reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    bankProfile = lambda **d: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609],minBank=np.radians(30))
+    bankProfile = lambda **d: profile(d['time'], [99.67614316,  117.36691891,  146.49573609], [np.radians(30), np.radians(-85), np.radians(85),np.radians(-30)])
                                                 
     x0 = InitialState()
-    output = reference_sim.run(x0,[bankProfile]) 
+    output = reference_sim.run(x0, [bankProfile]) 
     # output = reference_sim.run(x0,[bankProfile],[0,-.15,-0.15,0.0]) #Plan with less lift
     # reference_sim.plot()
     # reference_sim.show()
@@ -138,8 +140,8 @@ if __name__ == '__main__':
                     
     # sample_sets = [np.zeros(4)]
     for samples, color, label in zip(sample_sets, colors, labels):  
-        print "Running deltas on {}, plotted with color {}".format(label,color)
-        for family in [0]:#range(2,3):
+        print("Running deltas on {}, plotted with color {}".format(label, color))
+        for family in [1]:#range(2,3):
         
             if family == 0:
                 # istart = np.argmax(output[:,1])
@@ -180,13 +182,13 @@ if __name__ == '__main__':
             
             for sample in samples.T:
                 if family == 0:
-                    h, v = solve(energy, drag, x0[7], model = EDL(sample))
+                    h, v = solve(energy, drag, x0[7], model=EDL(sample))
                 elif family == 1:    
                     h, v = altitude, velocity
                     energy = None
 
-                if family in (0,1):    
-                    fpa, s, u, t = reconstruct(energy, drag, h, v, x0[7]*np.ones_like(h), model = EDL(sample))
+                if family in (0, 1):    
+                    fpa, s, u, t = reconstruct(energy, drag, h, v, x0[7]*np.ones_like(h), model=EDL(sample))
                 else:
                     h = altitude
                     s = iv

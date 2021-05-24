@@ -166,11 +166,11 @@
 	\end{align}
 	via linear state feedback $u(t) = K(t)x(t)$ while minimizing an objective 
 		\begin{align}
-	J &= x(T)^TQ_fx(T) + \alpha \cdot \mathrm{trace}(P(T)) \nonumber\\
-	&+ \int_{0}^{T}x(t)^TQx(t) + u(t)^TRu(t) + \beta\cdot \mathrm{trace}(P(t)) \partial t
+	J &= \alpha \cdot \mathrm{trace}(P(T)) \nonumber\\
+	&+ \int_{0}^{T} u(t)^TRu(t) dt
 	\end{align}	
 	where $P$ is the state covariance matrix, subject to initial condition $P(0) = P_0$ and $\dot{P} = (A+BK)P + P(A+BK)^T$.
-	This non-standard objective is non-quadratic due to the variance terms, and the covariance dynamics are nonlinear. However, we will show that this problem can be posed as a standard LQR problem.
+	This non-standard objective is non-quadratic due to the variance term, and the covariance dynamics are nonlinear. However, we will show that this problem can be posed as a standard LQR problem.
 		
 	\subsection{Rewriting the dynamics as a linear system}
 	First, note that the covariance at any time $t$ can be computed via the state transition matrix $P(t) = \Phi(0, t)P_0\Phi(0, t)^T$. As a result, we can replace the covariance dynamics with those of the state transition matrix. The state transition matrix, also called the sensitivity matrix, is governed by the following matrix differential equation and initial condition
@@ -178,7 +178,7 @@
 	&\dot{\Phi} = \frac{\partial \dot{x}}{\partial x}\Phi = (A+BK)\Phi \\
 	&\Phi(0) = I. 
 	\end{align}
-	Now we define $S = \mathrm{vec}(\Phi)$, a vector formed by concatenating the columns of $\Phi$. We further define a "sensitivity" feedback control $V(t) = K(t)\Phi(t)$. The sensitivity dynamics can now be written
+	Now we define $S = \mathrm{vec}(\Phi)$, a vector formed by concatenating the columns of $\Phi$. We further define a "sensitivity" feedback control $V(t) = K(t)\Phi(t)$. The sensitivity dynamics can now be written as a linear matrix system
 		\begin{align}
 	&\dot{\Phi} = A\Phi + BV(t)
 	\end{align}
@@ -186,15 +186,11 @@
 %		\begin{align}
 %	&\dot{S} = \tilde{A}S + \tilde{B}U
 %	\end{align}
- Finally, by defining $U = \mathrm{vec}(V)$, $z = \begin{bmatrix}
-	x \\ S
-	\end{bmatrix}$, and  $ v = \begin{bmatrix}
-	u \\ U
-	\end{bmatrix}$ we have the extended linear system 
+ Finally, by defining $U = \mathrm{vec}(V)$, we have the vector linear system 
 		\begin{align}
-	\dot{z} = \tilde{A}(t)z(t) + \tilde{B}(t)v(t) 
+	\dot{S} = \tilde{A}(t)S(t) + \tilde{B}(t)U(t) 
 	\end{align}
-	where $\tilde{A}\in \mathbb{R}^{n(n+1) \times n(n+1)}$ is defined 
+	where $\tilde{A}\in \mathbb{R}^{n^2 \times n^2}$ is defined 
 	\begin{align}
 	\tilde{A} = 
 	\begin{bmatrix}
@@ -202,7 +198,7 @@
 	& \ddots \\
 	0 &  & A
 	\end{bmatrix}
-	\end{align} and $\tilde{B} \in \mathbb{R}^{n(n+1) \times m(n+1)}$ is similarly defined.
+	\end{align} and $\tilde{B} \in \mathbb{R}^{n^2 \times nm}$ is similarly defined.
 	
 	\subsection{Rewriting the objective as a quadratic function}
 	\begin{theorem}
@@ -264,27 +260,12 @@ and the final equality is what we set out to prove.
 
 Thus, we are left with the following higher dimensional LQR problem 
 \begin{align}
-\min_v J = z^T\tilde{Q}_fz + \int z^T\tilde{Q}z + v^T\tilde{R}v\\
-	\dot{z} = \tilde{A}(t)z(t) + \tilde{B}(t)v(t)
+\min_v J = \alpha\cdot S^TDS + \int U^T\tilde{R}U\\
+	\dot{S} = \tilde{A}(t)S(t) + \tilde{B}(t)U(t)
 \end{align}
-with the augmented weight matrices
+
 \begin{align}
-\tilde{Q}_f &= \begin{bmatrix}
-Q_f & 0\\
-0 & \alpha\cdot D
-\end{bmatrix} \\
-\tilde{Q} &= \begin{bmatrix}
-Q & 0\\
-0 & \beta\cdot D
-\end{bmatrix} \\	
-\tilde{R} &= \begin{bmatrix}
-R & 0\\
-0 & E
-\end{bmatrix} \\
-\end{align}
-where all of the weights are the same as before except the new weight matrix $E$. The solution to the original problem is recovered in the limit as $E\to 0$. The solution to this problem is well-known,
-\begin{align}
-v^*(t) = -\tilde{R}^{-1}\tilde{B}^T\Pi(t)z(t)
+U^*(t) = -\tilde{R}^{-1}\tilde{B}^T\Pi(t)S(t)
 \end{align}
 from which we recover the optimal time-varying feedback gain $K(t)=-R^{-1}B^T\Pi_n(t)$ where $\Pi_n$ is the upper-left $n\times n$ submatrix of $\Pi$. This differs from a standard LQ solution because $\Pi_n$ is affected by the sensitivity terms. 
 %In the same way that $R$ penalizes large control effort
@@ -305,7 +286,68 @@ from which we recover the optimal time-varying feedback gain $K(t)=-R^{-1}B^T\Pi
 %	\end{bmatrix}
 %	\end{align}
 %	Note that $S^TCS$ is a scalar quantity and thus $S^TCS = (S^TCS)^T = S^TC^TS$. It follows that $S^TCS = \frac{1}{2}S^T(C+C^T)S = S^TDS$ and it is easy to verify that $D = P_0 \otimes I$. 
-\section{Application to Nonlinear Systems via ASRE}	
+%\section{Application to Nonlinear Systems via ASRE}	
+
+\section{LQ - Covariance Min Equivalence}
+
+\begin{align}
+\min_u \mathbb{E}\left[ \frac{1}{2}x(t_f)^TQ_fx(t_f) + \int_{t_0}^{t_f} \frac{1}{2}x(t)^TQx(t) + \frac{1}{2}u(t)^TRu(t)\mathrm{d}t \right] \\
+	\dot{x} = A(t)x(t) + B(t)u(t) + D(t)w(t) \\
+	\mathbb{E}[x(t_0)] = x_0
+\end{align}
+
+\begin{align}
+\min_K \frac{1}{2}\mathrm{trace}[Q_fP(t_f)] + \int_{t_0}^{t_f} \mathrm{trace}[(Q + K^TRK)P(t)]\mathrm{d}t \\
+	\dot{P} = (A(t)+B(t)K(t))P(t)+ P(t)(A(t) + B(t)K(t))^T + DD^T \\
+	P(t_0 ) = \mathbb{V}[x(t_0)] = P_0
+\end{align}
+No such thing as open-loop covariance minimization for linear systems. The above equivalence assumes zero-mean, although any mean can be used, as the problems are completely separable. 
+
+\section{Necessary Conditions}
+
+\section{Full Problem Statement}
+\begin{align*}
+&\min_u J \\
+&\mathrm{subject\ to}\nonumber\\
+&\dot{x} = f(t, x, u(t,x), w) \\
+&\mathbb{E}[x(t_0)] = x_0 \\
+&\mathbb{V}[x(t_0)] = P_0 \\
+&\mathbb{P}[x(t) \in X] \geq 1-\delta\\
+&\mathbb{P}[u(t,x) \in U] \geq 1-\delta
+\end{align*}
+
+\begin{align*}
+&\min_u J \\
+&\mathrm{subject\ to}\nonumber\\
+&\dot{x} = f(t, x, u(t,x), w) \\
+&\mathbb{E}[x(t_0)] = x_0 \\
+&\mathbb{V}[x(t_0)] = P_0 \\
+&x(t)+\delta x \in X \quad \; \ \ \forall \delta x(t)\in E(t)\\
+&u(t,x+\delta x) \in U \quad \forall \delta x(t)\in E(t)\\	
+&E(t) = \left\lbrace x\ |\ x^TP(t)^{-1}x \leq r^2 \right\rbrace
+\end{align*}
+
+\begin{align*}
+&\min_u J \\
+&\mathrm{subject\ to}\nonumber\\
+&\dot{x} = f(t, x, u(t,x), w) \\
+&\mathbb{E}[x(t_0)] = x_0 \\
+&\mathbb{V}[x(t_0)] = P_0 \\
+&x(t)+\delta x \in X \quad \; \ \ \forall \delta x(t)\in E_i(t)\\
+&u(t,x+\delta x) \in U \quad \forall \delta x(t)\in E_i(t)\\	
+&E_i(t) = \lbrace\pm\mathrm{col}(P(t)^{1/2})\rbrace
+\end{align*}
+
+We have implicitly assumed that a state feedback law is available. 
+
+%\[
+%    \sigma(t) = \left\{\begin{array}{lr}
+%        \sigma_0, & \text{for } 0\leq t < t_1\\
+%        \sigma_1, & \text{for } t_1\leq t < t_2\\
+%        \sigma_2, & \text{for } t_2\leq t\leq t_f
+%        \end{array}
+%  \]
+
 	\begin{thebibliography}{1}
 %		\bibitem{brockett2012}
 %		R. W. Brockett. ``Notes on the control of the Liouville equation'' In P. Cannarsa and J. M.

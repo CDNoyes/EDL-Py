@@ -98,8 +98,13 @@ Another key source of uncertainty in the entry dynamics is the atmospheric densi
 \begin{align}
 	\rho(h) = \bar{\rho}(h) + f_{\rho}\delta\rho(h) \label{Eq:DensityUnc}
 \end{align}
-where $\bar{\rho}(h)$is given by Eq.~\eqref{Eq:Density}. In Eq.~\eqref{Eq:DensityUnc}, the deviation $\delta\rho(h)$ is free to vary independently from the mean density. Note that this assumes that a constant fraction $f_{\rho}\sim\normal(0, \sigma^2_{\rho})$ of the standard deviation is applied throughout the trajectory. 
-%In practice, some models may apply, e.g., a 3$\sigma$ uncertainty early in the trajectory that decays toward the mean value later; in this case our model would assume a 3$\sigma$ value over the entire trajectory. As such, this can result in an overestimate of the covariance matrix. 
+where $\bar{\rho}(h)$ is given by Eq.~\eqref{Eq:Density}. In Eq.~\eqref{Eq:DensityUnc}, the deviation $\delta\rho(h)$ is free to vary independently from the mean density. Note that this assumes that a constant fraction $f_{\rho}\sim\normal(0, \sigma^2_{\rho})$ of the standard deviation is applied throughout the trajectory. This can be used to bound the altitude-varying, possibly asymmetric density disturbances of models like MarsGRAM~\cite{MarsGRAM2010} or the Mars Climate Database (MCD)~\cite{MarsClimateDB}. See Fig.~\ref{Fig:DensityVariations} for an example where the boundary is determined by 1000 samples from the MCD~\cite{GuangfeiDissertation} and a symmetric model is created to bound the MCD model. Symmetry is required due to the Gaussian uncertainty assumption. 
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.9\textwidth]{Images/DensityVariations}
+	\caption{Density variations from 1000 Mars Climate Database samples}
+	\label{Fig:DensityVariations}
+\end{figure} 
 
 Collecting these uncertainties in the vector-valued random variable $\param = [\delta\state_0,\, f_{\frac{L}{D}},\, f_{\beta},\, f_{\rho}]^T$, the uncertain vehicle dynamics are written compactly as
 \begin{align}
@@ -115,10 +120,10 @@ where $\param \sim \mu = \normal(\mathbf{0},\cov_{\param})$ and
 		\bigzero & & & \sigma^2_{\rho}
 	\end{bmatrix}
 \end{align}
-The domain and probability density function of the state vector vary with time. For this reason, the expected value is taken with respect to $\param$ throughout this dissertation. By the law of the unconscious statistician, 
-\begin{align}
-	\E{x(t,\param)} = \int_{\mathbb{R}^{n_p}}x(t,\param)\mu(\param)\mathrm{d}\param
-\end{align}
+%The domain and probability density function of the state vector vary with time. For this reason, the expected value is taken with respect to $\param$ throughout this dissertation. By the law of the unconscious statistician, 
+%\begin{align}
+%	\E{x(t,\param)} = \int_{\mathbb{R}^{n_p}}x(t,\param)\mu(\param)\mathrm{d}\param
+%\end{align}
 Note that, for a given realization of $\param$, the dynamics are a deterministic function of the state and control. A nominal trajectory is defined as one in which $\param=\mathbf{0}$.
 
 The Taylor series of a generic scalar state, $x(t,\param)$, expanded around $\param=\mathbf{0}$, is 
@@ -138,10 +143,9 @@ The trace is also a linear function, so the expectation and trace can be swapped
 \end{align}
 From Eq.\eqref{Eq:TaylorExp} it can be seen that, for nonlinear systems like the entry dynamics, the mean trajectory is not generally equal to the nominal trajectory, but the nominal trajectory provides a first-order estimate of the mean. 
 %Note that  except at the initial time
-We remark that a number of technical conditions on both the function $\dynamics$ (convergence of the Taylor series to the function) and the distribution of the random variable $\param$ (existence of higher moments, strong concentration) are required for the validity of the above Taylor series expansion analysis. However, this result is presented purely for analysis, and the numerical solution method presented later does not make use of it.
+%We remark that a number of technical conditions on both the function $\dynamics$ (convergence of the Taylor series to the function) and the distribution of the random variable $\param$ (existence of higher moments, strong concentration) are required for the validity of the above Taylor series expansion analysis. However, this result is presented purely for analysis, and the numerical solution method presented later does not make use of it.
 %TODO: rewrite this last part, maybe move it up. 
-%It can also be used to consider location (latitude and longitude) dependent atmosphere models.  
-%The effect of overestimating the covariance matrix during trajectory optimization is increased robustness. ?
+
 
 
 %%% Local Variables: ***

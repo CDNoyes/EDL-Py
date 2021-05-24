@@ -11,11 +11,11 @@ Following from the assumption that the entry phase is terminated at a fixed velo
 Redefining $\state_{\mathrm{lon}} = [h,\,s,\,\gamma]^T$ to remove the velocity state variable, the dynamics with respect to velocity are 
 \begin{align}
 	\state_{\mathrm{lon}}'(v,\param) &= \dynamics_v(v,\xl(v,\param),u(v),\param) \label{Eq:DynamicsWRTVel}\\
-	&= \begin{pmatrix}
+	&= \begin{bmatrix}
 		\frac{\dot{h}}{\dot{v}} \\
 		\frac{\dot{s}}{\dot{v}} \\
 		\frac{\dot{\gamma}}{\dot{v}} 
-	\end{pmatrix}
+	\end{bmatrix}
 %&= \frac{\dot{\state}_{\mathrm{lon}}}{\dot{v}} \\
 \end{align}
 %TODO: Monotonicity discussion here rather in the numerical assessment?
@@ -32,7 +32,7 @@ Since the entry uncertainties are generally specified at the entry interface and
 
 \section{Feedback Control Form}
 As a result of considering uncertainty, the state variables are random variables and the goal is to optimize a distribution of trajectories rather than a single trajectory.
-In designing the reference trajectory, the effects of feedback terms in the control are accounted for. Thus the closed-loop control $u$ consists of both a reference control $\ur$, and a feedback term $\delta u$, in contrast to open-loop design methods where $u=\ur$. 
+In designing the reference trajectory, the effects of feedback control on the distribution are accounted for. Thus the closed-loop control $u$ consists of both a reference control $\ur$, and a feedback control $\delta u$, in contrast to open-loop design methods where $u=\ur$. 
 The control law is assumed to be to a saturated linear state feedback 
 \begin{align}
 	u(v,\state_{\mathrm{lon}}) &= \mathrm{sat}_{[0,1]}\left(\frac{\frac{L}{D})_{\mathrm{ref}}\ur(v)}{\frac{L}{D}} + \delta u(v,\state_{\mathrm{lon}})\right) \label{Eq:Control}\\
@@ -44,8 +44,8 @@ where we note that, consistent with state-of-the-practice EDL operations on Mars
 %\begin{align}
 %	s = -\int_{E_0}^{E_f}$\frac{\cos\gamma}{D}\mathrm{d}E \approx -\int_{E_0}^{E_f}$\frac{1}{D}\mathrm{d}E
 %\end{align}
-The gains $k_i$ in Eq.~\eqref{Eq:Feedback} may be functions of velocity. 
-In principle the feedback control law used for MSL and M2020 could be adopted, but it would require computing influence coefficients by backward integration at each iteration of solving the optimal control problem. By using the feedback control in Eq.~\eqref{Eq:Feedback}, the computation is reduced significantly in line with one of our primary objectives, and we will demonstrate that good guidance performance can be achieved.
+In the numerical results presented later, the gains $[k_D, k_{\gamma}, k_s]$ in Eq.~(\ref{Eq:Feedback}) are chosen to be constant values, but they may in general be functions of velocity. 
+The MSL and Mars 2020 velocity-dependent gains could be used; they are designed, based on linearized dynamics, to fly a trajectory neighboring the reference which ends with the desired range. Our constant gain feedback control is always driving the perturbed trajectory back to the reference. %We will demonstrate that good guidance performance can be achieved.
 The saturation function is defined
 \begin{align*}
 	\mathrm{sat}_{[a,b]}(x) = \left\{\begin{array}{lc}
@@ -79,7 +79,7 @@ The second objective, consistent with the range control objective, is to minimiz
 \end{equation}
 In contrast to Eq.\eqref{Eq:AltitudeObjective}, the mean range is not included in the objective. This is because for altitude, achieving a very tight altitude distribution is not sufficient; the mean altitude must also be high for the low end of the distribution to have sufficient timeline margin. On the other hand, the targeted range is a design parameter; regardless of the length of the trajectory flown, the goal is to minimize the standard deviation to achieve a tight distribution. While the target location on the ground may be fixed, the entry point can adjusted to accommodate the optimal trajectory length. 
 
-The overall objective is simply the sum of $J_h$ and $J_s$, posed as a minimization problem
+The overall performance objective is simply the sum of $J_h$ and $J_s$, posed as a minimization problem
 \begin{align}
 	\min J = -\bar{h}(v_f) + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \label{Eq:Objective}
 \end{align}

@@ -166,18 +166,25 @@ class Homotopy(object):
 
 def test_problem_2():
 
+    g = 9.81
+
     def dyn(X,t):
         x,y,v,l1,l2,l3 = X
 
-        u = np.arctan2(-l1*v, l2*v-10*l3)
+        # u = np.arctan2(-l1*v, l2*v-g*l3)
+        # ux = np.sin(u)
+        # uy = np.cos(u)
+        l = np.sqrt(l1**2+l2**2)
+        ux = -l1/l
+        uy = -l2/l
 
-        dx = v*np.sin(u)
-        dy = -v*np.cos(u)
-        dv = 10*np.cos(u)
+        dx = v*ux
+        dy = -v*uy
+        dv = g*uy
 
         dl1 = 0
         dl2 = 0
-        dl3 = -l3*(l1*np.sin(u) - l2*np.cos(u))
+        dl3 = (l1*ux - l2*uy)
 
         return np.array((dx,dy,dv,dl1,dl2,dl3))
 
@@ -186,7 +193,7 @@ def test_problem_2():
         tf = l0tf[-1]
 
         x0 = np.zeros((3))
-        xf_tar = [2,-2]
+        xf_tar = np.array([10,-3])
 
         X0 = np.concatenate((x0,l0), axis=0)
         t = np.linspace(0,tf)
@@ -201,14 +208,26 @@ def test_problem_2():
 
         if plot:
             H = [np.dot(x[3:], dyn(x,0)[:3]) for x in X]
+            v = X.T[2]
+            l1 = X.T[3]
+            l2 = X.T[4]
+            l3 = X.T[5]
+
+            u = np.arctan2(-l1*v, l2*v-g*l3)
             plt.figure()
-            plt.plot(X.T[0],X.T[1])
+            plt.plot(t,u)
+            # plt.plot(X.T[0],X.T[1])
+            plt.figure()
+            plt.plot(t,X[:,:3])
+            plt.figure()
+            plt.plot(t,X[:,3:])
+            plt.title('Costates')
             plt.figure()
             plt.plot(t,H)
             plt.title('Hamiltonian')
             plt.show()
-        # return np.concatenate( ( np.squeeze(xf[:2]-xf_tar), (lf[-1], Hf+1) ) )
-        return xf,lf,Hf
+        return np.concatenate( ( np.squeeze(xf[:2]-xf_tar), (lf[-1], (Hf+1)) ) )
+        # return xf,lf,Hf
 
     tf = 1
 
@@ -218,15 +237,17 @@ def test_problem_2():
     t = np.linspace(0,tf)
     X = odeint(dyn,x0,t)
     print X.shape
-    x,y,v,l1,l2,l3 = X.T
-    u = np.arctan2(-l1*v, l2*v-10*l3)
+    # x,y,v,l1,l2,l3 = X.T
+    # u = np.arctan2(-l1*v, l2*v-10*l3)
 
-    H = Homotopy(fixed_states=[0,1])
-    H.guess(t,X[:,:3],u)
-    # sol = root(problem, [0.1,0.1,0.1,3], tol=1e-6)
-    # print sol
-    sol = H.solve(problem)
-    problem(sol,True)
+    # H = Homotopy(fixed_states=[0,1])
+    # H.guess(t,X[:,:3],u)
+    guess = [-0.11,0.066,-0.1,1.88]
+    sol = root(problem, guess, tol=1e-6)
+    print sol
+    # sol = H.solve(problem)
+    # problem(guess,True)
+    problem(sol.x,True)
 
 if __name__ == "__main__":
     t = np.linspace(0,10,200)

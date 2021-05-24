@@ -1,31 +1,74 @@
 import numpy as np
 import chaospy as cp
-from scipy.integrate import odeint
-from functools import partial
-import matplotlib.pyplot as plt
 
 from pyaudi import abs, sqrt
 from pyaudi import atan as arctan
 # from numpy import abs, sqrt
-from .EntryEquations import Entry, EDL
-from .Triggers import DeployParachute, findTriggerPoint
-from .InitialState import InitialState
+
+from Simulation import Simulation
+from EntryEquations import Entry, EDL, BankAngleDynamics
+from Triggers import DeployParachute, findTriggerPoint
+from InitialState import InitialState
 from Utils import DA as da
 
+
 def constraint(x, bounds, shape):
+    """ The bell-shaped constraint from the high elevation paper """
     radius = (bounds[1]-bounds[0])/2
     mean = (bounds[0]+bounds[1])/2
     value = (arctan(shape*(-x+mean+radius)) + arctan(shape*(x-mean+radius)))/np.pi
     return value
+
+
+def msl(velocity, bank_early, bank_late, v_switch, v_late, v_heading,):
+    """ The bank angle parametrization used by MSL/M2020:
+            if velocity > v_switch: bank_early
+            if velocity < v_reached: bank_late
+            if vel is between the two, interpolate, otherwise:
+            if velocity < v_heading: heading alignment 
+
+
+    """
+    if velocity <= v_heading:
+        return 0
+
+    if velocity >= v_switch:
+        return bank_early
+    else:
+        return np.interp(velocity, [v_late, v_switch], [bank_late, bank_early], left=bank_late)
+
+
+def test_msl():
+    import matplotlib.pyplot as plt 
+    from Utils.RK4 import RK4 
+    from Utils.smooth import smooth 
+    V = np.linspace(5500, 480, 1000)
+
+    commands = [msl(v, 60, 20, 4000, 3000, 1100, ) for v in V]
+
+    
+
+    commands_da = [msl(v, 60, 20, 4000, 3000, 1100, ) for v in V]
+
+    # commands_rad = np.radians(commands)
+    # x0 = [commands_rad[0], 0]
+    # x = RK4(BankAngleDynamics)
+    actual = smooth(V[::-1], commands[::-1], 2, 10)(V+30)
+
+    plt.plot(V, commands)
+    plt.plot(V, actual)
+    plt.show()
+
 
 def profile2(independent_variable, switch, bank, shape=100., normalization=250.):
     # Unlike profile, here the initial IV (typically 0) and a simple guess at the final IV are needed
     # Thus switch should be one longer than bank
     u = 0.
     switch = np.asarray(switch)/normalization
-    for i,b in enumerate(bank):
-        u += b*constraint(independent_variable/normalization, [switch[i],switch[i+1]], shape)
+    for i, b in enumerate(bank):
+        u += b*constraint(independent_variable/normalization, [switch[i], switch[i+1]], shape)
     return u
+
 
 def profile(T, switch, bank, order=1, maxRate=np.radians(20), maxAcc=np.radians(5)):
     """ Returns the bank angle for a profile at time T given N switch points and N+1 bank angles with smoothness=order """
@@ -39,11 +82,11 @@ def profile(T, switch, bank, order=1, maxRate=np.radians(20), maxAcc=np.radians(
         newswitch = []
         newbank = [bank[0]]
         cbank = da.const(bank)
-        for i,s in enumerate(switch):
-            newswitch.extend( [s, s + abs(cbank[i+1]-cbank[i])/maxRate] ) # Can use bank instead of cbank to get dependence on bank inputs but we cannot use it in a comparison against time
+        for i, s in enumerate(switch):
+            newswitch.extend( [s, s + abs(cbank[i+1]-cbank[i])/maxRate] )  # Can use bank instead of cbank to get dependence on bank inputs but we cannot use it in a comparison against time
             newbank.extend([bank[i+1],bank[i+1]])
-        bank=newbank
-        switch=newswitch
+        bank = newbank
+        switch = newswitch
     # #########################################
     # cswitch = da.const(switch) # Constant portion for comparing with time
 
@@ -78,6 +121,7 @@ def profile(T, switch, bank, order=1, maxRate=np.radians(20), maxAcc=np.radians(
     else:
         return bank_out
 
+
 def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=np.radians(5)):
     """ Optimal maneuver from one bank angle to another subject to constraint on rate and acceleration. """
 
@@ -107,7 +151,7 @@ def maneuver(t, t0, bank_current, bank_desired, maxRate=np.radians(20), maxAcc=n
         bank = (bank_current + s*dbank + s*maxRate*(t-t1a))
 
     elif t > t1v and t <= t1d:
-        bank = (bank_current + s*dbank + s*maxRate*(t-t1a) - s*0.5*maxAcc*(t-t1v)**2 ) # Max deceleration
+        bank = (bank_current + s*dbank + s*maxRate*(t-t1a) - s*0.5*maxAcc*(t-t1v)**2 )  # Max deceleration
 
     elif t > t1d:
         bank = (bank_desired)                                               # Post-arrival
@@ -284,11 +328,12 @@ def testExpansion():
     plt.show()
 
 if __name__ == '__main__':
+    test_msl()
     # from Uncertainty import getUncertainty
     # from Simulation import Simulation, Cycle, EntrySim
 
     # sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    sim,sol = OptimizeSRP()
+    # sim,sol = OptimizeSRP()
     # print sol.x
     # perturb = getUncertainty()['parametric']
     # p = np.array([ 165.4159422 ,  308.86420218,  399.53393904])

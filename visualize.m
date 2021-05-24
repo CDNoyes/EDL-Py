@@ -4,44 +4,67 @@ dtr = pi/180;
 data_path = 'E:\Documents\EDL\data\'; % Desktop
 % data_path = 'C:\Users\cdnoyes\Documents\EDL\data\'; % Laptop
 
-data(1) = load([data_path, 'MC_OpenLoop_2000.mat']);
-data(2) = load([data_path, 'MC_NMPC_2000.mat']);
-data(3) = load([data_path, 'MC_NMPC_300_update1.mat']);
+% data(1) = load([data_path, 'MC_NMPC_2000_AltitudeTrigger.mat']);
+% data(1) = load([data_path, 'MC_NMPC_2000_TimeTrigger_NoLateral.mat']);
+% data(2) = load([data_path, 'MC_NMPC_2000_TimeTrigger_NoLateral_tanh.mat']);
+data(1) = load([data_path, 'MC_NMPC_2000.mat']);
+data(2) = load([data_path, 'MC_NMPC_2000_EnergyTrigger.mat']);
 
-targetDR = 882;
+% data(2) = load([data_path, 'MC_NMPC_2000_EnergyTrigger_NoLateral.mat']);
 
+
+% data(2) = load([data_path, 'MC_NMPC_2000_NoLateral_NoMargin.mat']);
+
+% data(2) = load([data_path, 'MC_NMPC_2000_TimeTrigger.mat']);
+% data(3) = load([data_path, 'MC_NMPC_2000_EnergyTrigger.mat']);
+
+% data(2) = load([data_path, 'MC_NMPC_2000.mat']);
+% data(3) = load([data_path, 'MC_NMPC_300_update1.mat']);
+
+targetDR = 880;
+
+itime = 1;
 idrag = 14;
 ienergy = 2;
 irange = 11;
-ialt = 5;
+ialt = 5; % 5 is actually radius, 4 is alt in km 
+ivel = 8;
 ifpa = 9;
 ibank = 3;
 final = zeros(length(data),length(data(1).pdf),27);
 % label = {'Alt. Rate','Drag Rate','No Rate'};
-label = {'Open Loop','CTNPC','CTNPC+Update1'};
+% label = {'Open Loop','CTNPC','CTNPC+Update1'};
+label = {'Default','Optimized'};
+
 colors = {'r','b','g','m'};
 for d = 1:length(data)
     states = data(d).states;
     samples = data(d).samples;
-%     pdf(d,:) = data(d).pdf;
-        figure(2+d)
-        hold on
+    %     pdf(d,:) = data(d).pdf;
+    figure(2+d)
+    hold on
     for i = 1:length(states)
-        if 0
+        if 1
             plot(states{i}(:,irange),states{i}(:,ialt)/1000-3397)
+%             plot(states(i,:,ivel),(states(i,:,ialt-1)))
+
         else
-            plot(states{i}(:,ienergy),(states{i}(:,ibank)))   
+            plot(states{i}(:,itime),(states{i}(:,ibank)))
+%             plot(states(i,:,itime),(states(i,:,ibank)))
+
         end
         title(label{d})
         final(d,i,:) = states{i}(end,:);
+%         final(d,i,:) = states(i,end,:);
+
         
     end
     
     
 end
 
-final(3,1:300,12) = final(3,1:300,12) + 3;
-final(3,1:300,11) = targetDR-0.5 + -0.1 + 0.2*randn(1,300);
+% final(3,1:300,12) = final(3,1:300,12) + 3;
+% final(3,1:300,11) = targetDR-0.5 + -0.1 + 0.2*randn(1,300);
 for d = 1:length(data)
     
     figure(1)
@@ -57,57 +80,65 @@ for d = 1:length(data)
     ylabel('DR (km)')
 end
 legend(label{:})
-Ellipse([0,targetDR],2,2,0,{'r--','LineWidth',2})
-Ellipse([0,targetDR],5,5,0,{'k--','LineWidth',2})
-Ellipse([0,targetDR],10,10,0,'b--')
+figure(1)
+legend(label{:})
+% Ellipse([0,targetDR],2,2,0,{'r--','LineWidth',2})
+% Ellipse([0,targetDR],5,5,0,{'k--','LineWidth',2})
+% Ellipse([0,targetDR],10,10,0,'b--')
 
 for i =1:length(data)
     len = length(data(i).states);
-dist = sqrt(sum(final(i,1:len,12).^2 +(final(i,1:len,11)-targetDR).^2,1));
-disp(['Mean miss distance ', num2str(mean(dist)),' km'])
-% disp(['Std dev miss distance ', num2str(std(dist)),' km'])
-disp(['standard deviation miss distance ', num2str(std(dist)),' km'])
-disp(' ')
+    dist = sqrt(sum(0*final(i,1:len,12).^2 +(final(i,1:len,11)-targetDR).^2,1));
+    disp(['Mean miss distance = ', num2str(mean(dist)),' km'])
+    % disp(['Std dev miss distance ', num2str(std(dist)),' km'])
+    disp(['standard deviation miss distance = ', num2str(std(dist)),' km'])
+    disp(' ')
+    metric = prctile(final(i,1:len,6),99)-prctile(final(i,1:len,6),1) + ...
+            prctile(final(i,1:len,7),99)-prctile(final(i,1:len,7),1);
+    disp(['Miss metric 99%-1% = ', num2str(metric)])
+    
+    ntotal = length(dist);
+    n2 = length(dist(dist>2));
+    n5 = length(dist(dist>5));
+    n10 = length(dist(dist>10));
+    p2 = 1-n2/ntotal;
+    p5 = 1-n5/ntotal;
+    p10 = 1-n10/ntotal;
+    h = (final(i,1:len,5)-3397e3)/1000;
+    n_min_alt = length(h(h < 0.52));
+    p_min_alt = n_min_alt/ntotal;
+    disp(['Mean altitude ', num2str(mean(h)),' km'])
+    disp(['1%-ile altitude ', num2str(prctile(h,1)),' km'])
 
-ntotal = length(dist);
-n2 = length(dist(dist>2));
-n5 = length(dist(dist>5));
-n10 = length(dist(dist>10));
-p2 = 1-n2/ntotal;
-p5 = 1-n5/ntotal;
-p10 = 1-n10/ntotal;
-h = (final(i,1:len,5)-3397e3)/1000;
-n_min_alt = length(h(h < 0.52));
-p_min_alt = n_min_alt/ntotal;
 
-figure
-hold on
-Ellipse([0,targetDR],2,2,0,{'r--','LineWidth',2})
-Ellipse([0,targetDR],5,5,0,{'k--','LineWidth',2})
-Ellipse([0,targetDR],10,10,0,'b--')
-
-plot(final(i,1:len,12),final(i,1:len,11),'o')%,pdf(i,:)/max(pdf(i,:)))
-legend([' 2 km (',num2str(p2*100),'% inside)'], [' 5 km (',num2str(p5*100),'% inside)'], ['10 km (',num2str(p10*100),'% inside)'])
-xlabel('CR (km)')
-ylabel('DR (km)')
-axis equal
-box on
-grid on
-
-% figure
-% scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],pdf(i,:)/max(pdf(i,:)))
-% xlabel('Velocity (m/s)')
-% ylabel('Altitude (km)')
-% title('Colored by probability')
-% box on
-% grid on
-figure
-scatter(final(i,1:len,8),h,[],dist)
-xlabel('Velocity (m/s)')
-ylabel('Altitude (km)')
-title([label{i}, ', ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
-box on
-grid on
+    figure
+    hold on
+%     Ellipse([0,targetDR],2,2,0,{'r--','LineWidth',2})
+%     Ellipse([0,targetDR],5,5,0,{'k--','LineWidth',2})
+%     Ellipse([0,targetDR],10,10,0,'b--')
+    
+    plot(final(i,1:len,12),final(i,1:len,11),'o')%,pdf(i,:)/max(pdf(i,:)))
+    legend([' 2 km (',num2str(p2*100),'% inside)'], [' 5 km (',num2str(p5*100),'% inside)'], ['10 km (',num2str(p10*100),'% inside)'])
+    xlabel('CR (km)')
+    ylabel('DR (km)')
+    axis equal
+    box on
+    grid on
+    
+    % figure
+    % scatter(final(i,:,8),(final(i,:,5)-3397e3)/1000,[],pdf(i,:)/max(pdf(i,:)))
+    % xlabel('Velocity (m/s)')
+    % ylabel('Altitude (km)')
+    % title('Colored by probability')
+    % box on
+    % grid on
+    figure
+    scatter(final(i,1:len,8),h,[],dist)
+    xlabel('Velocity (m/s)')
+    ylabel('Altitude (km)')
+    title([label{i}, ', ',num2str(100*p_min_alt), '% on minimum altitude boundary'])
+    box on
+    grid on
 end
 % colorbar
 % figure

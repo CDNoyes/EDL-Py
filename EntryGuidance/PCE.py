@@ -19,6 +19,7 @@ from Utils.submatrix import submatrix
 from ParametrizedPlanner import profile
 import Parachute
 from NMPC import NMPC
+from Converge import Bootstrap
 # import MPC as mpc
 # import Apollo
 
@@ -83,7 +84,8 @@ class PCE(object):
         t0 = time.time()
         self.evals,U = self.Sim(switch,bank,control)
         t1 = time.time()
-        print "Simulation complete ({} s)".format(t1-t0)
+        if self.verbose:
+            print "Simulation complete ({} s)".format(t1-t0)
 
         evals = self.evals.transpose((2,0,1))[:,200:,:][:,:,:6] # reshape, and trim any states and/or timesteps that we dont need to generate PCE models for. this saves a lot of time.
         if self.is_quad:
@@ -95,8 +97,8 @@ class PCE(object):
             # self.models = [cp.fit_regression(self.poly, self.samples, ev) for ev in eval_single]
 
         t2 = time.time()
-
-        print "PCE model constructed ({} s)".format(t2-t1)
+        if self.verbose:
+            print "PCE model constructed ({} s)".format(t2-t1)
 
     def eval(self, N=2000, method="H"):
         if self.resamples is None:
@@ -144,7 +146,7 @@ class PCE(object):
 
         return mean_err, std_err
 
-    def error_plots(self,err):
+    def error_plots(self, err):
 
         save_dir = "data/PCE/"
 
@@ -341,9 +343,9 @@ def Trigger(traj, targetLon, minAlt=0e3, maxVel=600):
 def test():
     dist = getUncertainty()['parametric']
 
-    for N in [5,10]:
-    # for N in [20,50,100,200,500,10000]:
-        for method in  ("S"):
+    # for N in []:
+    for N in [5,10,20,50,100,200,500]:
+        for method in  ("R"):
         # for method in  ("S","H","L"):
             pce = PCE(verbose=False)
             # pce.sample(dist, method='E', order=4)
@@ -365,15 +367,15 @@ def test():
             # print "Trigger logic: {} s".format(t2-t1)
 
             # Plot
-            for order in [2,3,4,5]: # build different order models from the same sampled data
-                pce.change_order(order)
-                X = pce.eval(50000,'S')
-                # print X.shape
-                Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in X.transpose((2,0,1))]).T # Parachute deployment
-                J = Cost(Xf,pce.lonTarget)
-                print "Cost with {} samples and {} order PCE = {} ".format(N,order,J)
-                # pce.error_plots(pce.error())
-                # plt.close("all")
+            # for order in [2,3,4,5]: # build different order models from the same sampled data
+            #     pce.change_order(order)
+            #     X = pce.eval(50000,'S')
+            #     # print X.shape
+            #     Xf = np.array([Trigger(traj, pce.lonTarget, minAlt=6e3, maxVel=485) for traj in X.transpose((2,0,1))]).T # Parachute deployment
+            #     J = Cost(Xf,pce.lonTarget)
+            #     print "Cost with {} samples and {} order PCE = {} ".format(N,order,J)
+            #     # pce.error_plots(pce.error())
+            #     # plt.close("all")
 
 
 

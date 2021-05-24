@@ -11,8 +11,8 @@ from FBL import drag_dynamics
 class SMO(object):
     def __init__(self):
 
-        self.state = [0,0,0] # D, Ddot, disturbance
-        self.history = [np.array(self.state)]
+        self.state = None #[0,0,0] # D, Ddot, disturbance
+        self.history = []
         self.K,self.alpha = self.__gains__()
 
         self.model = Entry() # Instantiate a nominal model
@@ -22,10 +22,12 @@ class SMO(object):
         """ Steps forward by each delta-t in timeSteps, using the array of the same length dragMeasurements providing the measurements at each interval.
             Because measurements are typically taken much more frequently than the bank angle is updated, u===cos(bankAngle) is held constant over the entire span.
         """
+        self.state = np.array([dragMeasurements[0],0,0])
         self.E = self.model.energy(radius,velocity)
         self.r = radius
         self.v = velocity
         self.Dmeasured = dragMeasurements
+
         for dt, L, D, u, r, v, fpa in zip(timeSteps, liftMeasurements, dragMeasurements, controls, radius, velocity, gamma):
             # Get gravity, density, and scale height from model
             h = self.model.altitude(r)
@@ -34,7 +36,6 @@ class SMO(object):
 
             a,b = drag_dynamics(self.state[0], self.state[1], g, L, r, v, fpa, rho, self.model.planet.scaleHeight)
             self.state = odeint(self.__dynamics__, self.state, [0,dt], args=(D,a,b,u))[-1]
-            # print self.state
             self.history.append(self.state)
 
     def __dynamics__(self, x, t, D_measured, a, b, u):
@@ -46,7 +47,7 @@ class SMO(object):
                       self.alpha[2]*e + self.K[2]*signe ]
         return np.array(dx)
 
-    def __gains__(self, poleLocation=1):
+    def __gains__(self, poleLocation=10):
         """ Returns nonlinear and linear observer gains such that all three poles of the system are located at -poleLocation """
         x = np.array([1,2,3])
         C3 = (factorial(3)/(factorial(x)*factorial(3-x)))
@@ -57,7 +58,7 @@ class SMO(object):
         return k, alpha
 
     def process(self):
-        self.history = np.vstack(self.history)[1:]
+        self.history = np.vstack(self.history)
 
     def plot(self, mass=None):
         plt.figure()
@@ -72,6 +73,9 @@ class SMO(object):
 
         plt.figure()
         plt.plot(self.E, self.history[:,2])
+        err = np.diff(self.Dmeasured,2) - np.diff(self.history[:,0],2) # D double dot from observer
+        plt.plot(self.E[2:],err)
+
         plt.xlabel('Energy')
         plt.ylabel('Disturbance (m/s^4)')
         plt.show()
@@ -97,18 +101,19 @@ def test():
     bankProfile = lambda **d: profile(d['time'],[62.30687581,  116.77385384,  165.94954234], banks, order=2)
 
     # Run the simulation
-    # sample = None
-    sample = [0.15,-0.15,0.1, 0.003]
+    sample = None
+    # sample = [0.15,-0.15,0.1, 0.003]
 
     x0 = InitialState()
     output = sim.run(x0,[bankProfile],StepsPerCycle=10,InputSample=sample)
-
+    refs = sim.getFBL()
+    
     # ######################################################
     # SMO Propagation
     # ######################################################
     smo = SMO()
     u = np.cos(sim.control_history[:,0])
-    noisyDrag = sim.df['drag'].values *(np.random.normal(1,0.01,u.shape))
+    noisyDrag = sim.df['drag'].values #* (np.random.normal(1,0.01,u.shape))
     smo(sim.df['time'].values, sim.df['lift'].values, noisyDrag, u, sim.df['radius'].values, sim.df['velocity'].values, sim.df['fpa'].values)
     smo.process()
     smo.plot(mass=sim.df['mass'])

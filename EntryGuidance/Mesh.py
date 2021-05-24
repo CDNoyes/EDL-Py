@@ -134,7 +134,7 @@ class Mesh(object):
         if scaling is None:
             scaling = np.ones_like(X[0])
         if len(np.shape(scaling)) == 1:
-            scaling = np.asarray(scaling)[None,:]
+            scaling = np.asarray(scaling)[None, :]
 
         refined = False
         rho += 1.
@@ -154,13 +154,13 @@ class Mesh(object):
 
             R = np.abs(Di.dot(xi) - interval*fi)/scaling    # Residual matrix
             ij = np.unravel_index(R.argmax(), R.shape)
-            if len(ij)==2:
+            if len(ij) == 2:
                 col = ij[1]
                 r = R[:,col]                    # Residual column with the largest error
             else:
                 col=ij
                 r = R
-            beta = r/r.mean()               # scaled midpoint residual vector
+            beta = r/(r.mean()+1e-9)               # scaled midpoint residual vector
 
             if R[ij] > tol:
                 if verbose: print("Refining segment {}".format(segment))

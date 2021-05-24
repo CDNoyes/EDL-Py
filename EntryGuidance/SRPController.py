@@ -22,7 +22,7 @@ from EntryGuidance.SRPData import SRPData
 from EntryGuidance.SRPUtils import range_from_entry, srp_from_entry
 from EntryGuidance.Target import Target 
 from EntryGuidance.VMC import VMC, velocity_trigger
-from EntryGuidance.Triggers import Trigger, VelocityTrigger
+from EntryGuidance.Triggers import Trigger, VelocityTrigger, AltitudeTrigger
 
 SRPFILE = os.path.join(os.getcwd(), "data\\FuelOptimal\\srp_7200kg.pkl")
 
@@ -52,14 +52,14 @@ def switch_controller(v_reverse, vectorized):
         def _control(e,x,l,d):
             v = x[3]
             sigma = np.radians(b1)*np.ones_like(e)
-            sigma[np.less_equal(v, v_reverse[0])] = -np.radians(b2)
+            sigma[np.less_equal(v, v_reverse[0])] = -np.radians(b1)
             sigma[np.less_equal(v, v_reverse[1])] = np.radians(b2)
             return sigma
     else:
         def _control(v):
             sigma = np.radians(b1)
             if v <= v_reverse[0]:
-                sigma = -np.radians(b2)
+                sigma = -np.radians(b1)
             if v <= v_reverse[1]:
                 sigma = np.radians(b2)
             return sigma
@@ -107,9 +107,9 @@ class SRPController:
         self.target = target 
         self.update = update_function
         self.vmc = VMC()
-        # self.vmc.null_sample(np.product(N)) 
+        self.vmc.null_sample(np.product(N)) 
         
-        self.aeroscale = np.array([1,1]) # Lift and drag modifiers in the prediction 
+        self.aeroscale = np.array([1, 1]) # Lift and drag modifiers in the prediction 
 
         self.srpdata = srpdata 
             
@@ -135,16 +135,26 @@ class SRPController:
         plt.subplot(N, 1, 1)
         plt.plot(update, h['fuel'], 'o-')
         plt.ylabel("Estimated \nFuel Required (kg)")
+        if self.constant_controller:
+            plt.subplot(N, 1, 2)
+            plt.plot(update, np.degrees(param.T[0][1:]), 'o-')
+            plt.xlabel("Update #")
+            plt.ylabel("Optimal Bank (deg)")
 
-        plt.subplot(N, 1, 2)
-        plt.plot(update, np.degrees(param.T[0][1:]), 'o-')
-        plt.xlabel("Update #")
-        plt.ylabel("Optimal Bank (deg)")
+            plt.subplot(N, 1, 3)
+            plt.plot(update, param.T[1][1:], 'o-')
+            plt.xlabel("Update #")
+            plt.ylabel("Optimal Reversal (m/s)")
+        else:
+            plt.subplot(N, 1, 2)
+            plt.plot(update, (param.T[0]), 'o-')
+            plt.xlabel("Update #")
+            plt.ylabel("Optimal V1 (m/s)")
 
-        plt.subplot(N, 1, 3)
-        plt.plot(update, param.T[1][1:], 'o-')
-        plt.xlabel("Update #")
-        plt.ylabel("Optimal Reversal (m/s)")
+            plt.subplot(N, 1, 3)
+            plt.plot(update, param.T[1], 'o-')
+            plt.xlabel("Update #")
+            plt.ylabel("Optimal V2 (m/s)")
 
         plt.subplot(N, 1, 4)
         plt.plot(update, h['velocity'], 'o-')
@@ -180,7 +190,7 @@ class SRPController:
         
 
     def srp_trim(self, traj, *args, **kwargs):
-        """Utility to allow direct calls to srp_trim with passing the target"""
+        """Utility to allow direct calls to srp_trim without passing the target"""
         return self.srpdata.srp_trim(traj, self.target, *args, **kwargs)
 
 
@@ -195,11 +205,11 @@ class SRPController:
         """ This function sets the current search space for the vectorized monte carlo """
 
         # set the originally null sampled points to the current aero scale factors for a better prediction
-        if self.debug:
-            print("...using aero scale factors: {:.2f} (drag), {:.2f} (lift)".format(*self.aeroscale))
+        # if self.debug:
         if self.vmc.samples is not None:
-            self.vmc.samples[0] = self.aeroscale[0] - 1
-            self.vmc.samples[1] = self.aeroscale[1] - 1
+            print("...using aero scale factors: {:.2f} (lift), {:.2f} (drag)".format(*self.aeroscale))
+            self.vmc.samples[0] = self.aeroscale[1] - 1
+            self.vmc.samples[1] = self.aeroscale[0] - 1
 
         if self.constant_controller: # single reversal controller 
             
@@ -215,14 +225,17 @@ class SRPController:
 
                 else:
                     # Loose
-                    bank_range = current_bank + np.radians([-15, 15])
+                    bank_range = current_bank + np.radians([-10, 30])
                     # bank_range = np.radians([5, 60])
-                    reversal_range = current_reverse + np.array([-1000, 1000])
+                    # reversal_range = current_reverse + np.array([-2500, 2500])
+                    reversal_range = np.array([500, 2200]) #current_reverse + np.array([-250, 250])
+                    self.vmc.null_sample(np.product(N)) 
 
             else: # After reversal, really hone in on the correct bank for the remainder 
                 bank_range = current_bank + np.radians([-10, 10])
                 reversal_range = [current_reverse, current_reverse]
                 N = [np.product(self.N),1]
+                self.vmc.null_sample(N[0]) 
 
 
             bank_range[0] = max(0, bank_range[0])
@@ -234,14 +247,29 @@ class SRPController:
             self.vmc.control = reversal_controller(B, Vr, vectorized=True)
 
         else:
-            if velocity >= self.history['params'][-1][0]:
-#                 V1,V2 = boxgrid([[min(4600, velocity-400), min(5000, velocity+2)], [500, 1200]], self.N, interior=True).T  # Allowing 0 set of points above the current velocity means no 90 deg arc 
+            if not self.history['params'] or velocity >= self.history['params'][-1][1]:
+                # V1,V2 = boxgrid([[min(4600, velocity-400), min(5000, velocity+2)], [500, 1200]], self.N, interior=True).T  # Allowing 0 set of points above the current velocity means no 90 deg arc 
 #                 V1,V2 = boxgrid([[min(4600, velocity-400), min(4800, velocity+2)], [750, 950]], self.N, interior=True).T  # A tight set for plotting, not for actual guidance 
-                V1,V2 = boxgrid([[min(4400, velocity-400), min(4900, velocity+2)], [750, 1100]], self.N, interior=True).T
-            else: # After we've done the first reversal, only check the second one 
-                V0 = self.history['params'][-1][0]
-                V1,V2 = boxgrid([[V0, V0], [500, 1200]], [1, np.product(self.N)], interior=True).T
+                V1,V2 = boxgrid([[min(4400, velocity-400), min(5400, velocity+2)], [2000, 4200]], self.N, interior=True).T
+                # V1,V2 = boxgrid([[4600, 5480], [3000, 4600]], self.N, interior=True).T
 
+            else: # After we've done the first reversal, only check the second one 
+                if velocity >= self.history['params'][-1][1]:
+                    V0 = self.history['params'][-1][0]
+                    V1,V2 = boxgrid([[V0, V0], [2000, 4200]], [1, 10*self.N[1]], interior=True).T
+                    self.vmc.null_sample(V2.size) 
+                else: # No more optimization - in reality switch to the constant parametrization
+                    self.constant_controller = True 
+                    # self.history['params'][-1] = list(self.history['params'][-1])
+                    self.history['params'].append(list(self.history['params'][-1]))
+                    self.history['params'][-1][0] = np.radians(15)
+                    self.history['params'][-1][1] = (velocity - 500)/2.0
+                    self.set_control_params(velocity)
+                    return 
+                    # V0 = self.history['params'][-1][0]
+                    # V1 = self.history['params'][-1][1]
+                    # V1,V2 = boxgrid([[V0, V0], [V1, V1]], [1, 1], interior=True).T
+                    # self.vmc.null_sample(1)
             self.control_params = (V1,V2)
             self.vmc.control = switch_controller([V1,V2], True)
         
@@ -295,13 +323,14 @@ class SRPController:
                 self.set_profile((b,v0))
                 self.history['params'].append((b,v0))
             else:
-                assert False, "Reversal controller params must be set before calling "
+                self.set_profile((3500, 1500))
+                # assert False, "Reversal controller params must be set before calling "
         
        
         if self.update(self.history, current_state, **kwargs):
             if 'time' in kwargs:
-                print("Update triggered... (sim time = {:.2f} s)".format(kwargs['time']))
-            print("Current aero ratios: {}".format(self.aeroscale))
+                print("Update triggered... (sim time = {:.0f} s, current velocity = {:.1f} m/s)".format(kwargs['time'], v))
+            # print("Current aero ratios: {}".format(self.aeroscale))
             # if self.debug:
             if 0: # Just used for debugging to turn the actual replanning off 
                 print(self.history)
@@ -313,7 +342,7 @@ class SRPController:
 
             else:
 
-                if 1:  # Sequential optimization based parameter updates
+                if 0:  # Sequential optimization based parameter updates
                     # sol = self.optimize_mc(current_state, max_iters=3)    # Repeated 1-D VMC based 
                     if 0 and current_state[3] <= self.history['params'][-1][1]: # past the reversal velocity 
                         sol = self.optimize_nonlinear(current_state, method='SLSQP', scalar=True)           # Nonlinear optimization-based 
@@ -353,16 +382,18 @@ class SRPController:
 
                 else: # Vectorized monte carlo to brute force a solution, but also good because of the plots it generates 
                     self.set_control_params(current_state[3],)
-                    self.vmc.run(current_state, save=False, stepsize=[1, 0.05, 10], time_constant=self.time_constant)
-                    if self.debug:
-                        self.vmc.plot()
-                        # self.vmc.plot_trajectories()
+                    # self.vmc.run(current_state, save=False, stepsize=[1, 0.05, 10], time_constant=self.time_constant)
+                    self.vmc.run(current_state, save=False, stepsize=0.5, time_constant=self.time_constant)
+                    # if self.debug:
+                        # self.vmc.plot()
+                    self.vmc.plot_trajectories()
 
-                    self.vmc.srp_trim(self.srpdata, self.target, vmax=700, hmin=3000, optimize=True)
-                    if self.debug:
-                        self.vmc.plot_srp(max_fuel_use=3000)
+                    self.vmc.srp_trim(self.srpdata, self.target, vmax=700, hmin=3000, optimize=False)
+                    # if self.debug:
+                    #     self.vmc.plot_srp(max_fuel_use=3000)
                     fuel = np.array(self.vmc.mc_srp['fuel'])
-                    keep =  fuel < self.srpdata.mmax # keep anything under the max in the table  
+                    # keep =  fuel < self.srpdata.mmax # keep anything under the max in the table  
+                    keep =  fuel < np.min(fuel)*1.5 # keep anything under the max in the table  
                     if not np.any(keep):
                         print("No viable solution under {:.1f} kg found in current search space".format(np.min(fuel)*2))
                         self.history['n_updates'] += 1 # should add the previous history as the new one or the plot_history will fail 
@@ -379,10 +410,15 @@ class SRPController:
                         self.history['fuel'].append(fuel[opt]) # should we use the single prediction? why don't they match better
                         self.history['velocity'].append(np.linalg.norm(self.vmc.mc_srp['ignition_state'][opt][3:]))
                         self.history['state'].append(current_state)
+                        self.history['entry_state'].append(self.vmc.mc_srp['terminal_state'][opt])
+                        self.history['ignition_state'].append(self.vmc.mc_srp['ignition_state'][opt])
 
                         if 1: # diagnostics 
                             # print("Target DR = {:.1f} km".format(self.target.longitude*3397))
-                            print("- Optimum: {:.1f} kg at {:.1f} deg, reversal at {:.1f}".format(fuel[opt], np.degrees(self.control_params[0][opt]), self.control_params[1][opt]))
+                            if self.constant_controller:
+                                print("- Optimum: {:.1f} kg at {:.1f} deg, reversal at {:.1f}".format(fuel[opt], np.degrees(self.control_params[0][opt]), self.control_params[1][opt]))
+                            else:
+                                print("- Optimum: {:.1f} kg at v1 = {:.1f} m/s, v2 = {:.1f} m/s".format(fuel[opt], self.control_params[0][opt], self.control_params[1][opt]))
                             print("- Predicted Ignition velocity = {:.1f} m/s".format(np.linalg.norm(self.vmc.mc_srp['ignition_state'][opt][3:])))
     #                             print("- Optimum: {:.1f} kg, {}".format(fuel[opt], params))
     #                             print("Predicted fuel consumption from single integration: {:.1f} kg".format(mf))
@@ -391,26 +427,37 @@ class SRPController:
                                 print("{:.1f}".format(state))
 
                         if self.debug:
-                            figsize = (10, 10)
+                            figsize = (7, 4)
+                            fontsize=14
+                            ticksize=fontsize-2
+
                             cmap = 'inferno'
                             if self.constant_controller:
                                 plt.figure(figsize=figsize)
     #                                 plt.scatter(np.degrees(self.control_params[0][keep]), self.control_params[1][keep], c=fuel[keep])
-                                plt.tricontourf(np.degrees(self.control_params[0][keep]), self.control_params[1][keep], fuel[keep], 15, cmap=cmap)
-                                plt.plot(np.degrees(self.control_params[0][opt]), self.control_params[1][opt], 'rx', markersize=8)
-                                plt.xlabel(r"Bank Angle Magnitude, $\sigma_c$ (deg)")
-                                plt.ylabel(r"Reversal Velocity, $v_r$ (m/s)")
+                                plt.tricontourf(np.degrees(self.control_params[0][keep]), self.control_params[1][keep], 100*fuel[keep]/7200, 15, cmap=cmap)
+                                # plt.plot(np.degrees(self.control_params[0][opt]), self.control_params[1][opt], 'rx', markersize=8)
+                                plt.xlabel(r"Bank Angle Magnitude, $\sigma_c$ (deg)", fontsize=fontsize)
+                                plt.ylabel(r"Reversal Velocity, $v_r$ (m/s)", fontsize=fontsize)
                                 cbar = plt.colorbar()
-                                cbar.set_label("Propellant Required for Pinpoint Landing (kg)")
+                                cbar.set_label("PMF for Pinpoint Landing (%)")
+                                cbar.ax.tick_params(labelsize=ticksize)
+                                cbar.ax.yaxis.label.set_size(fontsize)
+                                plt.tick_params(labelsize=ticksize)
+
                             else:
                                 plt.figure(figsize=figsize)
     #                                 plt.scatter(self.control_params[0][keep], self.control_params[1][keep], c=fuel[keep])
-                                plt.tricontourf(self.control_params[0][keep], self.control_params[1][keep], fuel[keep], 15, cmap=cmap)
-                                plt.plot(self.control_params[0][opt], self.control_params[1][opt], 'rx', markersize=8)
-                                plt.xlabel("Reversal 1 Velocity (m/s)")
-                                plt.ylabel("Reversal 2 Velocity (m/s)")
-                                plt.title("Propellant Usage (kg)")
-                                plt.colorbar()
+                                plt.tricontourf(self.control_params[0][keep], self.control_params[1][keep], 100*fuel[keep]/7200, 15, cmap=cmap)
+                                # plt.plot(self.control_params[0][opt], self.control_params[1][opt], 'rx', markersize=8)
+                                plt.xlabel(r"Reversal 1 Velocity, $v_1$  (m/s)", fontsize=fontsize)
+                                plt.ylabel(r"Reversal 2 Velocity, $v_2$  (m/s)", fontsize=fontsize)
+                                # plt.title("Propellant Usage (kg)")
+                                cbar = plt.colorbar()
+                                cbar.set_label("PMF for Pinpoint Landing (%)")
+                                cbar.ax.tick_params(labelsize=ticksize)
+                                cbar.ax.yaxis.label.set_size(fontsize)
+                                plt.tick_params(labelsize=ticksize)
 
                         
         # Whether or not we just updated the profile, call it!
@@ -569,7 +616,6 @@ class SRPController:
 
         return output
 
-
     def optimize(self, x0, verbose=True):
         """ Uses sequential univariate optimization to determine optimal parameters """
         from functools import partial 
@@ -711,43 +757,49 @@ class SRPControllerTrigger(Trigger):
 
     
 def test_single():
-    x0 = InitialState(vehicle='heavy', fpa=np.radians(-15.9))    
-    target = Target(0, 700/3397, 0)  # This is what all the studies have been done with so far 
+    x0 = InitialState(vehicle='heavy', fpa=np.radians(-15.75))    
+    # use 700 for constant controller, 625 for two switch
+    target = Target(0, 625/3397, 0)  # This is what all the studies have been done with so far 
 
     srpdata = pickle.load(open(SRPFILE,'rb'))
 
-    mcc = SRPController(N=[50, 50], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
+    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2, constant_controller=False)
     # mcc = SRPController(N=[200, 200], target=target, srpdata=srpdata, update_function=lambda *p, **d: True, debug=True, time_constant=2)
     mcc(x0)
-    print(mcc.history['ignition_state'])
-    mcc.sim.plot()
+    # print(mcc.history['ignition_state'])
+    # mcc.sim.plot()
     plt.show()
 
 
 def test_sim(InputSample, EFPA, plot=False):
     """ Runs a scalar simulation with the SRP Controller called multiple times """
     x0 = InitialState(vehicle='heavy', fpa=np.radians(EFPA))    
-    target = Target(0, 700/3397, 0)   
+    target = Target(0, 625/3397, 0)   
     TC = 2      # time constant 
     srpdata = pickle.load(open(SRPFILE,'rb'))
 
-    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5490, 4000, 2000, 1200]), debug=False, time_constant=TC)
-    # mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5480]), debug=False, time_constant=TC)
+    # mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5490, 5050, 4500, 3000, 2000, 1000]), debug=False, time_constant=TC, constant_controller=False)
+    mcc = SRPController(N=[30, 30], target=target, srpdata=srpdata, update_function=update_rule_maker([5480]), debug=False, time_constant=TC, constant_controller=False)
     Vf = 450     # Anything lower than the optimal trigger point is fine 
     
     states = ['Entry']
     trigger = [SRPControllerTrigger(mcc, -10)] # Go 10 m/s lower than the true trigger point says to
+    # trigger = [AltitudeTrigger(3)] # Go 10 m/s lower than the true trigger point says to
     sim_inputs = {'states': states, 'conditions': trigger}
     # sim = Simulation(cycle=Cycle(1), output=True, use_da=False, **EntrySim(Vf=Vf), )
-    sim = Simulation(cycle=Cycle(1), output=True, use_da=False, **sim_inputs)
+    sim = Simulation(cycle=Cycle(0.1), output=False, use_da=False, **sim_inputs)
     sim.run(x0, [mcc], TimeConstant=TC, InputSample=InputSample, StepsPerCycle=10) 
 
-    mf = mcc.srp_trim(sim.history)
+    data = mcc.srp_trim(sim.history, full_return=True)
+    mf = data['fuel']
+    print("Ignition state:")
+    for state in data['ignition_state']:
+        print("{:.1f}".format(state))
     # mcc.plot_history()
     print("Final fuel consumed: {:.1f} kg".format(mf))
     if plot:
         sim.plot()    # The trajectory resulting from integrating the controller commands 
-        mcc.plot_history()
+        # mcc.plot_history()
         # mcc.sim.plot() # The (last) trajectory predicted by the controller
         # v1 = sim.df['velocity']
         # v2 = mcc.sim.df['velocity']
@@ -758,6 +810,7 @@ def test_sim(InputSample, EFPA, plot=False):
         #     plt.suptitle(var.capitalize())
 
 
+    # plt.show()
     return mf, sim.df, mcc.history
 
 
@@ -795,15 +848,15 @@ def parametric_sensitivity():
 
 
     output = {'efpa': efpas, "samples": inps, 'prop_nominal': m0, 'traj_nominal':traj, "history_nominal": hist, "prop": data, "traj": trajectories, "histories": histories}
-    pickle.dump(output, open("./data/FuelOptimal/parametric_data.pkl", 'wb'))
+    pickle.dump(output, open("./data/FuelOptimal/parametric_data_two_switch.pkl", 'wb'))
 
-def plot_parametric(data_file):
+def plot_parametric(datafile):
     """ 
     """
     from Utils.smooth import smooth 
 
     # output = {'efpa': efpas, "samples": inps, 'prop_nominal': m0, 'traj_nominal':traj, "prop": data, "traj": trajectories, "histories": histories}
-    data = pickle.load(open("./data/FuelOptimal/parametric_data.pkl", 'rb'))
+    data = pickle.load(open(datafile, 'rb'))
 
     def print_dicts(d, tabs=' '):
         if isinstance(d, dict):
@@ -830,8 +883,10 @@ def plot_parametric(data_file):
     per = delta/prop[0]*100
     ignition = [np.zeros((5,))] + [h['ignition_state'][-1] for h in np.array(data['histories']).flatten()]
 
-    # prop_history = [0] + [h['fuel'] for h in np.array(data['histories']).flatten()] # no nominal history...
-    histories = [data['history_nominal']] + [h for h in np.array(data['histories']).flatten()]
+    try:
+        histories = [data['history_nominal']] + [h for h in np.array(data['histories']).flatten()]
+    except:
+        histories = [0] + [h for h in np.array(data['histories']).flatten()] # no nominal history...
 
     # create a table 
     states = ['DR','CR','Alt','Vx', 'Vz']
@@ -844,7 +899,7 @@ def plot_parametric(data_file):
     savedir = "./Documents/FuelOptimal/1d parametric/"
 
     # Plots GALORE
-    figsize=(7,4)
+    figsize=(7,5)
     fontsize=14
     ticksize=12 
 
@@ -948,13 +1003,14 @@ def plot_parametric(data_file):
             plt.grid()
             plt.legend()
 
-            # if 'nominal' in label: # no nominal history saved 
-            #     continue
+            if 'nominal' in label: # no nominal history saved 
+                continue
             plt.figure(nplots*(fignum_mult-1) + 6, figsize=figsize)
             updates = list(range(1,1+len(hist['fuel'])))
             plt.plot(updates, np.array(hist['fuel'])/7200, "o--", label=label)
             plt.xlabel('Parameter Update', fontsize=fontsize)
             plt.ylabel('PMF (%)', fontsize=fontsize)
+            plt.xticks([0] + updates)
             plt.tick_params(labelsize=ticksize)
             plt.grid()
             plt.legend()
@@ -1132,9 +1188,35 @@ if __name__ == "__main__":
     # remove_duplicates("./data/fuelOptimal/test.csv")
     # plot_sweep("./data/FuelOptimal/merged_duplicates_removed.csv")
     # plot_sweep("./data/FuelOptimal/data_to_merge.csv")
-    test_sim([0., 0., 0., 0.01], -15.75, True)
-    # parametric_sensitivity()
-    # plot_parametric("./data/FuelOptimal/parametric_data.pkl")
+    # test_sim([0., 0., 0., 0.01], -15.75, True)
+    # test_sim([-0.1, 0., 0., 0.0], -15.75, True)
+    parametric_sensitivity()
+    plot_parametric("./data/FuelOptimal/parametric_data_two_switch.pkl")
 
-    # test_sim([-0.05, 0.05, -0.05, 0.002]) # most case (direction) for -16.5 deg EFPA. Magnitudes matter...
-    plt.show()
+    
+    # v = np.linspace(600, 5000, 1000)
+
+    # b1 = reversal_controller(np.radians(30), 3500, False)
+    # b2 =  switch_controller([4000, 2500], False)
+
+    # B1 = np.degrees([b1(vi) for vi in v])
+    # B2 = np.degrees([b2(vi) for vi in v])
+
+    # fontsize=14
+    # plt.figure(figsize=(12, 6))
+    # plt.subplot(1,2,1)
+    # plt.plot(v, B1, label=r"($\sigma_c$, $v_r$)",linewidth=4)
+    # plt.gca().set_ylim([-95, 95])
+    # plt.xlabel('Velocity (m/s)', fontsize=fontsize)
+    # plt.ylabel('Bank angle (deg)', fontsize=fontsize)
+    # plt.grid(True)
+    # plt.legend()
+
+    # plt.subplot(1,2,2)
+    # plt.plot(v, B2, label=r"($v_1$, $v_2$)",linewidth=4)
+    # plt.gca().set_ylim([-95, 95])
+    # plt.xlabel('Velocity (m/s)', fontsize=fontsize)
+    # plt.ylabel('Bank angle (deg)', fontsize=fontsize)
+    # plt.grid(True)
+    # plt.legend()
+    # plt.show()

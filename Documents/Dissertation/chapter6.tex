@@ -2,29 +2,53 @@
 
 %Also talk about algorithm parameters used to generate trajectories
 \section{Entry Conditions and Targets}
-State and dispersions at the entry interface. State and dispersions at the range control initiation velocity 
-Mass = 2804 kg, Area = 15.8 $\mathrm{m}^2$
-
-
+The entry guidance strategy is assessed for an MSL-class vehicle with mass$m = 2804$ kg, area $S = 15.8\, \mathrm{m}^2$. The entry state and associated dispersions at the entry interface are given in Table~\ref{Table:StateEntryInterface}. State and dispersions at the start of closed-loop guidance are given in Table~\ref{Table:StateRangeControl}. 
+By assumption, the altitude determines the entry interface point, and thus $\sigma_h = 0$. Similarly, after propagation to a fixed velocity, $\sigma_v = 0$.
+%TODO: Make these tables
+%\begin{table}[h!]
+%	\centering
+%	\includegraphics[width=0.75\textwidth]{Images/DDP_Parameters}
+%	\caption{The mean state and standard deviations at the entry interface, defined as h=124 km.}
+%	\label{Table:StateEntryInterface}
+%\end{table}
+%\begin{table}[h!]
+%	\centering
+%	\includegraphics[width=0.75\textwidth]{Images/DDP_Parameters}
+%	\caption{The mean state and standard deviations at the start of closed-loop guidance.}
+%	\label{Table:StateRangeControl}
+%\end{table}
+%TODO: GIve the uncertainty factors for L/D, beta, and density. Say that we are using the MCD and refer to Fig~\ref{Fig:DensityVariations}.
 \section{Robust Optimal Control Solution Parameters}
-Linesearch rules? M = 20 for smooth saturation. N=250 velocity steps, with four Euler integration steps per velocity step. 
+\begin{table}[h!]
+	\centering
+	\includegraphics[width=0.75\textwidth]{Images/DDP_Parameters}
+	\caption{Algorithm parameters used in all numerical results.}
+	\label{Table:DDPParameters}
+\end{table}
+Table~\ref{Table:DDPParameters} summarizes the algorithm parameters governing the linesearch, regularization, and stopping conditions. 
+The smooth saturation approximation uses $M = 20$. The trajectory is discretized into $ N=250 $ velocity steps, with four Euler integration steps per velocity step. The value of $ N $ and the number of integration steps were chosen by validating the terminal altitude and downrange distance against adaptive stepsize integration using MATLAB's \textit{ode45} function. The acceptable error tolerance across all sigma points was 100 m.
 
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.75\textwidth]{Images/GuessControl}
+	\caption{The initial reference control used to initialize DDP.}
+	\label{Fig:GuessControl}
+\end{figure}
 %Guess trajectory, show it and discuss. 
-In all numerical examples, the initial guess at the optimal reference control is a linear ramp. This guess is motivated by experience with altitude optimal trajectories, which feature an initial zero lift arc followed by a full lift up arc. Such a control has zero margin (in one direction) at every velocity. Our choice is motivated by a similar lift down to lift up change, but more gradual and with significant margin throughout. 
+A trajectory-control pair is required to initialize the DDP algorithm. In all numerical examples, the initial guess at the optimal reference control is the linear ramp depicted in Fig~\ref{Fig:GuessControl}. This guess is motivated by experience with altitude optimal trajectories, which feature an initial zero lift arc followed by a full lift up arc. Such a control has zero margin (in one direction) at every velocity. Our choice is motivated by a similar progression from lift down to lift up, but more gradual and with significant margin throughout. We remark that the solutions are not sensitive to the initial guess. 
 
-All solutions consider static gains. In the first section we consider a single set of gains $=[]$ to highlight the impact of the reference trajectory. Later results use jointly optimized gains. For these cases, the initial guess at the optimal gains is the same set.
+All solutions consider static gains. In the first section we consider a two sets of gains, $K_1=[0,0,0]$ and $K_2 = [0.13,-0.04,-2.5]$, to highlight the impact of the reference trajectory. Later results use jointly optimized gains. For these cases, the initial guess at the optimal gains is the $K_2$.
 
 \subsection{Selecting the UT Parameter}
-Show results for a fixed profile sweeping alpha and show that the estimates are monotonic wrt to the parameter. As result, there exists an alpha that minimizes the error in altitude and range, generally not the same alpha. 
+%Show results for a fixed profile sweeping alpha and show that the estimates are monotonic wrt to the parameter. As result, there exists an alpha that minimizes the error in altitude and range, generally not the same alpha. 
 
-Our earlier example showed that selecting $\alpha$ is important, especially for the range variable. In the numerical assessment, we consider vary weight combinations on the grid $w_h\times w_s = [0,3]\times[0,3]$. As such, we selected $\alpha$ to minimize the UT-estimation error in $\sigma_s$ for the optimal solution with $w_h=w_s=1.5$, i.e., at the center point of the grid. 
+Our earlier example showed that selecting $\alpha$ is important, especially for the range variable. In the numerical assessment, we consider weight combinations on the grid $w_h\times w_s = [0,3]\times[0,3]$. As such, we selected $\alpha$ to minimize the UT-estimation error in $\sigma_s$ for the optimal solution with $w_h=w_s=1.5$, i.e., at the center point of the grid. 
 
 \section{Simulation}
-Monte Carlo setup - integration wrt time, 1Hz integration rate, 
-
 %Primary metrics include the 3$\sigma$ low altitude and the 3$\sigma$ range error at the terminal velocity. Some discussion of the mean altitude and range as well. 
-Bank rate is limited to $20^{\circ}/s$
-Monte Carlo simulation with 3000 sample trajectories is conducted. The samples are drawn using Latin Hypercube sampling. The bank angle command is updated at a rate of 1 Hz. Range error is the distance between the terminal downrange distance defined by the reference trajectory and the downrange distance flown. The primary metrics we will examine are the 3$\sigma$-low altitude $=\bar{h}-3\sigma_h$ and 3$\sigma$ range error $= 3\sigma_s$ at the final velocity. The terminal state distributions are generally non-Gaussian, and in practice percentiles are used to specify mission requirements. However, metrics based on the mean and standard deviation are presented, because these are the values estimated by the unscented transform, which allows for a direct comparison with the Monte Carlo results.
+Unless otherwise noted, each Monte Carlo simulation is conducted with 3000 sample trajectories. The samples are drawn using Latin Hypercube sampling. The equations of motion are simulated in the time domain, and the bank angle command is updated at a rate of 1 Hz. The bank angle magnitude is subject to the same limits applied during optimization, $0^{\circ}\le|\sigma|\le90^{\circ}$, and the magnitude of the bank angle rate is limited to $20^{\circ}/s$. No bank angle acceleration limit is applied. Range error is the distance between the terminal downrange distance defined by the reference trajectory and the downrange distance flown. The primary metrics we will examine are the 3$\sigma$-low altitude $=\bar{h}-3\sigma_h$ and 3$\sigma$ range error $= 3\sigma_s$ at the final velocity. The terminal state distributions are generally non-Gaussian, and in practice percentiles are used to specify mission requirements. However, metrics based on the mean and standard deviation are presented, because these are the values estimated by the unscented transform, which allows for a direct comparison with the Monte Carlo results.
+
+%WHile simplifcation of models, like the atm density model, introduce conservatism. We simulate using the same models to allow a direct comparison. 
 
 %%% Local Variables: ***
 %%% mode: latex ***

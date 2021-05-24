@@ -8,9 +8,9 @@ from scipy.io import savemat, loadmat
 import matplotlib.pyplot as plt
 
 from Simulation import Simulation, Cycle, EntrySim, SRP
-from ParametrizedPlanner import profile
+from ParametrizedPlanner import profile, profile2
 import HeadingAlignment as headAlign
-from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger, SRPTrigger
+from Triggers import AccelerationTrigger, VelocityTrigger, RangeToGoTrigger, SRPTrigger, TimeTrigger, EnergyTrigger, AltitudeTrigger
 from Uncertainty import getUncertainty
 from InitialState import InitialState
 import MPC as mpc
@@ -49,8 +49,8 @@ def describe(sample):
 
 def batch():
     import sys
-    sys.path.append('./Misc/')
-    from VDP import box_grid
+    # sys.path.append('./Misc/')
+    from boxgrid import box_grid
 
     pts = box_grid(((-0.15,0.15),(-0.15,0.15),(-0.15,0.15),(-0.02,0.02)),2)
 
@@ -164,13 +164,34 @@ def test_controller():
 
 
     # Plan the nominal profile:
-    reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim())
-    # bankProfile = lambda **d: HEPNR(d['time'],*[9.3607, 136.276], minBank=np.radians(30))
-    # bankProfile = lambda **d: HEPBankSmooth(d['time'],*[99.67614316,  117.36691891,  146.49573609], minBank=np.radians(30))
+    reference_sim = Simulation(cycle=Cycle(1),output=False,**EntrySim(Vf=460))
     switch = [    62.30687581,  116.77385384,  165.94954234]
-    bank = [-np.radians(30),np.radians(75),-np.radians(75),np.radians(30)]
-    bankProfile = lambda **d: profile(d['time'],switch=switch, bank=bank,order=2) # Profile is more generic
+    bank = [-np.radians(30),np.radians(85),-np.radians(65),np.radians(30)]
+    # no margin:
+    # switch = [ 1.28335194e+02 ]
+    # bank = [np.radians(90),np.radians(0)]
+    # lots o' margin:
+    # switch = [ 20.09737598,  139.4887652 ]
+    # bank = [np.radians(30),np.radians(75),np.radians(30)]
+
+    # bankProfile = lambda **d: profile(d['time'], switch=switch, bank=bank, order=2) # Profile is more generic
+    switch = [-10., 62.30687581,  116.77385384,  164., 270.]
+    bankProfile = lambda **d: profile2(d['time'], switch=switch, bank=bank)
+
     # bankProfile = lambda **d: np.radians(-30)
+    if 1:                               # Calls optimal control solver
+        from Utils.gpops import gpops
+        from scipy.interpolate import interp1d
+        import pandas as pd
+        def rad(num):
+            return num*pi/180.
+
+        dr = 900.
+        fpa_min = rad(-14.)
+        azi_max = rad(1.5)
+        traj = gpops([dr,fpa_min,azi_max])
+        sigma = np.squeeze(np.array(traj['state'])[:,-1])
+        bankProfile = lambda **d: interp1d(np.squeeze(traj['time']), sigma, fill_value=(sigma[0],sigma[-1]), assume_sorted=True, bounds_error=False, kind='cubic')(d['time'])
 
 
     x0 = InitialState()
@@ -179,47 +200,55 @@ def test_controller():
     references = reference_sim.getRef()
     fbl_ref = reference_sim.getFBL()
     drag_ref = references['drag']
-    # reference_sim.plot(plotEnergy=True)
-    # plt.show()
+    reference_sim.plot(plotEnergy=True)
+    plt.show()
 
     # Apollo settings (if used)
-    use_energy=True
+    use_energy=False
     use_drag_rate=False
     use_lateral=False
-    aeg_gains = Apollo.gains(reference_sim,use_energy=use_energy, use_drag_rate=use_drag_rate)
+    aeg_gains = Apollo.gains(reference_sim, use_energy=use_energy, use_drag_rate=use_drag_rate)
 
-    if 1:
+    if 0:
         # Create the simulation model:
         if 0:
             states = ['PreEntry','RangeControl','HeadingAlign']
             # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), VelocityTrigger(500)]
             # conditions = [AccelerationTrigger('drag',4), VelocityTrigger(1300), RangeToGoTrigger(0)]
             conditions = [AccelerationTrigger('drag',2), VelocityTrigger(1400), SRPTrigger(-1,600,500)]
-        else:
+        elif 1:
             states = ['PreEntry','RangeControl']
-            conditions = [AccelerationTrigger('drag',0.2), SRPTrigger(minAltitude=0,maxVelocity=600,rangeToGo=1000)]
+            # conditions = [AccelerationTrigger('drag',0.2), SRPTrigger(minAltitude=0,maxVelocity=600,rangeToGo=100)]
+            # conditions = [TimeTrigger(70), TimeTrigger(reference_sim.time)]
+            conditions = [AccelerationTrigger('drag',0.2), EnergyTrigger(reference_sim.df['energy'].values[-1])]
+            # conditions = [AccelerationTrigger('drag',0.2), AltitudeTrigger(0)]
+        else:
+            states = ['Entry']
+            conditions = [TimeTrigger(reference_sim.time)]
+
+
         input = { 'states' : states,
                   'conditions' : conditions }
 
         sim = Simulation(cycle=Cycle(1), output=True, **input)
 
         # Create some guidance laws
-
-        option_dict = mpc.options(N=1,T=None)
-        # option_dict = mpc.options(N=1,T=10)
-        option_dict_heading = mpc.options(N=1,T=20)
         get_heading = partial(headAlign.desiredHeading, lat_target=np.radians(output[-1,6]), lon_target=np.radians(output[-1,5]))
-
-        mpc_heading = partial(headAlign.controller, control_options=option_dict_heading, control_bounds=(-pi/2,pi/2), get_heading=get_heading)
-        mpc_range = partial(mpc.controller, control_options=option_dict, control_bounds=(0,pi/1.5), references=references, desired_heading=get_heading)
         pre = partial(mpc.constant, value=bankProfile(time=0))
         # pre = partial(mpc.constant, value=np.radians(85))
         aeg = partial(Apollo.controller, reference=aeg_gains,bounds=(0.5*pi/9.,pi/1.25), get_heading=get_heading,
                       use_energy=use_energy, use_drag_rate=use_drag_rate, use_lateral=use_lateral) # This is what the MC have been conducted with
 
         replan = partial(hpc.controller, switch=switch, bank0=bank, reference=references['rangeToGo'], lon_target=output[-1,5], lat_target=output[-1,6])
-        nmpc = NMPC(Ef=reference_sim.df['energy'].values[-1],fbl_ref=fbl_ref,update_type=1,update_tol=2)
-        controls = [pre, nmpc.controller]
+
+        bankProfilePredictive = lambda **d: profile(d['time']+2.425,switch=switch, bank=bank,order=2)
+
+        if 1: # Nonlinear predictive control
+            nmpc = NMPC(fbl_ref=fbl_ref, dt=3.08, Q=np.array([[0.05,0],[0,9.4]]))
+            # controls = [ nmpc.controller]
+            controls = [pre, nmpc.controller]
+        else: # Open loop with a small look-ahead
+            controls = [bankProfilePredictive]*2
 
         # Run the off-nominal simulation
         perturb = getUncertainty()['parametric']
@@ -231,8 +260,9 @@ def test_controller():
         # sample = [.133,-.133,.0368,.0014] # Worst case sample from Apollo runs
         # sample = [0.08,0.0, 0,0]
         s0 = reference_sim.history[0,6]-reference_sim.history[-1,6] # This ensures the range to go is 0 at the target for the real simulation
-
-        x0_full = InitialState(1, range=s0, bank=np.radians(-30))
+        print "Traj length = {} km".format(s0/1000.)
+        print "DR = {} km".format(reference_sim.df['downrange'].values[-1])
+        x0_full = InitialState(1, range=s0, bank=bank[0])
         # x0_full = InitialState(1, range=s0, bank=np.radians(30),fpa=np.radians(-13.65)) # 0.5 deg shallower
         # x0_full = InitialState(1, range=s0, bank=np.radians(-30),fpa=np.radians(-13.95)) # 0.2 deg shallower
         # x0_full = InitialState(1, range=s0, bank=np.radians(30),fpa=np.radians(-14.65)) # 0.5 deg steeper
@@ -240,7 +270,7 @@ def test_controller():
         # x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505+100) # 50 m/s faster
         # x0_full = InitialState(1, range=s0, bank=np.radians(30),velocity=5505-100) # 50 m/s slower
 
-        if 0: # Single trajectory
+        if 1: # Single trajectory
             reference_sim.plot(plotEnergy=True, legend=False)
             output = sim.run(x0_full, controls, sample, FullEDL=True)
             # Apollo.plot_rp(output, aeg_gains, use_energy, use_drag_rate=use_drag_rate)
@@ -248,7 +278,7 @@ def test_controller():
 
         else: # Multiple
 
-            N = 300
+            N = 2000
             print("Running Monte Carlo with {} samples".format(N))
 
             sim.set_output(False)
@@ -259,7 +289,7 @@ def test_controller():
                 stateTensor = [sim.run(x0_full, controls, sample, FullEDL=True) for sample in samples.T]
                 saveDir = './data/'
                 # savemat(saveDir+'MC_Apollo_{}_K1_energy_no_rate'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
-                savemat(saveDir+'MC_NMPC_{}_update1'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
+                savemat(saveDir+'MC_NMPC_{}_EnergyTrigger_optimized2'.format(N),{'states':stateTensor, 'samples':samples, 'pdf':p})
 
             else: # Raw loop, graph each trajectory
                 stateTensor = []

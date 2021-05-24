@@ -102,6 +102,9 @@ class JBG(PoweredDescentGuidanceBase):
         mf = m0 - self.Tmax/self.Isp/self.g0*tf 
         return v0*tf - 0.5*self.g*tf**2 + (self.Isp*self.g0)**2/self.Tmax*self.k*np.sin(mu)*(m0-mf*(1+np.log(m0/mf)))
 
+    def distance(self, full_state):
+        
+
     def plot_manifold(self, m0=8500):
         """ The manifold is 4D in the 2D case (and may still be thought of this way in 3D)
             because the initial mass is assumed constant
@@ -113,13 +116,13 @@ class JBG(PoweredDescentGuidanceBase):
         self.ignite()
         debug = self.debug 
         self.debug = False 
-        if 10:  # Full surface, with different magnitude and direction of init velocity
+        if 0:  # Full surface, with different magnitude and direction of init velocity
             U0 = np.linspace(4, 700, 100)
             V0 = np.linspace(-1, -250, 100)
             UV = np.array(list(product(U0, V0)))
         else:
-            Vmag = 10000
-            fpa = np.linspace(-30, 0, 500)
+            Vmag = 600
+            fpa = np.linspace(-50, 0, 500)
             U0 = np.cos(np.radians(fpa))*Vmag
             V0 = np.sin(np.radians(fpa))*Vmag
             UV = np.array([U0, V0]).T
@@ -158,31 +161,31 @@ class JBG(PoweredDescentGuidanceBase):
         Mf = np.array(Mf)
         H = np.array(H)
 
-        plt.figure(figsize=(14, 10))
+        plt.figure(figsize=(10, 12))
         plt.suptitle("Optimal Ignition Surface")
-        plt.subplot(2,2,1)
+        plt.subplot(2,1,1)
         plt.scatter(UV[keep, 0], UV[keep, 1], c=Mf[keep])
         plt.axis("equal")
-        plt.xlabel("Horizontal Velocity at Ignition")
-        plt.ylabel("Vertical Velocity at Ignition")
+        plt.xlabel("Horizontal Velocity at Ignition (m/s)")
+        plt.ylabel("Vertical Velocity at Ignition (m/s)")
 
-        plt.subplot(2,2,2)
+        plt.subplot(2,1,2)
         plt.scatter(DR[keep], H[keep], c=Mf[keep])
-        cbar = plt.colorbar()
-        cbar.set_label('Prop Used', rotation=270)
+        cbar = plt.colorbar(orientation='horizontal')
+        cbar.set_label('Propellant Used (kg)', rotation=0)
         # plt.scatter(D_approx[0], D_approx[1], c='k')
-        plt.xlabel("Optimal Horizontal Distance")
-        plt.ylabel("Optimal Altitude")
+        plt.xlabel("Optimal Horizontal Distance (m)")
+        plt.ylabel("Optimal Altitude (m)")
         plt.axis("equal")
 
-        plt.subplot(2,2,4)
-        plt.scatter(DR[keep], H[keep], c=np.linalg.norm(UV, axis=1)[keep])
-        cbar = plt.colorbar()
-        cbar.set_label('Init Vel', rotation=270)
-        # plt.scatter(D_approx[0], D_approx[1], c='k')
-        plt.xlabel("Optimal Horizontal Distance")
-        plt.ylabel("Optimal Altitude")
-        plt.axis("equal")
+        # plt.subplot(2,2,4)
+        # plt.scatter(DR[keep], H[keep], c=np.linalg.norm(UV, axis=1)[keep])
+        # cbar = plt.colorbar()
+        # cbar.set_label('Init Vel', rotation=270)
+        # # plt.scatter(D_approx[0], D_approx[1], c='k')
+        # plt.xlabel("Optimal Horizontal Distance")
+        # plt.ylabel("Optimal Altitude")
+        # plt.axis("equal")
 
         plt.figure()
 

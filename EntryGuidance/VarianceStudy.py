@@ -4,7 +4,7 @@ from Simulation import Simulation, Cycle, EntrySim, TimedSim
 from Triggers import SRPTrigger, AccelerationTrigger
 from InitialState import InitialState
 from Uncertainty import getUncertainty
-from HPC import profile
+from ParametrizedPlanner import profile, profile2
 
 from pyaudi import gdual_double as gd
 from pyaudi import abs
@@ -31,44 +31,44 @@ from Utils.submatrix import submatrix
 
 def drag_tracker(time,velocity,drag,bankprof,dragprof,**kwargs):
     # return bankprof(time=time) - .02*(drag-dragprof(velocity.constant_cf))*np.sign(bankprof(time=time)) # Constant gain
-    return bankprof(time=time) - drag*.02/100*(drag-dragprof(velocity.constant_cf))*np.sign(bankprof(time=time)) # Constant gain
+    u = bankprof(time=time) - 1*(drag-dragprof(velocity.constant_cf))*np.sign(bankprof(time=time))/drag.constant_cf
+    # u0 = da.clip(u.constant_cf, -np.pi/2, np.pi/2)
+    # u -= u.constant_cf
+    # u += u0 
+    return  u
 
 def alt_tracker(time,velocity,altitude,bankprof,altitudeprof,**kwargs):
     return bankprof(time=time) + 1*(altitude/1000-altitudeprof(velocity.constant_cf))*np.sign(bankprof(time=time)) # Constant gain
 
 def first_order():
-    tf = 160.
+    tf = 210.
 
     reference_sim = Simulation(cycle=Cycle(1),output=False,**TimedSim(tf))
     da_sim = Simulation(cycle=Cycle(1), output=True, use_da=True, **TimedSim(tf))
     banks = [-np.pi/2, np.pi/2,-np.pi/9]
+    # banks = list(np.radians([-80, 80, 20]))
 
     bankProfile = lambda **d: profile(d['time'],[89.3607, 136.276], banks)
 
 
     x0 = InitialState()
-    output_ref = reference_sim.run(x0,[bankProfile],StepsPerCycle=10)
+    output_ref = reference_sim.run(x0, [bankProfile], StepsPerCycle=10)
     refs = reference_sim.getRef()
     dragprof = refs['drag']
     altprof = refs['altitude']
     xvars = ['r','lon','lat','v','fpa','psi','s','m']
     x0d = [gd(val,name,1) for val,name in zip(x0,xvars)]
-    params =  ['CD','CL','rho0','sh']
-    sample = [gd(0,name,1) for name in params] # Expand around the nominal values
-    xvars += params
-    
+
     dragProfile = partial(drag_tracker, bankprof=bankProfile,dragprof=dragprof)
     altProfile = partial(alt_tracker, bankprof=bankProfile,altitudeprof=altprof)
     specs = ['k--','r','b']
-    for control,spec in zip([bankProfile],specs):                               # Just open loop
-    # for control,spec in zip([bankProfile,dragProfile],specs):                 # open, drag tracking
-    # for control,spec in zip([bankProfile,dragProfile,altProfile],specs):      # all 3
-    # for control,spec in zip([dragProfile,altProfile],specs):                  # no open loop
-    # for control,spec in zip([altProfile],['k--','r','b']):
-        output = da_sim.run(x0d,[control],StepsPerCycle=10,InputSample=sample)
+    # for control,spec in zip([dragProfile], specs):
+    for control,spec in zip([bankProfile,dragProfile],specs):
+    # for control,spec in zip([bankProfile,dragProfile,altProfile],specs):
+    # for control,spec in zip([dragProfile,altProfile],specs):
+        output = da_sim.run(x0d,[control],StepsPerCycle=10)
 
-        P0 = np.diag([500,0,0,25,.001,0])**2 # Written in terms of std dev, then squared to convert to variance
-        # P0 = np.diag([500,0,0,25,0,0])**2 # Written in terms of std dev, then squared to convert to variance
+        P0 = np.diag([500/3, 0, 0, 2.5/3, .00045, 0.0001])**2 # Written in terms of std dev, then squared to convert to variance
         if not specs.index(spec):
             # alt-vel
             plt.figure(1)
@@ -100,12 +100,12 @@ def first_order():
             Pfll = submatrix(Pf,[1,2],[1,2])
 
             Dgrad = da.gradient(xf[13],xvars)[0:6]
-            Dvar = Dgrad.T.dot(Pf).dot(Dgrad) #Dgrad[0]**2 * Pf[0,0] + Dgrad[3]**2 * Pf[3,3] + 2*Dgrad[0]*Dgrad[3]*Pf[0,3]
+            Dvar = Dgrad.T.dot(P0).dot(Dgrad) #Dgrad[0]**2 * Pf[0,0] + Dgrad[3]**2 * Pf[3,3] + 2*Dgrad[0]*Dgrad[3]*Pf[0,3]
             Pd = np.array([[.001, 0],[0, Dvar]])
 
-            draw.cov([xf[7].constant_cf,xf[3].constant_cf],cov=Pfhv,fignum=1,show=False,legtext="t={}".format(xf[0]),legend=False,linespec=spec)
-            draw.cov([xf[5].constant_cf,xf[6].constant_cf],cov=Pfll,fignum=2,show=False,legend=False,linespec=spec)
-            draw.cov([xf[0],xf[13].constant_cf],cov=Pd,fignum=3,show=False,legend=False,linespec=spec)
+            draw.cov([xf[7].constant_cf, xf[3].constant_cf], cov=Pfhv, fignum=1, show=False, legtext="t={}".format(xf[0]), legend=False, linespec=spec)
+            draw.cov([xf[5].constant_cf, xf[6].constant_cf], cov=Pfll, fignum=2, show=False, legend=False, linespec=spec)
+            draw.cov([xf[0], xf[13].constant_cf], cov=Pd, fignum=3, show=False, legend=False, linespec=spec)
 
     plt.show()
 
@@ -129,36 +129,32 @@ def drag_update():
 
     from scipy.integrate import quad
     range_est = quad(drag_inv,E0,Ef)[0]
-    print "Nominal drag profile achieves a range of {} km".format(range_est/1000)
+    print( "Nominal drag profile achieves a range of {} km".format(range_est/1000))
     range_desired = range_est + 20*1e3
     c = (-range_desired+range_est)/range_est
-    print "Linear update to c = {}".format(c)
+    print( "Linear update to c = {}".format(c))
     def new_drag_inv(E):
         return -1/((1+c)*dragprof(E))
 
     range_est_new = quad(new_drag_inv,E0,Ef)[0]
-    print "Range error from drag update = {} m".format(range_est_new-range_desired)
+    print( "Range error from drag update = {} m".format(range_est_new-range_desired))
     # cq = [0.25 + 0.5*np.sqrt(0.25-2*c),0.25 - 0.5*np.sqrt(0.25-2*c)] # Choose the one with the same sign as c, most likely...
     # cq = np.roots((1,-0.5,c/2))
     d = -range_est
     imax = 2
     poly = [1] + [stm(i,d)/stm(imax,d) for i in range(1,imax)] + [(-range_desired+range_est)/stm(imax,d)]
     cq = np.roots(poly)
-    print "Second order update to c = {}".format(cq)
+    print( "Second order update to c = {}".format(cq))
     def new_drag_inv2(E):
         return -1/((1+0.5*(c+cq[1]))*dragprof(E))
         # return -1/((1+cq[1])*dragprof(E))
 
     range_est_new = quad(new_drag_inv2,E0,Ef)[0]
-    print "Range error from 2nd order  drag update = {} m".format(range_est_new-range_desired)
+    print( "Range error from 2nd order  drag update = {} m".format(range_est_new-range_desired))
 
-    # print "Simulating with new profile..."
-    from FBL import fbl_controller
-    fbl = fbl_controller(Ef=Ef,fbl_ref=reference_sim.getFBL())
+    print( "Simulating with new profile...")
 
-    fbl.update(E0,range_desired)
-
-def stm(i,delta):
+def stm(i, delta):
     from scipy.misc import factorial
     return delta*(-1)**(i+1)*factorial(i)
 
