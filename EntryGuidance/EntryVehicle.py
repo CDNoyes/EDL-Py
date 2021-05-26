@@ -71,8 +71,8 @@ class LoDAeroEV(EntryVehicle):
         self.Cd0 = Cd0
         super().__init__(**EV_kwargs)
 
-    def aerodynamic_coefficients(self, M):
-        LoD = self.Function(M)*(1+self.CL)
+    def aerodynamic_coefficients(self, V):
+        LoD = self.Function(V)*(1+self.CL)
         Cd = self.Cd0*(1+self.CD)
         Cl = LoD * Cd
         return Cd, Cl

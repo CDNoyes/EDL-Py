@@ -110,7 +110,9 @@ class Entry(object):
 
         rho, a = self.planet.atmosphere(h*self.dist_scale)
         M = v*self.vel_scale/a
-        cD, cL = self.vehicle.aerodynamic_coefficients(M)
+        # cD, cL = self.vehicle.aerodynamic_coefficients(M)
+        cD, cL = self.vehicle.aerodynamic_coefficients(v)
+
         f = np.squeeze(0.5*rho*self.vehicle.area*v**2/m)*self.dist_scale  # vel_scale**2/acc_scale = dist_scale 
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio
@@ -362,7 +364,8 @@ class Entry(object):
         h = r - self.planet.radius
         rho, a = self.planet.atmosphere(h)
         M = v/a
-        cD, cL = self.vehicle.aerodynamic_coefficients(M)
+        # cD, cL = self.vehicle.aerodynamic_coefficients(M)
+        cD, cL = self.vehicle.aerodynamic_coefficients(v)
         f = 0.5*rho*self.vehicle.area*v**2/m
         L = f*cL*self.lift_ratio
         D = f*cD*self.drag_ratio

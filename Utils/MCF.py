@@ -107,7 +107,7 @@ def _ecdf(dataB, dataNB, name, fontsize):
     plt.legend(loc='best')
     plt.xlabel(name, fontsize=fontsize)
     plt.ylabel('CDF', fontsize=fontsize)
-
+    plt.grid(True)
 
 if __name__ == "__main__":
 
