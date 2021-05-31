@@ -26,7 +26,7 @@
 \usepackage{subcaption}  % \begin{subfigure}...\end{subfigure} within figure
 \usepackage{multirow}
 \usepackage{tabularx}
-
+%\usepackage[backend=bibtex,sorting=none]{biblatex} % CDN added
 % Uncomment the following to attempt to enforce Type 1 or TrueType 
 % fonts. ProQuest does not want the type 3 fonts used by default as
 % of Dec. 2019 - see 
@@ -67,7 +67,7 @@
 \newtheorem{example}{\textsc{Example}}[chapter]
 %%%%% CDN added commands
 \newcommand{\state}{\ensuremath{\mathbf{x}}}
-\newcommand{\xut}{\ensuremath{\mathbf{z}}}
+\newcommand{\xut}{\ensuremath{\mathbf{x}_{\mathrm{UT}}}}
 \newcommand{\xl}{\ensuremath{\mathbf{x}_{\mathrm{lon}}}}
 \newcommand{\control}{\ensuremath{\mathbf{u}}}
 \newcommand{\ur}{\ensuremath{u_{\mathrm{ref}}}}
@@ -116,6 +116,7 @@
 % Very handy to speed up compilation if you're working on a certain
 % part of your thesis. It conserves page numbers, references, etc.
 % even for non-included files.
+%\includeonly{chapter1,chapter2,chapter3,chapter4}
 %\includeonly{chapter5}
 
 \begin{document}
@@ -126,12 +127,15 @@
 % Include the different components of your thesis, in separate files.
 % Using \include allows you to set \includeonly above.
 \include{chapter1}
-\include{chapter2}
 \include{chapter3}
+\include{chapter2}
 \include{chapter4}
 \include{chapter5}
 \include{chapter6}
 \include{chapter7}
+\include{chapterHeavy}
+\include{chapterSRP}
+\include{chapterSRPResults}
 \include{chapter8}
 % ... and so on
 
@@ -142,7 +146,7 @@
 
 % "References should be formatted in style most common in discipline",
 % abbrv is only a suggestion.
-\bibliographystyle{abbrv}
+\bibliographystyle{unsrt}
 \bibliography{bib}
 
 % The Thesis Manual says not to include appendix figures and tables in

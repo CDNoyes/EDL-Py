@@ -12,14 +12,24 @@ A key issue in solving the robust optimal guidance problem is computing the expe
 %The UT is preferable to linear covariance propagation in our application because the sigma points, described in a following subsection, are propagated through the full nonlinear, saturated dynamics, and are thus able to capture their effects on the distribution more accurately than linearization.
 
 \subsection{Linear Covariance}
-In the linear covariance methodology, the entry dynamics are linearized around a nominal state-control trajectory, and the mean trajectory is assumed to be equal to the nominal trajectory, i.e., $ \E{\state(v,\param)} \approx \state(v,\mathbf{0}) $. Compared with Eq.\eqref{Eq:TaylorExp}, we see this neglects a term related to the product of the covariance matrix and the trajectory curvature. 
+In the linear covariance methodology, the entry dynamics are linearized around a nominal state-control trajectory, and the mean trajectory is assumed to be equal to the nominal trajectory, i.e., $ \E{\state(v,\param)} \approx \state(v,\mathbf{0}) $. Compared with Eq.\eqref{Eq:TaylorExp}, we see this neglects a term related to the product of the covariance matrix and the trajectory curvature. Based on our definition of $\param$, let 
+\begin{align}
+\y &= \begin{bmatrix}
+		\bar{\state} \\ 
+		\zero
+	 \end{bmatrix} + \param\\
+\y' &= \begin{bmatrix}
+	\dynamics_{v}(v,\state,u,\param) \\ 
+	\zero
+\end{bmatrix} = \dynamics_{\y}(v,\y,u)
+\end{align}
 The covariance matrix is propagated by integrating the Lyapunov differential equation
 \begin{align}
-	\dot{\cov}_{\state}(t) &= A(v)\cov_{\state}(v) + \cov_{\state}(v)A^T(v) \\
-	A(v) &= \frac{\partial \dynamics_v}{\partial\state}\bigg\rvert_{x(v,\mathbf{0})}
-\end{align}
-subject to the initial condition $\cov_{\state}(v_0) = \cov_{\state_0}$. Note that the linearization around the nominal trajectory uses dynamics with respect to velocity, Eq.~\eqref{Eq:DynamicsWRTVel}. 
-%TODO: clraify the notation, parameters are include in the state vector and thus the derivatives as well. 
+	\cov'_{\y}(v) &= A(v)\cov_{\y}(v) + \cov_{\y}(v)A^T(v) \\
+	A(v) &= \frac{\partial \dynamics_{\y}}{\partial\y} + 
+	\frac{\partial \dynamics_{\y}}{\partial u}\frac{\partial u}{\partial\y} %\bigg\rvert_{\state(v,\mathbf{0})}
+	\end{align}
+subject to the initial condition $\cov_{\y}(v_0) = \cov_{\param}$. The partial derivatives are evaluated along the nominal trajectory. Note that the linearization around the nominal trajectory is performed using the dynamics written with respect to velocity given in Eq.~\eqref{Eq:DynamicsWRTVel}. 
 
 \subsection{Unscented Transform}\label{Sub:UT}
 The unscented transform is a method to approximate the first two moments of a nonlinear transformation of a probability distribution. Consider a scalar quantity $q\in\mathbb{R}$ resulting from a nonlinear transformation $q = F(\y)$ of a random vector $\y\in\mathbb{R}^n$ with known mean $ \bar{\y} $ and covariance $ \cov_{\y} $. A set of $2n+1$ sigma points and associated weights are computed 
@@ -39,22 +49,22 @@ and finally, the mean and variance are estimated using the weights and transform
 	\bar{q} &\approx \sum_{i=0}^{2n}w_iq_i\\
 	\sigma_{q} &\approx \left(\sum_{i=0}^{2n}w_i\left(q_i - \bar{q}\right)^2\right)^{\frac{1}{2}}
 \end{align*}
-In our application, $\y=\param$, the nonlinear transformation is the integration of the longitudinal entry dynamics to the terminal velocity, and the quantities of interest are downrange distance and altitude. For a given covariance matrix and a chosen value of $\alpha$, the ensemble of sigma points may be collected into a single extended vector, and the robust guidance problem is now a deterministic problem in the extended state space.
+In our application, $\y=\param$, the nonlinear transformation is the integration of the longitudinal entry dynamics to the terminal velocity, and the quantities of interest are downrange distance and altitude. For a given covariance matrix and a chosen value of $\alpha$, the ensemble of sigma points may be collected into a single extended vector,
 \begin{align}
-	X = \begin{pmatrix}
+	\xut = \begin{pmatrix}
 	\state^{(0)}\\
 	\vdots\\
 	\state^{(2n)}
 	\end{pmatrix}
 \end{align}
+and the ROGP is now a deterministic problem in the extended state space.
 When applying the unscented transform, the scaling parameter $\alpha$ is important in precisely estimating the statistics. For any value of $\alpha$, the sigma point distribution has the same mean and covariance as the initial distribution. Increasing the value of $\alpha$ places the sigma points $\y_i$ further from the nominal sigma point $\y_0$ and reduces their weight. Using a small value of $\alpha$ results in sigma points with only small deviations from the nominal, and for the entry guidance problem in this paper, the effects of the controller and saturation nonlinearity will not be accurately quantified. In our numerical studies, it appears that no single value of $\alpha$ minimizes estimation errors for all control profiles and all quantities of interest. However, it is important to recall that estimating statistics is not the purpose of the proposed trajectory optimization. So long as the reference trajectories designed using the UT confer benefits in Monte Carlo simulation, the UT statistics are sufficiently accurate, as will be demonstrated by the results of the numerical assessment. 
 
 \subsection{Linear Covariance vs Unscented Transform Example}\label{Subsec:UQExample}
 In this subsection we present a numerical example demonstrating the shortcoming of linear covariance propagation for our application to closed-loop entry guidance.
-We simulate the performance of an MSL class entry vehicle using the feedback control, Eq.~\eqref{Eq:Control}. The example considers a single, non-optimized reference control and trajectory, and two sets of static feedback gains, $K_1=[0,0,0]^T$ and $K_2=[0.0725, -0.025, -0.004]^T$. $K_1$ corresponds to the open-loop case. The ballistic coefficient at the initial velocity is $\beta=120\,\mathrm{kg/m}^3$ and $L/D = 0.24$. The reference control is a linear-in-velocity ramp from 0.35 to 1. Additional details such as initial state and covariance are given in Chapter~\ref{Ch:AssessmentConditions}.
-%TODO: finish giving the problem data,  uncertainties,
+We simulate the performance of an MSL class entry vehicle using the feedback control law defined by Eq.~\eqref{Eq:Control}. The example considers a single, non-optimized reference control and trajectory, and two sets of static feedback gains, $K_1=[0,0,0]^T$ and $K_2=[0.0725, -0.025, -0.004]^T$. $K_1$ corresponds to the open-loop case. The ballistic coefficient at the initial velocity is $\beta=120\,\mathrm{kg/m}^3$ and $L/D = 0.24$. The reference control is a linear-in-velocity ramp from 0.35 to 1. Additional details such as mean initial state and state covariance are given in Chapter~\ref{Ch:AssessmentConditions}.
 
-The terminal statistics are computed with three different UQ methods: linear covariance propagation (LC), unscented transform (UT), and Monte Carlo (MC). While the MC statistics are themselves estimates of the true mean and variance, accurate estimates can be by using a sufficiently large sample size. Thus they are the values against which statistics computed by LC and UT are compared. The UT scaling parameter $\alpha=15$ is used; sensitivity to this parameter is discussed below. Table~\ref{Table:UQCompareOpenLoop} presents the terminal statistics for the results using $K_1$; in this open-loop problem both LC and UT perform well. LC underestimates mean altitude by 1.2 km and altitude standard deviation by 200 m, underestimates mean range by 1 km, and overestimates range standard deviation by 1.1 km. In contrast, the UT overestimates the mean altitude by 160 m, the altitude standard deviation by 65 m, underestimates mean range by 800 m, and overestimates range standard deviation by 180 m. While the UT estimates a better in each variable, the LC estimates could be considered sufficient for the purposes of optimization. 
+The terminal statistics are computed with three different UQ methods: linear covariance propagation (LC), unscented transform (UT), and Monte Carlo (MC). While the MC statistics are themselves estimates of the true mean and variance, accurate estimates can be by using a sufficiently large sample size. Thus they are the values against which statistics computed by LC and UT are compared. The UT scaling parameter $\alpha=15$ is used; sensitivity to this parameter is discussed below. Table~\ref{Table:UQCompareOpenLoop} presents the terminal statistics for the results using $K_1$; in this open-loop problem both LC and UT perform well. LC underestimates mean altitude by 1.2 km and altitude standard deviation by 200 m, underestimates mean range by 1 km, and overestimates range standard deviation by 1.1 km. In contrast, the UT overestimates the mean altitude by 160 m, the altitude standard deviation by 65 m, underestimates mean range by 800 m, and overestimates range standard deviation by 180 m. While the UT estimates are better in each variable, the LC estimates could be considered sufficient for the purposes of optimization. 
 
 \begin{table}[h!]
 	\centering
@@ -69,8 +79,9 @@ The terminal statistics are computed with three different UQ methods: linear cov
 	\label{Table:UQCompareClosedLoop}
 \end{table}
 
-Table~\ref{Table:UQCompareClosedLoop} presents the terminal statistics for the results using $K_2$. Linear propagation is listed twice; the first case linearizes the dynamics including the saturated controller defined in Eq.~\eqref{Eq:Control} while the second linearizes the controller without the saturation nonlinearity. In essence, the latter choice assumes the feedback control is not subject to the control limits, and as a result overpredicts the efficacy of the controller, as seen by the large underpredictions of the standard deviation of both altitude and range. Closed-loop robust optimal control was explored using linear sensitivity propagation without considering saturation in \cite{MarsEntryDesensitized}.
-Both linearizations once again underpredict the mean altitude substantially. The UT overpredicts the mean range by 900 m and otherwise is once again accurate to within a few hundred meters or less for the remaining statistics. Note that this control profile has significant margin throughout the trajectory except close to the final velocity; in this case control saturation is likely not as significant as for reference control profiles that spend more time at or near the control limits. The UT is expected to produce greater benefits over LC in such scenarios.
+Table~\ref{Table:UQCompareClosedLoop} presents the terminal statistics for the results using $K_2$. Linear propagation is listed twice; the first case linearizes the dynamics including the saturated control law defined in Eq.~\eqref{Eq:Control}, while the second linearizes the control law without the saturation nonlinearity. In essence, the latter choice assumes the feedback control is not subject to the control limits, and as a result overpredicts the efficacy of the controller, as seen by the large underpredictions of the standard deviation of both altitude and range. 
+%Closed-loop robust optimal control was explored using linear sensitivity propagation without considering saturation in \cite{MarsEntryDesensitized}.
+Like the open-loop results, both linearizations once again underpredict the mean altitude substantially. The UT overpredicts the mean range by 900 m and otherwise is once again accurate to within a few hundred meters or less for the remaining statistics. Note that this control profile has significant margin throughout the trajectory except close to the final velocity; in this case control saturation is likely not as significant as for reference control profiles that spend more time at or near the control limits. The UT is expected to produce greater benefits over LC in such scenarios.
 
 \begin{figure}[h!]
 	\centering
@@ -80,25 +91,22 @@ Both linearizations once again underpredict the mean altitude substantially. The
 \end{figure}
 
 Figure~\ref{Fig:AlphaSensitivity} shows how the UT-estimated means and standard deviations vary with different choices of the scaling parameter. Note that the mean range has been shifted down 300 km to fit it in the same figure. The altitude statistics are quite stable and vary only slightly with $\alpha$, while the effect is much stronger for range. This is a general phenomenon we have observed across numerous control profiles; as a result we recommend selection of $\alpha$ based on range considerations. 
-Both the mean range and its standard deviation vary monotonically with $\alpha$. In this example, the mean range error is minimized for $\alpha = 20$, while $\sigma_s$ is approximately optimized for $\alpha = 13$. Our choice $\alpha=15$ strikes a balance between these two. 
+Both the mean range and its standard deviation vary monotonically with $\alpha$. In this example, the estimation error in $\bar{s}$ is minimized for $\alpha = 20$, while $\sigma_s$ is approximately optimized for $\alpha = 13$. Our choice $\alpha=15$ strikes a balance between these two. 
 While the tuning parameter $\alpha$ is important, we note that in this example the UT estimates of $\bar{h},\,\sigma_h$, and $\bar{s}$ are more accurate than either LC method for all of $\alpha$ values considered, and $\sigma_s$ is better for several values.
 This example is meant to motivate our choice of the UT over LC; more detailed examples utilizing optimal solutions are presented in Chapter~\ref{Ch:NumericalAssessment}. 
 %TODO: Show control profile, trajectory plots with MC samples, UT points? Or maybe just estimated 3-sigma bounds but might be too messy with three on there Also show a table of the terminal statistics. 
 
-%Sensitivity to $\alpha$  
-%Talk about the (weak) dependence on alpha, such that we can choose a single decent value and use it for all of the solutions? 
-
 \section{Differential Dynamic Programming}\label{Sec:DDP}
-We begin this section by reviewing the control-limited differential dynamic programming method, proposed in Ref.~\cite{DDP_ControlLimited}, that will be used as the basis for solving the robust optimal guidance problem. The following subsections discuss modifications to the algorithm and the problem formulation that will finally enable the solution of the problem. In the first subsection we present a extension of the algorithm that allows for the joint optimization of static design parameters. The following subsection proposes a simplification that vastly reduces computational time and memory requirements at the expense of lower convergence rate. This simplification is instrumental in solving the large-scale problem. Next, we discuss a reformulation of the performance objective into a Lagrange (or running) cost instead of a Mayer (or terminal) cost. Finally, we present a differentiable approximation to the saturation nonlinearity in the controller, Eq.~\eqref{Eq:Control}. Since DDP requires derivatives of the dynamic equations with respect to the reference control, state variables, and potentially the feedback gains, replacing the non-differentiable saturation function is essential to the numerical solution.
+Differential Dynamic Programming (DDP) is a shooting method originally devised to solve unconstrained nonlinear optimal control problems that has since seen numerous extensions, including to constrained problems \cite{DDP_ControlLimited,HDDP1,HDDP2,DDP_NonlinearConstraints,DDP_InteriorPoint}, and stochastic problems \cite{iLQG, DDP_Stochastic, ozaki_UT,ozaki2020tube}. DDP iteratively solves for a locally optimal trajectory and control starting from a nominal trajectory and control.
 
-DDP is a trajectory optimization method that iteratively solves for a locally optimal trajectory and control starting from a nominal trajectory and control.
-%TODO: Talk more about DDP? 
+In this section by reviewing the control-limited DDP method, proposed in Ref.~\cite{DDP_ControlLimited}, that will be used as the basis for solving the robust optimal guidance problem. The following subsections discuss modifications to the algorithm and the problem formulation that will finally enable the solution of the problem. In the first subsection we present a extension of the algorithm that allows for the joint optimization of static design parameters. The following subsection proposes a simplification that vastly reduces computational time and memory requirements at the expense of lower convergence rate. This simplification is instrumental in solving the large-scale problem. Next, we discuss a reformulation of the performance objective into a Lagrange (or running) cost instead of a Mayer (or terminal) cost. Finally, we present a differentiable approximation to the saturation nonlinearity in the controller, Eq.~\eqref{Eq:Control}. Since DDP requires derivatives of the dynamic equations with respect to the reference control, state variables, and potentially the feedback gains, replacing the non-differentiable saturation function is essential to the numerical solution.
+
 This particular DDP algorithm is formulated in discrete time, so the continuous time dynamics must be discretized. In our numerical examples, Euler integration is used:
 \begin{align}
-	\state_{i+1} = \mathbf{f}(v, \state_i,\control_i) = \state_i + \state_i'\Delta v \label{Eq:DiscreteDynamics}
+	\state_{i+1} = \mathbf{F}(v, \state_i,\control_i) = \state_i + \state_i'\Delta v \label{Eq:DiscreteDynamics}
 \end{align}
 A trajectory $\{\State,\Control\}$ is a sequence of controls $ \Control=\{\control_0,\control_1,...,\control_{N-1}\} $ and corresponding states $\State=\{\state_0,\state_1,...,\state_N\}$ determined by integrating \eqref{Eq:DiscreteDynamics} from $\state_0$.
-Although the optimal control objective as posed considers only a terminal cost, in this section we consider a generic cost function $J$ consisting of a sum of running costs $l$ and a terminal cost $l_N$:
+Although the ROBG as posed in Eq.~\eqref{Eq:Objective} considers only a terminal cost, in this section we consider a generic cost function $J$ consisting of a sum of running costs $l$ and a terminal cost $l_N$:
 \begin{align}
 	J(\state_0,\Control) = \sum_{i=0}^{N-1}l(\state_i,\control_i) + l_N(\state_N)
 \end{align}
@@ -178,15 +186,14 @@ where $ \epsilon_J $ and $\epsilon_{tol}$ are user-defined threshold values.
 % See Ref.~\cite{DDP_ControlLimited} for more details about the line search and regularization procedures. 
  
 \subsection{Optimal Design Parameters}\label{Sec:DesignOptimization}
-Previously, we considered the state vector to be a function of the independent variable and the uncertainty vector $\param$. However, we may wish to treat the state as a function of some additional constant design parameters, $\design$, $\state(v, \param, \design)$. The design parameters are different from the uncertain parameters because they do not increase the number of sigma points required. Additionally, in our formulation, the design parameters are appended only to the extended vector of all sigma points. Thus, given state dimension $n_x$, uncertainty dimension $n_p$, and design parameter dimension $n_d$, the total number of states is $n_x(2n_p+1) + n_d$. We define an augmented state vector $\state_a = [\xut, \design]^T$ 
+Previously, we considered the state vector to be a function of the independent variable and the uncertainty vector $\param$. However, we may wish to treat the state as a function of some additional constant design parameters, $\design$, $\state(v, \param, \design)$. The design parameters are different from the uncertain parameters because they do not increase the number of sigma points required. Additionally, in our formulation, the design parameters are appended only to the extended vector of all sigma points. Thus, given uncertainty dimension $n_p$, and design parameter dimension $n_d$, the total number of states is $n_p(2n_p+1) + n_d$. We define an augmented state vector $\state_a = [\xut, \design]^T$ 
 and augment the entry dynamics with trivial dynamics
 \begin{align}
-	\state_a' = \left[
-	\begin{matrix}
+	\state_a' = 
+	\begin{bmatrix}
 		\xut' \\
 		\mathbf{0}
-	\end{matrix}
-	\right]
+	\end{bmatrix}
 \end{align}
 DDP is now applied to the augmented state vector with an additional modification that we will explain. In \cite{DDP:ContinuousTerminalConstraints}, Lagrange multipliers are used to enforce terminal constraints in a continuous-time DDP formulation. At the end of each backward pass, the Lagrange multipliers are updated to reduce the cost function. Although the setting was quite different, we notice that the form of the update to the Lagrange multipliers actually applies to any constant parameter and is the inspiration for our proposed modification to the discrete-time algorithm.
 
@@ -218,21 +225,21 @@ In practice, the update must be treated like the control updates by using a line
 %This can be used to jointly optimize the feedback gains, entry flight path angle and more. This is motivated by the ``overfitting" problem. 
 
 \subsection{Second Order Dynamics Derivatives}\label{Sec:DDP_Simplification}
-The second derivatives $\mathbf{f}_{\state\state},\, \mathbf{f}_{\control\state}$ in Eqs.~\eqref{eq_hessian1})~and~\eqref{eq_hessian2} are $n\times n\times n$ and $m\times n\times n$ tensors, respectively, that must either be stored at $N$ timesteps, or else recomputed in the event the backward pass must be repeated with increased regularization. For large $n$, both computing and storing these quantities is problematic. Eliminating these terms entirely, as is done in the iterative Linear Quadratic Gaussian method \cite{iLQG}, leads to poor performance for the problem under consideration for some values of $(w_h,w_s)$ and some guesses at the optimal control. In particular, the first-order algorithm has a slower convergence rate and a noticeably smaller radius of convergence, and different guesses for the initial control sequence often lead to different local minima. In contrast, the full second-order DDP algorithm consistently converges to a single minimum from most initial guesses. We propose a compromise in which only the $n\times m \times m$ tensor $f_{\control\control}$ is retained in the above equations. Numerical experiments suggest this is sufficient to avoid poor solutions, at the expense of a slower convergence rate than the full algorithm with all second-order terms included. However, in the situation at hand, in which the number of controls $m$ is fixed and small ($ m=1 $), and the augmented state dimension, which depends on the number of uncertainties under consideration, is large ($n=78$ for $\param\in\mathbb{R}^6$), this modification proves to be enabling for $N\geq 100$. A limited-memory version of the Quasi-Newton approximations to these terms proposed in \cite{QNDDP} may also be a good choice to obtain superlinear convergence properties of the approximated second-order algorithm while reducing the memory required. 
+The second derivatives $\mathbf{f}_{\state\state},\, \mathbf{f}_{\control\state}$ in Eqs.~\eqref{eq_hessian1})~and~\eqref{eq_hessian2} are $n\times n\times n$ and $m\times n\times n$ tensors, respectively, that must either be stored at $N$ timesteps, or else recomputed in the event the backward pass must be repeated with increased regularization. For large $n$, both computing and storing these quantities is problematic. Eliminating these terms entirely, as is done in the iterative Linear Quadratic Gaussian method \cite{iLQG}, leads to poor performance for the problem under consideration for some values of $(w_h,w_s)$ and some guesses at the optimal control. In particular, the first-order algorithm has a slower convergence rate and a smaller radius of convergence, and different guesses for the initial control sequence often lead to different local minima. In contrast, the full second-order DDP algorithm consistently converges to a single minimum from most initial guesses. We propose a compromise in which only the $n\times m \times m$ tensor $f_{\control\control}$ is retained in the above equations. Numerical experiments suggest this is sufficient to avoid poor solutions, at the expense of a slower convergence rate than the full algorithm with all second-order terms included. However, in the situation at hand, in which the number of controls $m$ is fixed and small ($ m=1 $), and the augmented state dimension, which depends on the number of uncertainties under consideration, is large ($n=78$ for $\param\in\mathbb{R}^6$), this modification proves to be enabling for $N\geq 100$. A limited-memory version of the Quasi-Newton approximations to these terms proposed in \cite{QNDDP} may also be a good choice to obtain superlinear convergence properties of the approximated second-order algorithm while reducing the memory required. 
 %(This reduces complexity from cubic in $n$ to linear)
 %TODO: maybe say that empiraclly the convergence is barely slower when using the reduced method
 
-\subsection{Objective Reformulation}
+\subsection{Objective Functional Reformulation}
 In order for DDP to be applied to our robust optimal control problem, it is essential to reformulate some or all of the objective terms as running costs rather than terminal costs. This is because the terminal formulation results in singularity of the Hessian of the pseudo-Hamiltonian with respect to the control, and this quantity must be invertible for the algorithm to proceed. 
 %In practice, one could also add a small control regularization term to the objective, but experience indicates that reformulating the mean altitude objective is preferable. 
 The reformulation is based on the relationship 
 \begin{align}
-	J(\state(v_f)) = J(\state_0) + \int_{v_0}^{v_f}J'\mathrm{d}v \label{Eq:GenericCostRate}
+J(\state(v_f)) = J(\state(v_0)) + \int_{v_0}^{v_f}\left(\frac{\partial J}{\partial v} + J'\right)\mathrm{d}v \label{Eq:GenericCostRate}
 \end{align}
-For a fixed initial state, the term $J(\state_0)$ is constant and cannot be affected by the control profile. As such, 
+For a fixed initial state $\state(v_0)=\state_0$, the term $J(\state_0)$ is constant and cannot be affected by the control profile. For our particular $J$ in Eq.~\eqref{Eq:Objective}, $\frac{\partial J}{\partial v} = 0$. As such, 
 \begin{align}
 	u^* &= \arg\min \,J(\state(v_f)) \\
-	&= \arg\min\int_{v_0}^{v_f}J'\mathrm{d}v
+	&= \arg\min\int_{v_0}^{v_f}J'\,\mathrm{d}v
 \end{align}
 Thus, we need an expression for $J'$ for the guidance objective defined in Eq.~\eqref{Eq:Objective}. Due to linearity of the expectation operator, we have the following relationships for the rate of change of the first two moments of a scalar random variable
 %\begin{align}
@@ -255,7 +262,7 @@ the reformulated discrete-time running cost
 \begin{align}
 	%J = \int_{v_0}^{v_f}-\E{h'} +  2w_h(\E{hh'}-\E{h}\E{h'}) + 2w_s(\E{ss'}-\E{s}\E{s'})\mathrm{d}v \\
 	%J = \sum_{i=0}^{N-1} \left[-\E{h'} +  2w_h(\E{hh'}-\E{h}\E{h'}) + 2w_s(\E{ss'}-\E{s}\E{s'})\right]\delta v 
-	l(\state,\control) = \left(-\E{h'} +  \frac{w_h}{\sigma_h}(\E{hh'}-\E{h}\E{h'}) + \frac{w_s}{\sigma_s}(\E{ss'}-\E{s}\E{s'})\right)\Delta v
+	l(\state,\control) = \left(-\E{h'} +  \frac{w_h}{\sigma_h}(\E{hh'}-\E{h}\E{h'}) + \frac{w_s}{\sigma_s}(\E{ss'}-\E{s}\E{s'})\right)\Delta v\label{Eq:ObjectiveReform}
 \end{align}
 While reformulating the mean altitude objective is essential to solving the problem, especially when $w_s=w_h=0$, reformulating the standard deviation terms is not. However, in numerical experiments we found that while both formulations result in the same solution, using running costs for the standard deviations allows DDP to converge in noticeably fewer iteration. Running costs are used in the results in this dissertation.
 
@@ -273,14 +280,13 @@ where $M>0$ is a tuning parameter. Larger values of $M$ reduce approximation err
 \end{figure}
 
 
-
-%\section{UT-Approximated Robust Guidance Problem}
-%Let \xut = 
+%\section{UT-Approximated Robust Optimal Guidance Problem}
+%In summary, after reformulation and discretization, the UT-ROGP is 
 %\begin{align}
-%	&\min J = -\bar{h}(v_f) + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \nonumber\\
-%	&\quad\quad\qquad\mathrm{subject\, to }\nonumber \\
-%	&\dot{\xl}(v,\param) = \dynamics_v(v, \xl(v,\param), u(v), \param),\quad
-%	\xl(v_0,\param) = \state_0(\param) \nonumber\\
+%	&\min \mathrm{Eq.} \eqref{Eq:ObjectiveReform} \nonumber\\
+%	&\mathrm{subject\, to }\nonumber \\
+%	&\xut'(i+1) = \mathbf{F}(v_i, \state_i,\control_i)(v, \xut, u_i),\quad
+%	\xut(0) =  \label{Eq:ROGP-UT}\\
 %	&\param\sim \normal(\mathbf{0},\cov_{\param}) \nonumber\\
 %	&0 \le \ur(v) \le 1 \quad \forall\,v\in [v_0, v_f] \nonumber
 %\end{align}

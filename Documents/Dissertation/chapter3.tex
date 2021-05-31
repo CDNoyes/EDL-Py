@@ -1,67 +1,46 @@
-\chapter{Entry Guidance Concepts}
+\chapter{Mars Entry Phase Guidance Requirements}\label{Ch:EGConcepts}
 % High level ideas, feedback concepts. Target conditions, current missions vs future. PHASES - prebank, phase 2 (range control),phase 3 heading alignment 
-
-\section{Entry Terminal Point Controller}
-The state-of-the-practice for Mars entry guidance, used on MSL and Mars 2020, is a modified version of the Apollo command module entry guidance \cite{MSL_EDL2} called the entry terminal point controller (ETPC). 
-The three phases of the ETPC are prebank, range control, and heading alignment. In the prebank phase, there is no guidance, but the vehicle is rotated to the expected initial bank angle for the start of the range control phase.
-The range control guidance begins when the sensed drag deceleration exceeds a threshold value, and consists of longitudinal guidance and lateral guidance. Longitudinal guidance modulates the bank angle magnitude to control the range flown, and reduce range dispersions at parachute deployment. Lateral guidance operates concurrently with longitudinal guidance during range control to command bank reversals when a measure of the crossrange to the target exceeds the deadband threshold, which is a quadratic function of velocity. At a specified velocity, the guidance switches from range control to heading alignment, during which the bank angle is commanded to reduce the crossrange error. During heading alignment, the bank angle magnitude is restricted to $30^{\circ}$. This ensures that most of the lift vector is opposite gravity, which results in increased parachute deploy altitude.
-
-For MSL, the entry guidance requirements were 
-
-As its name implies, the purpose of the longitudinal range control is to reduce range errors. Lateral guidance indirectly manages crossrange error during range control, while heading alignment reduces crossrange errors until the sequence leading to parachute deploy is initiated. Thus in the design for MSL, achieving sufficient terminal altitude is accomplished primarily by the choice of the reference trajectory, and numerical simulations were performed to show the range control guidance did not result in lower parachute deploy altitude. 
-
-%The ETPC, as a whole, met the requirements. The components of the approach include the reference trajectory, which fully determines the range control gains, the overcontrol gain operating on range errors, the parameters defining the lateral deadband controlling reversals, and the heading alignment gain. 
-%Reversals 
- 
-%The longitudinal range control guidance uses linear gains computed by the adjoint equations to find a neighboring optimal path that terminates at the same range as the reference trajectory. 
-
-In this dissertation, we propose an alternative to the longitudinal guidance operating during the range control phase. However, because our alternative guidance does not focus exclusively on range, we prefer to refer to the phases by their ordering: first phase is the unguided prebank phase, second phase guidance for MSL and Mars 2020 was range control guidance, and third phase guidance was heading alignment for MSL and Mars 2020, and alternative third phase guidance has been proposed. 
-
-%while the MSL guidance achieves the stated goals (landing footprint, deployment within safe parachute deployment conditions, sufficient timeline)
-
-\section{Entry Guidance Review}
-While the ETPC represents the current guidance approach, many alternative entry guidance algorithms have been proposed. There are many ways that algorithms can be characterized and categorized. One popular delineation is between methods that utilize a pre-planned reference trajectory, and those that do not. In the first category are explicit reference tracking approaches in which a feedback law attempts to keep the vehicle state close to the reference state. Many nonlinear control techniques, such as nonlinear model predictive control~\cite{JoelController} and sliding mode control, have been applied to reference tracking guidance. In the latter category are computational approaches, including predictor-corrector guidance~\cite{EntryPredictCorrect}, and convex optimization~\cite{MaxCrossrangeConvexLu,ConvexEntryGuidance}. These methods have higher computational complexity and are highly model dependent.
-
-The advantages of reference-based solutions include designing the reference trajectory before flight, allowing for intensive computations not suitable for in-flight operations. Reference trajectory-based approaches also have some degree of model independence~\cite{joel_dissertation}.
-
-Many entry guidance algorithms blur the line between these approaches. For instance, the ETPC does make use of a reference trajectory, but not does track it directly. Instead, the reference trajectory is used to determine sensitivities, called influence coefficients, that allow the guidance to steer the vehicle along a neighboring path that ends at the same range at a fixed velocity. Because the ETPC makes a prediction of the terminal range and corrects based on the predicted error, it is sometimes called an analytical predictor-corrector. 
-
-%Along the same (blurred) lines, methods that replan a reference trajectory onboard
-\section{Entry Guidance Problem}
+Figure~\ref{Fig:M2020Timeline} depicts the EDL timeline for the Mars 2020 mission. The entry phase begins when the vehicle enters the atmosphere at 125 km altitude, and ends when the sequence leading to parachute deployment is commanded. 
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.95\textwidth]{Images/Mars2020Timeline}
+	\caption{Entry Descent and Landing timeline for Mars 2020, taken from~\cite{M2020_EDL}.}
+	\label{Fig:M2020Timeline}
+\end{figure}
 %(landing footprint, deployment within safe parachute deployment conditions, sufficient timeline)
-As the discussion of MSL highlighted, there are several requirements that entry guidance must be able to meet. 
-The vehicle must be delivered to safe parachute deployment conditions, generally given as acceptable ranges of dynamic pressure and Mach number, and the deployment must occur high enough to provide timeline margin for terminal descent. The parachute deploy range dispersion limit is flowed back from the landing footprint requirement. MSL determined that the entry phase had to be terminated within 10 km of the parachute deploy target to achieve the desired touchdown ellipse requirement of 25 x 20 km. 
-
+As the discussion of MSL in the introduction highlighted, there are several requirements that entry guidance must meet. 
+The vehicle must be delivered to safe parachute deployment conditions, generally given as acceptable ranges of dynamic pressure and Mach number, and the deployment must occur high enough to provide timeline margin for terminal descent. The parachute deploy range dispersion limit is flowed back from the landing footprint requirement. MSL determined that the entry phase had to be terminated within 10 km of the parachute deploy target to achieve the desired touchdown ellipse requirement of 25 x 20 km~\cite{MSL_EDL2}. Mars 2020 had the same touchdown requirement~\cite{M2020_EDL}.
 Thus, broadly speaking, the goals are to achieve high terminal altitude and accurate terminal range. 
 %Constraints - g-load, heating (handled through selection of mean FPA), and parachute. How are we handling chute? Velocity implies, to an extent, certain mach range. 
 
-\subsection{Entry Phase Termination}
+\section{Entry Phase Termination}\label{Subsec:EntryTermination}
 %Termination of the entry phase
-Generally speaking, the entry phase of Mars EDL terminates when the sequence leading to parachute deployment begins. For MSL, this sequence was the vehicle reached a fixed velocity \cite{MSL_EDL2}. Mars 2020 instead at a fixed downrange distance \cite{TriggerComparison2020}. Future missions, especially those intending to land without the use of a parachute, may consider a different function of the vehicle state \cite{LuAdaptiveEDL,NoyesSRP}. 
-We consider the entry guidance problem is to balance the vertical lift of the vehicle to steer it to the target location at the terminal velocity, and with sufficient altitude for subsequent landing operations. 
+Generally speaking, the entry phase of Mars EDL terminates when the sequence leading to parachute deployment begins. For MSL, this sequence was triggered when the onboard estimated vehicle velocity reached a specified value \cite{MSL_EDL2}. Mars 2020 instead triggered at a fixed downrange distance \cite{TriggerComparison2020}. Future missions, especially those intending to land without the use of a parachute, may consider a different function of the vehicle state \cite{LuAdaptiveEDL,NoyesSRP}. The choice of trigger has a strong impact on the terminal distribution. Naturally, triggering based on the onboard estimated velocity reduces the velocity spread down to approximately the spread in velocity knowledge error. Similarly, a range trigger will naturally minimize the range variations at the trigger point, but will result in larger velocity variations (though the increased to the spread in Mach number is not as large due to wind correlations~\cite{TriggerComparison2020}). We remark that designing entry guidance to reduce range errors is not a moot point in the presence of a range trigger. Large errors in range will turn into large variations in the velocity at which the target range is reached, resulting in Mach variations that may exceed parachute qualification limits.
+Regardless of the trigger, the vehicle must meet parachute deployment constraints. Given models of the atmospheric density and local speed of sound on Mars, bounds on the acceptable dynamic pressure and Mach number can be converted into a feasible set in altitude-velocity space. See Fig~\ref{Fig:ParachuteBox} for an example using the Mars 2020 values~\cite{M2020_EDL}, including an additional constraint that the deploy altitude is above 6 km.  
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.75\textwidth]{Images/ParachuteBox}
+	\caption{Parachute deployment conditions on Mach number and dynamic pressure in altitude-velocity space.}
+	\label{Fig:ParachuteBox}
+\end{figure}
 
-Noting that despite using different triggers to terminate the entry phase, MSL and Mars 2020 used the same design process involving parametrizing a reference control profile that terminates at a fixed velocity. Then, in simulations, the appropriate trigger is used. The choice of trigger has a strong impact on the terminal distribution. Naturally, triggering based on the onboard estimate velocity reduces the velocity spread down to approximately the spread in velocity knowledge error. Similarly, a range trigger will naturally minimize the range variations at the trigger point, but will result in larger velocity spreads (though the spread in Mach number is not as large due to wind correlations!\cite{TriggerComparison2020}). In the event of a different trigger, such as one designed to reduce the propellant consumption required to land at the target location, we assume that a similar process can used. For example, the vehicle would carry a fixed amount of propellant
-%A key assumption is that reducing the range error at chute deployment translates to a smaller landed footprint. 
+One key point is that, despite using different triggers to terminate the entry phase, MSL and Mars 2020 used the same design process involving parametrization of the reference control profile that terminates at a fixed velocity. Together, the control profile and the fixed final velocity define the downrange distance that will be used to trigger the termination of the entry phase in a range trigger design. Thus, the reference design is independent of the trigger used to terminate the entry phase. 
+% This the main result/conclusion of this chapter. 
+Throughout this dissertation it is assumed the entry phase is terminated based on velocity, using the terminal velocity $v_f=460$ associated with a parachute-based landing, corresponding approximately (because Mach also depends on altitude) to deployment at Mach 2. Like MSL and Mars 2020, the role of the longitudinal entry guidance is to command the vertical lift to steer the vehicle to the the target location at the terminal velocity and with sufficient altitude for subsequent landing operations. We will formalize these objectives, and present the remainder of the problem formulation, in Chapter~\ref{Ch:GuidanceStrategy}.
+
+%Need to say somewhere that reducing range dispersions then using a range trigger, will reduce the velocity (and thus Mach) dispersions. 
+
+%Thus, consistent with designing to an appropriate parachute deployment velocity,
+ 
+%In the event of a different trigger, such as one designed to reduce the propellant consumption required to land at the target location, we assume that a similar process can used. For example, the vehicle would carry a fixed amount of propellant which can be used to null a certain amount of velocity; any velocity under that amount is a candidate to end the entry phase. 
+
 % 
 
-Throughout this dissertation we assume the entry phase is triggered based on velocity using the terminal velocity associated with a parachute based landing, corresponding approximately (because Mach also depends on altitude) to deployment at Mach 2. 
+
 %However, this is not the only possibility. We can, for example, target the velocity at which third phase guidance, such as heading alignment \cite{MSL_EDL2} or final position alignment \cite{GuangfeiDissertation}, begins. 
 
 %Discussion of parachute conditions that we aren't modeling in this phase. The parachute conditions could be included in the assessment conditions. Discussion of parachute-free possibilities? 
 
-
-% The topic of this section is to discuss the actual entry guidance requirements and problem. Not necessarily to pose the robust OCP (?)
-
-%The robust optimal guidance problem is to determine the reference control $u_{\mathrm{ref}}$ that minimizes the cost functional
-%\begin{align}
-%	J(x,u) = -\E{h} + w_h\sigma_h + w_s\sigma_s \label{eq:cost:mayer}
-%\end{align}
-%subject to the dynamics
-%\begin{align}
-%	\dot{\state}(t,\param) = \mathbf{f}(\state(t,\param), u(t), \param)
-%\end{align}
-%with the initial conditions $\state(0,\param) = \state_0(\param)$, the terminal constraint $v(t_f,\param)=v_f$, and the control constraint $u_{\min}\le u_{\mathrm{ref}}(t)\le u_{\max}\,\forall\,t\in[0,t_f]$. Let $\Omega$ be the space of stochastic parameters with probability density function $\mu(\param)$. The expectation and standard deviations are computed with respect to the uncertain parameters, i.e.,  $\E{F(\state,\param)} = \int_{\Omega}\,F(\state,\param)\mu(\param)\,\mathrm{d}\param$ and $\sigma^2_{F(\state,\param)} = \int_{\Omega}\,\left(F(\state,\param)-\E{F(\state,\param)}\right)^2\mu(\param)\,\mathrm{d}\param$.
-%\section{}
 
 
 %%% Local Variables: ***

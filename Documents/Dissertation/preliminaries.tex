@@ -1,4 +1,4 @@
-\thesistitle{Entry Guidance for High Elevation Mars Landing via Robust Optimal Control}
+\thesistitle{Robust Optimal Entry Guidance for High Elevation Mars Landing}
 
 %"Dissertation" for PhD, "Thesis" for master's
 \documenttitle{Dissertation}
@@ -14,7 +14,7 @@
 
 % Use the full name of each committee member and full title 
 % (e.g. Professor/Associate Professor).
-\committeechair{Kenneth D. Mease}
+\committeechair{Professor Kenneth D. Mease}
 \othercommitteemembers
 {
   Professor Athanasios Sideris\\
@@ -50,13 +50,14 @@
   I would first like to thank my advisor Kenneth D. Mease, whose expertise shaped not only the course of my research, but also my entire career. 
   
   I would like to thank my fellow UCI colleagues, especially Drs. Guangfei Duan, Eric Trumbauer, and Alessandro Bombelli, for many fruitful discussions during our time together.
-%  I am also indebted to my committee members, Profs. Sideris and Georgiou, for many helpful comments and suggestions. 
   
-  I would also like to thank my colleagues at the Jet Propulsion Laboratory for their advice, and for their patience. My experience at JPL profoundly shaped the direction of this dissertation. Special thanks to Joel Benito, whose guidance and mentorship taught me so much in so little time, and whose friendship I am grateful for. I am a better engineer for having known you. 
+  I am also indebted to my committee members, Profs. Sideris and Georgiou, for their expedited review and suggestions. 
+  
+  I would also like to thank my colleagues at the Jet Propulsion Laboratory for their advice, and for their patience. My experience at JPL profoundly shaped the direction of my research culminating in this dissertation. Special thanks to Joel Benito, whose guidance and mentorship taught me so much in so little time, and whose friendship I am continually grateful for. I am a better engineer for having known you. 
   
   I gratefully acknowledge the Holmes Endowed Fellowship for it financial support. 
   
-  Finally, I am immensely grateful to my mother, whose constant support allowed me to pursue 
+  Finally, I am immensely grateful to my mother, whose constant support allowed me to pursue this degree.
   
 %  You also need to acknowledge any publishers of your previous
 %  work who have given you permission to incorporate that work
@@ -100,10 +101,25 @@
     \textbf{Master of Science in Aerospace Engineering} & \textbf{2013} \\
     \vspace{6pt}
     California Polytechnic State University & \emph{San Luis Obispo, CA} \\
-    \textbf{Bachelor of Science in Aerospace Engineering} & \textbf{2013} \\
+    \textbf{Bachelor of Science in Aerospace Engineering} & \textbf{2014} \\
     \vspace{6pt}
     California Polytechnic State University & \emph{San Luis Obispo, CA} \\
   \end{tabular*}
+
+\vspace{12pt}
+\textbf{ENGINEERING EXPERIENCE}
+
+  \begin{tabular*}{1\textwidth}{@{\extracolsep{\fill}}lr}
+    \textbf{Graduate Intern} & \textbf{2015} \\
+    \vspace{6pt}
+    Jet Propulsion Laboratory & \emph{Pasadena, California} \\
+  \end{tabular*}
+  
+  \begin{tabular*}{1\textwidth}{@{\extracolsep{\fill}}lr}
+      \textbf{Guidance and Control Engineer} & \textbf{2015-present} \\
+      \vspace{6pt}
+      Jet Propulsion Laboratory & \emph{Pasadena, California} \\
+    \end{tabular*}
 
 \vspace{12pt}
 \textbf{RESEARCH EXPERIENCE}
@@ -118,22 +134,31 @@
 \textbf{TEACHING EXPERIENCE}
 
   \begin{tabular*}{1\textwidth}{@{\extracolsep{\fill}}lr}
-    \textbf{Teaching Assistant} & \textbf{2009--2010} \\
+    \textbf{Teaching Assistant} & \textbf{2013} \\
     \vspace{6pt}
-    University name & \emph{City, State} \\
+    California Polytechnic State University & \emph{San Luis Obispo, CA} \\
   \end{tabular*}
-
+  \begin{tabular*}{1\textwidth}{@{\extracolsep{\fill}}lr}
+    \textbf{Teaching Assistant} & \textbf{2015} \\
+    \vspace{6pt}
+    University of California & \emph{Irvine, CA} \\
+  \end{tabular*}
 \pagebreak
 
-\textbf{REFEREED JOURNAL PUBLICATIONS}
+\textbf{PUBLICATIONS}
 
-  \mypubentry{Ground-breaking article}{2012}{Journal name}
+  \mypubentry{Mars Entry Guidance for High Elevation via Robust Optimal Control}{2021 (Submitted for Review)}{Journal of Spacecraft and Rockets}
 
-\vspace{12pt}
-\textbf{REFEREED CONFERENCE PUBLICATIONS}
+%\vspace{12pt}
+%\textbf{REFEREED CONFERENCE PUBLICATIONS}
 
-  \mypubentry{Awesome paper}{Jun 2011}{Conference name}
-  \mypubentry{Another awesome paper}{Aug 2012}{Conference name}
+  \mypubentry{Entry Guidance for Propellant Optimal Powered Descent on Mars}{Aug 2020}{AAS/AIAA Astrodynamics Specialist Conference}
+  \mypubentry{A Convex Optimization Approach to Mars Entry Trajectory Updating}{Aug 2018}{AAS/AIAA Astrodynamics Specialist Conference}
+  \mypubentry{High Ballistic Coefficient Mars EDL With Supersonic Retropropulsion}{Feb 2017}{AAS Guidance and Control Conference}
+  \mypubentry{Sensitivity Analysis and Uncertainty Quantification of a Mars Ascent Vehicle Concept}{Aug 2017}{ASME Verification and Validation Symposium}  
+%  \mypubentry{Hybrid propulsion Mars Ascent Vehicle concept flight performance analysis}{Sep 2017}{IEEE Aerospace Conference}
+%  \mypubentry{Mars Ascent Vehicle Model Simulation}{Aug 2016}{AIAA/AAS Astrodynamics Specialist Conference}
+
 
 }
 
@@ -142,7 +167,8 @@
 % currently does not indicate that there is any word limit for the abstract
 \thesisabstract
 {
-  The abstract goes here.
+  Mars landings at higher elevations than achieved to date are desired for scientific pursuits. The phases of atmospheric flight are entry, descent, and landing. The research reported here concerns the guidance for the entry phase. To support higher elevation landing, entry guidance must deliver the entry vehicle to the required altitude with the required horizontal accuracy at the end of the entry phase. The state-of-the-practice entry guidance cannot both raise the final altitude and achieve the required horizontal accuracy at the end of the entry phase. By formalizing the entry guidance objectives as a robust optimal control problem, we seek both to increase the final altitude and to improve the horizontal accuracy. In this dissertation, we consider only the longitudinal motion and investigate the feasibility of determining a reference trajectory that, in closed-loop reference-trajectory-based guidance, will yield the robust performance required for higher elevation landing. To address robustness, the state variables and uncertain parameters in the entry dynamics are treated as random variables using the unscented transformation to approximate their means and variances and state the performance index in terms of these statistics. Differential dynamic programming is used to solve the robust optimal control problem. Case studies of two different classes of entry vehicle demonstrate both the robust performance of the longitudinal entry guidance and the computational feasibility of the design method.
+
 }
 
 

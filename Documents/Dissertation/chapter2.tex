@@ -1,5 +1,5 @@
-\chapter{Entry Vehicle and Environment Models}
-In this chapter we present the models of the entry vehicle and Mars environment used the development and assessment of the entry guidance algorithm.
+\chapter{Entry Vehicle and Environment Models}\label{Ch:Models}
+In this chapter we present the models of the entry vehicle and Mars environment used in the development and assessment of the entry guidance algorithm.
 Vectors are denoted by boldface and are assumed to be columns. $(\cdot)^T$ denotes the transpose of a vector. 
 The trace of a square matrix is the sum of its diagonal entries and is denoted $\trace(\cdot)$.   
 %The gradient of a scalar function with respect to a vector is a row vector, i.e., $\mathbf{v}^T = \frac{\partial h(\y)}{\partial\y}$. 
@@ -9,7 +9,6 @@ The standard deviation of a scalar random variable $y$ is $\sigma_{y} \triangleq
 \section{Three Degree-of-Freedom Dynamics Model}
 The three degree-of-freedom translational dynamics for a Mars entry vehicle are defined relative to a Mars-fixed coordinate frame. In this three degree-of-freedom modeling, we have assumed that the velocity frame and the body frame are aligned, and do not consider the vehicle attitude.
 % Talk about different independent variables, reduced longitudinal state vector 
-  
 The dynamics of an entry vehicle in an atmosphere are modeled by Vinh's equations \cite{VinhDyanmics}:
 \begin{align}
 	\dot{r} &= v\sin\gamma \label{Eq:dynamics:radius:time}\\
@@ -17,7 +16,7 @@ The dynamics of an entry vehicle in an atmosphere are modeled by Vinh's equation
 	\dot{\phi} &= \frac{v}{r}\cos\gamma\sin\psi \\
 	\dot{v} &= -D - g\sin\gamma \\ 
 	\dot{\gamma} &= \frac{L}{v}\cos\sigma + \left(\frac{v}{r}-\frac{g}{v}\right)\cos\gamma + C_{\gamma}\\
-	\dot{\psi} &= -\frac{L}{v\cos\gamma}\sin\sigma - \frac{v}{r}\cos\gamma\cos\psi\tan\phi + C_{\psi}
+	\dot{\psi} &= -\frac{L}{v\cos\gamma}\sin\sigma - \frac{v}{r}\cos\gamma\cos\psi\tan\phi + C_{\psi}\label{Eq:dynamics:heading:time}
 \end{align}
 where $r$ is the distance from the center of Mars to the center of mass of the entry vehicle, and $\theta$ and $\phi$ are latitude and longitude, respectively; the velocity vector is defined by the magnitude of the planet-relative velocity, $v$, the flight path angle $\gamma$, and the heading angle angle $\psi$, defined counterclockwise from East. The bank angle, $ \sigma $, is the clockwise rotation angle between the lift vector and the vertical plane containing the velocity vector; thus $\sigma=0$ corresponds to the full lift-up orientation. 
 The magnitude of the gravitational acceleration is $g=\mu/r^2$, and $\mu=42,828\, \mathrm{km}^3/\mathrm{s}^2$ is the gravitational constant of Mars. Mars is assumed to be a sphere with planet radius $r_p=3396.2$ km, and the altitude above the surface is $h=r-r_p$. The aerodynamic accelerations are 
@@ -25,7 +24,7 @@ The magnitude of the gravitational acceleration is $g=\mu/r^2$, and $\mu=42,828\
 		L &= \frac{1}{2}\rho v^2 \frac{S}{m}C_D \label{Eq:lift_accel}\\
 		D &= \frac{1}{2}\rho v^2 \frac{S}{m}C_L \label{Eq:drag_accel}
 \end{align}
-where $\rho$ is the atmospheric density of mars, $S$ is the vehicle surface area, and $m$ is the vehicle mass.  The Coriolis terms, $ C_{\gamma} $ and $ C_{\psi} $, are
+where $\rho$ is the atmospheric density of Mars, $S$ is the vehicle surface area, and $m$ is the vehicle mass.  The Coriolis terms, $ C_{\gamma} $ and $ C_{\psi} $, are
 \begin{align}
 	\begin{split}
 		C_{\gamma} &= 2\omega_p\cos\psi\cos\phi \\
@@ -34,12 +33,12 @@ where $\rho$ is the atmospheric density of mars, $S$ is the vehicle surface area
 \end{align}
 with planet rotation rate $\omega_p=7.08\times10^-5$ rad/s. 
 
-When developing an entry guidance algorithm, it is useful to consider a reduced state vector that includes only longitudinal motion. In place of the coordinates $(\theta,\,\phi)$, the distance along the great circle arc defined by the vehicle heading is substituted. Ignoring the offset between the great circle azimuth and the instantaneous vehicle heading, this distance is computed by integrating
+Separation of the longitudinal and lateral guidance has proven effective in the state-of-the-practice approach, and we follow this when developing the robust optimal entry guidance algorithm. In place of the coordinates $(\theta,\,\phi)$, the distance along the great circle arc defined by the vehicle heading is substituted. Ignoring the offset between the great circle azimuth and the instantaneous vehicle heading, this distance is computed by integrating
 \begin{align}
 	\dot{s} = v\cos\gamma
 \end{align}
 and the longitudinal state vector is $\state_{\mathrm{lon}} = [r,\,s,\,v,\,\gamma]^T$. An important quantity related to $s$ is range-to-go. For a terminal target range, $s_{\mathrm{target}}$, the range-to-go is $\rtg=s_{\mathrm{target}}-s$. During flight, the target distance is fixed, and thus $\dot{\rtg}=-\dot{s}$.
-The dynamics of the longitudinal state vector are 
+The longitudinal dynamics are 
 \begin{align}
 	\dot{h} &= v\sin\gamma \label{Eq:dynamics:altitude:time}\\
 	\dot{s} &= v\cos\gamma \\
@@ -60,9 +59,9 @@ The density of the Martian atmosphere is modeled by an exponential function
 \begin{align}
 	\rho(h) = \rho_0\exp(-\frac{h}{h_s}) \label{Eq:Density}
 \end{align}
-where $\rho_0=0.0158\,\mathrm{g}/\mathrm{m}^3$ is the reference density and $h_s=9.354$ km is a scale height. This profile is shown in Fig.~\ref{Fig:DensityNominal}. The speed of sound is also modeled as a function of altitude
+where $\rho_0=0.0158\,\mathrm{g}/\mathrm{m}^3$ is the reference density and $h_s=9.354$ km is the scale height. This profile is shown in Fig.~\ref{Fig:DensityNominal}. The speed of sound is also modeled as a function of altitude. 
 
-The vehicle is assumed to be low lift entry capsule in the same class as MSL and Mars 2020, with a lift-to-drag ratio $L/D\in[0.24, 0.31]$. The aerodynamic coefficients are, in general, functions of Mach number and the angle of attack. As is common in entry guidance developments, the angle of attack profile is assumed to be a fixed function of Mach number, and thus the coefficients depend solely on Mach number. The nominal aerodynamic coefficient profiles are curve-fitted from 500 MSL profiles~\cite{joel_dissertation}. The nominal coefficients, and their ratio $L/D = C_L/C_D$, are shown in Fig.~\ref{Fig:AeroCoeffNominal}.
+The vehicle is assumed to be a low lift entry capsule. In the numerical assessment presented in Chapter~\ref{Ch:AssessmentConditions}, the vehicle is in the same class as MSL, with a lift-to-drag ratio $L/D\in[0.24, 0.31]$. A heavier vehicle with a nominal $L/D=0.28$ is considered in Chapter~\ref{Ch:SRL_EDL}. The aerodynamic coefficients are, in general, functions of Mach number and angle of attack. As is common in entry guidance developments, the angle of attack profile is assumed to be a fixed function of Mach number, and thus the coefficients depend solely on Mach number. The nominal aerodynamic coefficient profiles are curve-fitted from 500 MSL profiles~\cite{joel_dissertation}. The nominal coefficients, and their ratio $L/D = C_L/C_D$, are shown for the MSL-class vehicle in Fig.~\ref{Fig:AeroCoeffNominal}.
 \begin{figure}[h!]
 	\centering
 	\includegraphics[width=1\textwidth]{Images/DensityNominal}
@@ -79,8 +78,7 @@ The vehicle is assumed to be low lift entry capsule in the same class as MSL and
 \subsection{Uncertainty Models}
 Typically, the uncertain initial state and model parameters are discussed in the context of assessing the guidance algorithm. However, in this dissertation, a key component of the guidance approach is incorporating uncertainty during the reference trajectory design, and thus they are given here. All uncertain variables are assumed to be normally distributed, but we note that the guidance approach developed in this dissertation applies to any distributed parameters with known mean and covariance. 
 
-%TODO: Talk about orbital insertion/delivery as the reason for initial state dispersions 
-The approach phase, prior to the entry phase, targets a nominal entry state, but errors in the insertion maneuver results in an uncertain entry state
+The approach phase, prior to the entry phase, targets a nominal entry state, but errors in the insertion maneuver and navigated state result in an uncertain entry state
 \begin{align}
 	\state(t_0, \delta\state_0) &= \bar{\state}_0 + \delta\state_0 \\
 	\delta\state_0 &\sim \normal(\mathbf{0}, \cov_{\state_0}) \nonumber
@@ -110,7 +108,7 @@ where $\bar{\rho}(h)$ is given by Eq.~\eqref{Eq:Density}. In Eq.~\eqref{Eq:Densi
 
 Collecting these uncertainties in the vector-valued random variable $\param = [\delta\state_0,\, f_{\frac{L}{D}},\, f_{\beta},\, f_{\rho}]^T$, the uncertain vehicle dynamics are written compactly as
 \begin{align}
-	\dot{\state}(t,\param) &= \dynamics(\state(t,\param), u(t), \param),\quad
+	\dot{\state}(t,\param) &= \dynamics(\state(t,\param), u(t,\state), \param),\quad
 		\state(t_0,\param) = \state_0(\param) \label{Eq:UncertainDynamics}
 \end{align}
 where $\param \sim \mu = \normal(\mathbf{0},\cov_{\param})$ and 
@@ -127,7 +125,7 @@ where $\param \sim \mu = \normal(\mathbf{0},\cov_{\param})$ and
 %	\E{x(t,\param)} = \int_{\mathbb{R}^{n_p}}x(t,\param)\mu(\param)\mathrm{d}\param
 %\end{align}
 Note that, for a given realization of $\param$, the dynamics are a deterministic function of the state and control. A nominal trajectory is defined as one in which $\param=\mathbf{0}$. For nonlinear systems like the entry dynamics, the mean trajectory is not generally equal to the nominal trajectory, except at the initial time. 
-The Taylor series of a generic scalar state, $x(t,\param)$, expanded around $\param=\mathbf{0}$, is 
+The Taylor series of a generic scalar variable, $x(t,\param)$, expanded around $\param=\mathbf{0}$, is 
 \begin{align}
 	x(t,\param) = x(t,\mathbf{0}) + \Phi_1\param + \frac{1}{2}\param^T\Phi_2\param + \dots
 \end{align} 
