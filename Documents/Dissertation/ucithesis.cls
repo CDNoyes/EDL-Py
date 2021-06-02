@@ -38,6 +38,7 @@
 \RequirePackage[hmargin={1in,1in},vmargin={1in,1in}]{geometry}
 \RequirePackage{setspace}
 
+
 \newcommand{\thesistitle}[1]{\newcommand\Thesistitle{#1}}
 \newcommand{\documenttitle}[1]{\newcommand\Documenttitle{#1}}
 \newcommand{\degreename}[1]{\newcommand\Degreename{#1}}

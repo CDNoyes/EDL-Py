@@ -69,14 +69,25 @@ All of the existing applications of robust optimal control to entry guidance hav
 
 %Reference~\cite{EntryOUUThesis1} explored the relationship between covariance reduction and sensitivity reduction, and ultimately recommended the covariance formulation for several reasons, including smaller problem size due to the symmetry of the covariance matrix, the ability to incorporate measurements, and simpler formulation and interpretation of variances compared to elements of the sensitivity matrix.
 
-For current generation hardware and parachute-based EDL, we restrict our attention to the same class of guidance law as Mars 2020, affine state-feedback.
+For current generation missions using parachute-based EDL, we restrict our attention to the same class of guidance law as Mars 2020, affine state-feedback.
 The specific objectives of this dissertation are 1) for given models of the vehicle and planet (including parametric uncertainty), determine a reference control, reference trajectory, and feedback gains that, when used for closed-loop reference tracking guidance, will optimize a performance index chosen based on mission requirements, and 2) to enable fast, efficient guidance design that is free of computationally expensive Monte Carlo simulations in the loop and hand tuning of key guidance parameters. This is motivated by the approach used for MSL, in which design maps are generated via iteration over guidance parameters with Monte Carlo simulation performed for each combination of parameters. A more detailed review of the MSL design process in deferred to Section~\ref{Sec:ETPC}.
+% Finally, we consider how the role of entry guidance might change in parachute-free, SRP-based EDL. The 3rd objective is to develop an algorithm
 
 To meet our first objective, this dissertation builds on the robust optimal control approach to entry guidance.
 Our formulation differs from the existing formulations in the form of our performance index, the use of velocity as the independent variable, and, in light of the previous discussion, careful consideration of the limited control authority and the effects of control saturation on the state distribution.
 
-The solution of nonlinear optimal control problems is, in general, not a simple task. Add to that the complexity of quantifying uncertainty at each iteration of the solution process, and it is easy to see that solving ROCPs is a challenging problem. To meet our second objective, we propose and demonstrate an efficient solution method for the entry guidance ROCP based on Differential Dynamic Programming (DDP) and the Unscented Transform (UT). The UT is chosen because it is better suited to propagating the mean and state covariance through the nonlinear dynamics than linear methods. A numerical example is given to illustrate this point. DDP is chosen for its suitability to large-scale optimal control problems, and its robust convergence properties. Starting from the control-limited DDP algorithm presented in~\cite{DDP_ControlLimited}, we examine an iterated Linear-Quadratic-like simplification~\cite{iLQG} that is enabling in solving the ROCP. Next, we extend the algorithm to jointly optimize the static feedback gains along with the reference control for improved performance. Using the MSL and Mars 2020 missions as our benchmark, the performance of the guidance solutions is assessed numerically. 
-  
+The solution of nonlinear optimal control problems is, in general, not a simple task. Add to that the complexity of quantifying uncertainty at each iteration of the solution process, and it is easy to see that solving ROCPs is a challenging problem. To meet our second objective, we propose and demonstrate an efficient solution method for the entry guidance ROCP based on Differential Dynamic Programming (DDP) and the Unscented Transform (UT). The UT is chosen because it is better suited to propagating the mean and state covariance through the nonlinear dynamics than linear methods. A numerical example is given to illustrate this point. DDP is chosen for its suitability to large-scale optimal control problems, and its robust convergence properties. Starting from the control-limited DDP algorithm presented in~\cite{DDP_ControlLimited}, we examine an iterated Linear-Quadratic-like simplification~\cite{iLQG} that is enabling in solving the ROCP. Next, we extend the algorithm to jointly optimize the static feedback gains concurrently with the reference control for improved performance. Using the MSL and Mars 2020 missions as our benchmark, the performance of the guidance solutions is assessed numerically. 
+
+
+
+%\subsection{Other Approaches to Entry Guidance}
+%
+%The ETPC represents the current practice in Mars entry guidance but many alternative entry guidance algorithms have been proposed. There are many ways that algorithms can be characterized and categorized. One popular delineation is between methods that utilize a pre-planned reference trajectory, and those that do not. In the first category are explicit reference tracking approaches, in which a feedback law attempts to keep the vehicle state close to the reference state. Many nonlinear control techniques, such as feedback linearization~\cite{FeedbackLinearization}, nonlinear predictive control~\cite{NMPC,JoelController} and sliding mode control~\cite{SlidingModeEG1} have been applied to reference tracking guidance. 
+%One advantage of reference-based solutions is the flexibility in designing the reference trajectory before flight, allowing for intensive computations not suitable for in-flight operations. Guidance solutions generated by solving ROCPs, like those discussed earlier, fall into this category. Reference trajectory-based approaches also have some degree of model independence~\cite{joel_dissertation}.
+%
+%In the category of reference-free guidance are computational approaches, including predictor-corrector guidance~\cite{EntryPredictCorrect}, and convex optimization~\cite{MaxCrossrangeConvexLu,ConvexEntryGuidance}. These methods have higher computational complexity and model dependence, but may also offer higher performance. In Chapters~\ref{Ch:FuelOptimalPaper} and \ref{Ch:FuelOptimalAssessment} we propose a predictor-corrector guidance
+%
+%Many entry guidance algorithms defy categorization along these lines, or blur the line between these approaches. For instance, the ETPC does make use of a reference trajectory, but not does track it directly. Instead, the reference trajectory is used to determine sensitivities, called influence coefficients, that allow the guidance to steer the vehicle along a neighboring path that ends at the same range at a fixed velocity. Because the ETPC makes a prediction of the terminal range and corrects based on the predicted error, it is sometimes called an analytical predictor-corrector. There are also a number of proposed methods for onboard updating of reference trajectories~\cite{GuangfeiReplanning} that naturally have elements of both reference tracking and computational guidances.  
 
 % Refences with notes:
 % AltitudeUnderUncertainty
@@ -95,7 +106,7 @@ The solution of nonlinear optimal control problems is, in general, not a simple 
 %The specific objective of this dissertation are to design an entry guidance with the same computational complexity as the state-of-the-practice guidance algorithm while providing superior performance. 
 
 \section{Dissertation Organization}
-This remainder of this dissertation is organized as follows: The remainder of this chapter further reviews entry guidance approaches, with special attention paid to the state-of-the-practice guidance flown on MSL and Mars 2020. 
+This remainder of this dissertation is organized as follows: The remainder of this chapter further reviews the state-of-the-practice guidance flown on MSL and Mars 2020. 
 
 Chapter~\ref{Ch:EGConcepts} begins with an overview of the EDL timeline. A high level discussion of the entry guidance problem, especially target conditions, is presented.
 
@@ -107,12 +118,14 @@ Chapter~\ref{Ch:SolutionMethod} discusses uncertainty quantification and present
 
 Chapter~\ref{Ch:AssessmentConditions} presents the assessment conditions, including algorithm parameters, details of the Monte Carlo simulations. 
 
-Chapter~\ref{Ch:NumericalAssessment} presents an assessment of the guidance algorithm.  A negative result associated with joint optimization of velocity-varying feedback control gains is presented. 
+Chapter~\ref{Ch:NumericalAssessment} presents an assessment of the guidance algorithm for MSL-class vehicle.  A negative result associated with joint optimization of velocity-varying feedback control gains is presented. Chapter~\ref{Ch:SRL_EDL} presents a similar assessment for a heavier vehicle in the class of the Sample Retrieval Lander.
+
+In Chapter~\ref{Ch:FuelOptimalPaper} we direct our attention to chuteless, SRP-based EDL envisioned for future missions. A numerical predictor-corrector entry guidance algorithm is developed to minimize the predicted propellant during the powered descent phase. Chapter~\ref{Ch:FuelOptimalAssessment} presents a numerical assessment of the guidance approach. 
 
 In Chapter~\ref{Ch:Conclusions} the conclusions are stated, and several avenues for future work are discussed.
 
-\section{Entry Guidance Review}
-\subsection{Entry Terminal Point Controller}\label{Sec:ETPC}
+%\section{Entry Guidance Review}
+\section{Entry Terminal Point Controller}\label{Sec:ETPC}
 The state-of-the-practice for Mars entry guidance, used on MSL and Mars 2020, is a modified version of the Apollo command module entry guidance \cite{MSL_EDL2} called the entry terminal point controller (ETPC). 
 The three phases of the ETPC are prebank, range control, and heading alignment. In the prebank phase, there is no guidance, but the vehicle is rotated to the expected initial bank angle for the start of the range control phase.
 The range control guidance begins when the sensed drag deceleration exceeds a threshold value, and consists of longitudinal guidance and lateral guidance. Longitudinal guidance modulates the bank angle magnitude to control the range flown, and reduce range dispersions at parachute deployment. Lateral guidance operates concurrently with longitudinal guidance during range control to command bank reversals when a measure of the crossrange to the target exceeds the deadband threshold, which is a quadratic function of velocity. At a specified velocity, the guidance switches from range control to heading alignment, during which the bank angle is commanded to reduce the crossrange error. During heading alignment, the bank angle magnitude is restricted to $30^{\circ}$. This ensures that most of the lift vector is opposite gravity, which results in increased parachute deploy altitude.
@@ -126,14 +139,7 @@ In the second step, some of the more severe off-nominal entries are simulated in
 
 In Chapter~\ref{Ch:GuidanceStrategy}, we propose an alternative to the longitudinal guidance operating during the range control phase. However, because our alternative guidance does not focus exclusively on range, we prefer to refer to it as second phase guidance. Similarly, the third phase guidance for MSL and Mars 2020 was heading alignment guidance, and alternative third phase guidance approaches has been proposed~\cite{GuangfeiDissertation}.
 
-\subsection{Other Approaches to Entry Guidance}
 
-While the ETPC represents the current practice in Mars entry guidance, many alternative entry guidance algorithms have been proposed. There are many ways that algorithms can be characterized and categorized. One popular delineation is between methods that utilize a pre-planned reference trajectory, and those that do not. In the first category are explicit reference tracking approaches, in which a feedback law attempts to keep the vehicle state close to the reference state. Many nonlinear control techniques, such as feedback linearization~\cite{FeedbackLinearization}, nonlinear predictive control~\cite{NMPC,JoelController} and sliding mode control~\cite{SlidingModeEG1} have been applied to reference tracking guidance. 
-One advantage of reference-based solutions is the flexibility in designing the reference trajectory before flight, allowing for intensive computations not suitable for in-flight operations. Guidance solutions generated by solving ROCPs, like those discussed earlier, fall into this category. Reference trajectory-based approaches also have some degree of model independence~\cite{joel_dissertation}.
-
-In the category of reference-free guidance are computational approaches, including predictor-corrector guidance~\cite{EntryPredictCorrect}, and convex optimization~\cite{MaxCrossrangeConvexLu,ConvexEntryGuidance}. These methods have higher computational complexity and are highly model dependent.
-
-Many entry guidance algorithms defy categorization along these lines, or blur the line between these approaches. For instance, the ETPC does make use of a reference trajectory, but not does track it directly. Instead, the reference trajectory is used to determine sensitivities, called influence coefficients, that allow the guidance to steer the vehicle along a neighboring path that ends at the same range at a fixed velocity. Because the ETPC makes a prediction of the terminal range and corrects based on the predicted error, it is sometimes called an analytical predictor-corrector. There are also a number of proposed methods for onboard updating of reference trajectories~\cite{GuangfeiReplanning} that naturally have elements of both reference tracking and computational guidances.
 
 % Reference updating approaches? Also blur the line sicne they use reference but also are computational for onbaord updating...
 

@@ -97,13 +97,13 @@ This example is meant to motivate our choice of the UT over LC; more detailed ex
 %TODO: Show control profile, trajectory plots with MC samples, UT points? Or maybe just estimated 3-sigma bounds but might be too messy with three on there Also show a table of the terminal statistics. 
 
 \section{Differential Dynamic Programming}\label{Sec:DDP}
-Differential Dynamic Programming (DDP) is a shooting method originally devised to solve unconstrained nonlinear optimal control problems that has since seen numerous extensions, including to constrained problems \cite{DDP_ControlLimited,HDDP1,HDDP2,DDP_NonlinearConstraints,DDP_InteriorPoint}, and stochastic problems \cite{iLQG, DDP_Stochastic, ozaki_UT,ozaki2020tube}. DDP iteratively solves for a locally optimal trajectory and control starting from a nominal trajectory and control.
+Differential Dynamic Programming (DDP) is a shooting method originally devised to solve unconstrained nonlinear optimal control problems that has since seen numerous extensions, including to constrained problems \cite{DDP_ControlLimited,HDDP1,HDDP2,DDP_NonlinearConstraints,DDP_InteriorPoint}, and stochastic problems \cite{iLQG, DDP_Stochastic, ozaki_UT,ozaki2020tube}. DDP is a second-order algorithm that iteratively solves for a locally optimal trajectory and control starting from a nominal trajectory and control. Like Newton's method, DDP can achieve quadratic convergence rates~\cite{DDP}.
 
 In this section by reviewing the control-limited DDP method, proposed in Ref.~\cite{DDP_ControlLimited}, that will be used as the basis for solving the robust optimal guidance problem. The following subsections discuss modifications to the algorithm and the problem formulation that will finally enable the solution of the problem. In the first subsection we present a extension of the algorithm that allows for the joint optimization of static design parameters. The following subsection proposes a simplification that vastly reduces computational time and memory requirements at the expense of lower convergence rate. This simplification is instrumental in solving the large-scale problem. Next, we discuss a reformulation of the performance objective into a Lagrange (or running) cost instead of a Mayer (or terminal) cost. Finally, we present a differentiable approximation to the saturation nonlinearity in the controller, Eq.~\eqref{Eq:Control}. Since DDP requires derivatives of the dynamic equations with respect to the reference control, state variables, and potentially the feedback gains, replacing the non-differentiable saturation function is essential to the numerical solution.
 
 This particular DDP algorithm is formulated in discrete time, so the continuous time dynamics must be discretized. In our numerical examples, Euler integration is used:
 \begin{align}
-	\state_{i+1} = \mathbf{F}(v, \state_i,\control_i) = \state_i + \state_i'\Delta v \label{Eq:DiscreteDynamics}
+	\state_{i+1} = \mathbf{f}(v, \state_i,\control_i) = \state_i + \state_i'\Delta v \label{Eq:DiscreteDynamics}
 \end{align}
 A trajectory $\{\State,\Control\}$ is a sequence of controls $ \Control=\{\control_0,\control_1,...,\control_{N-1}\} $ and corresponding states $\State=\{\state_0,\state_1,...,\state_N\}$ determined by integrating \eqref{Eq:DiscreteDynamics} from $\state_0$.
 Although the ROBG as posed in Eq.~\eqref{Eq:Objective} considers only a terminal cost, in this section we consider a generic cost function $J$ consisting of a sum of running costs $l$ and a terminal cost $l_N$:
@@ -141,27 +141,35 @@ The optimal control modification $\delta\control^*$ for some perturbation $\delt
 \begin{align}
 	\mathbf{k} = &\arg\min_{\delta\control} Q(\delta\state,\delta\control) \\
 	&\mathrm{subject\,to\,\;} \nonumber\\
-	\control_{\min}\le &\control+\delta\control \le\control_{\max}
+	&\control_{\min}\le \control+\delta\control \le\control_{\max}
 \end{align}
-and $K = -Q_{\control\control}^{-1}Q_{\control\state}$. Substituting the optimal control into the expansion of $Q$, a quadratic model of $V$ is obtained with derivatives
+In general, the Projected-Newton method proposed in \cite{DDP_ControlLimited} is used to solve this problem and any controls at one of its limits have their associated directions in the feedback gain $K = -Q_{\control\control}^{-1}Q_{\control\state}$ set to zero. When the control is a scalar (as in the problem this algorithm will be used to solve in this dissertation), the solution is given in closed form by
+\begin{align}
+k^* = \mathrm{sat}_{[u_{\min}-u,u_{\max}-u]}(-\frac{Q_u}{Quu})
+\end{align}
+and $K=\zero$ whenever $u$ is saturated. 
+ Substituting the optimal control into the expansion of $Q$, a quadratic model of $V$ is obtained with derivatives
 \begin{align}
 	\begin{split}
 		\label{eq_value_recurse}
-		V_\state &= Q_{\state}- K^TQ_{\control\control}\mathbf{k}\\
-		V_{\state\state} &= Q_{\state\state} - K^TQ_{\control\control}K.
+		V_\state &= Q_{\state} + K^TQ_{\control\control}\mathbf{k} + Q^T_{\control\state}k + K^TQ_{\control}\\
+		V_{\state\state} &= Q_{\state\state} + K^TQ_{\control\control}K + Q^T_{\control\state}K + K^TQ_{\control\state}.
 	\end{split}
 \end{align}
+Note these derivatives are different from those given in Ref.~\cite{DDP_ControlLimited}, but agree with other DDP developments~\cite{DDP2,DDP_NonlinearConstraints}.
 The backward pass is performed by initializing $V$ and its derivatives with the value and derivatives of the terminal objective, then recursively computing the optimal control policy and Eq.~(\ref{eq_value_recurse}). 
 
 The forward pass uses the newly computed control policy to integrate the new trajectory, subject to a backtracking line search
 \begin{align}
 	\hat{\state}_0 &= \state_0 \\
 	\hat{\control}_{i} &= \control_i + \epsilon \mathbf{k}_i + K_i(\hat{\state}_i - \state_i)\\
-	\hat{\state}_0 &= f(\hat{\state}_i,\hat{\control}_i)
+	\hat{\state}_{i+1} &= \mathbf{f}(v, \hat{\state}_i,\hat{\control}_i)
 \end{align}
 where $\epsilon$ is a search parameter initialized to 1 and reduced until the Armijo rule \cite{Armijo} is satisfied, i.e., the value function shows sufficient improvement, as measured by the ratio of actual improvement to expected improvement
 \begin{align}
-\frac{J(\Control + \epsilon\delta\Control) - J(\Control)}{\epsilon J_\Control^T\delta\Control} \le \epsilon_{improve} \label{Eq:Armijo}
+%\frac{J(\Control + \epsilon\delta\Control) - J(\Control)}{\epsilon J_\Control^T\delta\Control} \le \epsilon_{improve} \label{Eq:Armijo}
+\frac{V(\Control + \epsilon\delta\Control) - V(\Control)}{\Delta V} \le \epsilon_{improve} \label{Eq:Armijo} \\
+\Delta V = \sum_{i=0}^{N} \left(-\epsilon\mathbf{k}_i^TQ_\control - \alpha^2\mathbf{k}_i^TQ_{\control\control}\mathbf{k}_i \right)
 \end{align}
 where $\epsilon_{improve}$ is the minimum improvement ratio, and is generally taken to be quite small \cite{Optimization:Nocedal}.
  When the step is accepted, the regularization parameter $\lambda$ is decreased
@@ -219,13 +227,13 @@ The $\delta_{\design}$ that minimizes Eq.~\eqref{Eq:ValueParamExpansion} is dete
 \begin{align}
 	\delta_{\design} = -V_{\design\design}^{-1}V_{\design}
 \end{align}
-In practice, the update must be treated like the control updates by using a line search $\delta_{\design} = -\epsilon_{\design} V_{\design\design}^{-1}V_{\design}$. While a different line search parameter could be utilized, in our implementation we update the control and design parameters with the same stepsize, i.e., $\epsilon_\design=\epsilon$. There is no guarantee that $V_{\design\design}$ is positive definite, and thus regularization of the matrix may be required, $\delta_{\design} = -\epsilon_{\design} \tilde{V}_{\design\design}^{-1}V_{\design}$. 
+In practice, the update must be treated like the control updates by using a line search $\delta_{\design} = -\epsilon_{\design} V_{\design\design}^{-1}V_{\design}$. While a different line search parameter could be utilized, in our implementation we update the control and design parameters with the same stepsize, i.e., $\epsilon_\design=\epsilon$. There is no guarantee that $V_{\design\design}$ is positive definite, and thus regularization of the matrix may be required, i.e., $\delta_{\design} = -\epsilon_{\design} \tilde{V}_{\design\design}^{-1}V_{\design}$ where $\tilde{V}_{\design\design} = V_{\design\design} + \lambda I$. 
 %Unlike the control regularization, which applies the same shift to the control Hessian at every step and is iteratively updated, the design regularization is applied only to a single Hessian matrix. Additionally, the number of design parameters in generally small. For this reason, the regularization method preferred here is to compute the eigenvalues of $V_{\design\design}$, and replace small/negative eigenvalues with regularization term - shifting from Newton-like to gradient descent as the amount of regularization increases.
 
 %This can be used to jointly optimize the feedback gains, entry flight path angle and more. This is motivated by the ``overfitting" problem. 
 
 \subsection{Second Order Dynamics Derivatives}\label{Sec:DDP_Simplification}
-The second derivatives $\mathbf{f}_{\state\state},\, \mathbf{f}_{\control\state}$ in Eqs.~\eqref{eq_hessian1})~and~\eqref{eq_hessian2} are $n\times n\times n$ and $m\times n\times n$ tensors, respectively, that must either be stored at $N$ timesteps, or else recomputed in the event the backward pass must be repeated with increased regularization. For large $n$, both computing and storing these quantities is problematic. Eliminating these terms entirely, as is done in the iterative Linear Quadratic Gaussian method \cite{iLQG}, leads to poor performance for the problem under consideration for some values of $(w_h,w_s)$ and some guesses at the optimal control. In particular, the first-order algorithm has a slower convergence rate and a smaller radius of convergence, and different guesses for the initial control sequence often lead to different local minima. In contrast, the full second-order DDP algorithm consistently converges to a single minimum from most initial guesses. We propose a compromise in which only the $n\times m \times m$ tensor $f_{\control\control}$ is retained in the above equations. Numerical experiments suggest this is sufficient to avoid poor solutions, at the expense of a slower convergence rate than the full algorithm with all second-order terms included. However, in the situation at hand, in which the number of controls $m$ is fixed and small ($ m=1 $), and the augmented state dimension, which depends on the number of uncertainties under consideration, is large ($n=78$ for $\param\in\mathbb{R}^6$), this modification proves to be enabling for $N\geq 100$. A limited-memory version of the Quasi-Newton approximations to these terms proposed in \cite{QNDDP} may also be a good choice to obtain superlinear convergence properties of the approximated second-order algorithm while reducing the memory required. 
+The second derivatives $\mathbf{f}_{\state\state},\, \mathbf{f}_{\control\state}$ in Eqs.~\eqref{eq_hessian1})~and~\eqref{eq_hessian2} are $n\times n\times n$ and $m\times n\times n$ tensors, respectively, that must either be stored at $N$ timesteps, or else recomputed in the event the backward pass must be repeated with increased regularization. For large $n$, both computing and storing these quantities is problematic. Eliminating these terms entirely, as is done in the iterative Linear Quadratic Gaussian method \cite{iLQG}, leads to poor performance for the problem under consideration for some values of $(w_h,w_s)$ and some guesses at the optimal control. In particular, the first-order algorithm has a slower convergence rate and a smaller radius of convergence, and different guesses for the initial control sequence can lead to different local minima. In contrast, the full second-order DDP algorithm consistently converges to a single minimum from most initial guesses. We propose a compromise in which only the $n\times m \times m$ tensor $\mathbf{f}_{\control\control}$ is retained in the above equations. Numerical experiments, an example of which is presented in Section~\ref{Sec:ConvergenceProperties}, suggest the convergence rate with this modification approaches that of the full algorithm with all second-order terms included at a huge reduction in computation time. For the situation at hand, in which the number of controls $m$ is fixed and small ($ m=1 $), and the augmented state dimension, which depends on the number of uncertainties under consideration, is large ($n=78$ for $\param\in\mathbb{R}^6$), this modification proves to be enabling for $N\geq 100$. A limited-memory version of the Quasi-Newton approximations to these terms proposed in \cite{QNDDP} may also be a good choice to obtain superlinear convergence properties of the approximated second-order algorithm while reducing the memory required. 
 %(This reduces complexity from cubic in $n$ to linear)
 %TODO: maybe say that empiraclly the convergence is barely slower when using the reduced method
 

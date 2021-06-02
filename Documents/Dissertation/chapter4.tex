@@ -28,7 +28,12 @@ Since the entry uncertainties are generally specified at the entry interface and
 
 \section{Feedback Control Form}
 As a result of considering uncertainty, the state variables are random variables and the goal is to optimize a distribution of trajectories rather than a single trajectory.
-In designing the reference trajectory, the effects of feedback control on the distribution are accounted for. Thus the closed-loop control $u$ consists of both a reference control $\ur$, and a feedback control $\delta u$, in contrast to open-loop design methods where $u=\ur$. 
+In designing the reference trajectory, the effects of feedback control on the distribution are accounted for. Thus the closed-loop control $u$ consists of both a reference control $\ur$, and a feedback control $\delta u$, in contrast to open-loop design methods where $u=\ur$. Because the control variable is the cosine of an angle, its magnitude must be bounded by one. 
+Due to the low lift capability of current generation Mars entry capsules, it may be prudent to further restrict the vehicle from bank angles that orient the lift vector downward, so in our application the lower bound is taken to be zero. The limits apply to the reference control, so the path constraint is
+\begin{align}
+	0 \le \ur(v) \le 1 \label{Eq:Control_bounds}
+\end{align}
+which disallows reference bank angle magnitudes greater than $90^\circ$.
 The control law is assumed to be to a saturated linear state feedback 
 \begin{align}
 	u(v,\state_{\mathrm{lon}}) &= \mathrm{sat}_{[0,1]}\left(\frac{\frac{L}{D})_{\mathrm{ref}}\ur(v)}{\frac{L}{D}} + \delta u(v,\state_{\mathrm{lon}})\right) \label{Eq:Control}\\
@@ -40,8 +45,6 @@ where we note that, consistent with state-of-the-practice EDL operations on Mars
 %\begin{align}
 %	s = -\int_{E_0}^{E_f}$\frac{\cos\gamma}{D}\mathrm{d}E \approx -\int_{E_0}^{E_f}$\frac{1}{D}\mathrm{d}E
 %\end{align}
-In the numerical results presented later, the gains $[k_D, k_{\gamma}, k_s]$ in Eq.~(\ref{Eq:Feedback}) are chosen to be constant values, but they may in general be functions of velocity. 
-The MSL and Mars 2020 velocity-dependent gains could be used; they are designed, based on linearized dynamics, to fly a trajectory neighboring the reference which ends with the desired range. Our constant gain feedback control is always driving the perturbed trajectory back to the reference. %We will demonstrate that good guidance performance can be achieved.
 The saturation function is defined
 \begin{align*}
 	\mathrm{sat}_{[a,b]}(x) = \left\{\begin{array}{lc}
@@ -50,18 +53,27 @@ The saturation function is defined
 		b, &  b < x
 	\end{array} \right. % The period stops a warning about not closing the left 
 \end{align*}
-The saturation function is required to ensure that, regardless of the value of the reference control $ \ur $, the feedback control $u(v,\state)$ always satisfies the control limits. Because the control variable is the cosine of an angle, its magnitude must be bounded by one. Due to the low lift capability of current generation Mars entry capsules, it may be prudent to further restrict the vehicle from bank angles that orient the lift vector downward, so in our application we apply
-\begin{align}
-	0 \le \ur(v) \le 1 \label{Eq:Control_bounds}
-\end{align}
-which disallows bank angle magnitudes greater than $90^\circ$. Since vertical $L/D$ is equal to $\frac{L}{D}u$, Eq.~\eqref{Eq:Control_bounds} serves the same purpose as the $L/D$ limiter used on MSL and Mars 2020~\cite{MSL_EDL2}. Equation~\eqref{Eq:Control_bounds} limits the reference control, while the saturation function in Eq.~\eqref{Eq:Control} limits the closed-loop control. These bounds need not be equal; ad hoc control margin could be gained by imposing tighter bounds in Eq.~\eqref{Eq:Control_bounds} than in the saturation function, but instead we set them to be equal and allow the optimization process, presented in the following chapter, to determine the robust optimal margin along the trajectory.
+The saturation function is required to ensure that, regardless of the value of the reference control $ \ur $, the feedback control $u(v,\state)$ always satisfies the control limits. Since vertical $L/D$ is equal to $\frac{L}{D}u$, the saturation serves the same purpose as the $L/D$ limiter used on MSL and Mars 2020~\cite{MSL_EDL2}. Equation~\eqref{Eq:Control_bounds} limits the reference control, while the saturation function in Eq.~\eqref{Eq:Control} limits the closed-loop control. These bounds need not be equal; ad hoc control margin could be had by imposing tighter bounds in Eq.~\eqref{Eq:Control_bounds} than in the saturation function. However, as pointed out in Ref.~\cite{MSL_EDL2}, some saturation is not necessarily undesirable, so instead we choose the reference limits and closed-loop limits to be equal and allow the optimization process, presented in the following chapter, to determine the robust optimal margin along the trajectory.
 
+In the numerical results presented later, the gains $[k_D, k_{\gamma}, k_s]$ in Eq.~(\ref{Eq:Feedback}) are chosen to be constant values, but they may, in general, be functions of velocity. 
+The MSL and Mars 2020 velocity-dependent gains could be used; they are designed, based on linearized dynamics, to fly a trajectory neighboring the reference which ends with the desired range. Our constant gain feedback control is always driving the perturbed trajectory back to the reference. %We will demonstrate that good guidance performance can be achieved.
 The state deviations in Eq.~\eqref{Eq:Feedback} are computed with respect to the reference state at the current velocity, e.g., $\delta D(v) = D(v) - D_{\mathrm{ref}}(v)$.
 The form of Eq.~\eqref{Eq:Control} may be unfamiliar but notice that when the control is not saturated, Eq.~\eqref{Eq:Control} may be rearranged as
 \begin{align}
-	\frac{L}{D}u(v,\state_{\mathrm{lon}}) &= \frac{L}{D}_{\mathrm{ref}}\ur(v) + \frac{L}{D}\delta u(v,\state_{\mathrm{lon}}) \label{Eq:Control_rearranged}
+	\frac{L}{D}u(v,\state_{\mathrm{lon}}) &= \left. \frac{L}{D}\right)_{\mathrm{ref}}\ur(v) + \frac{L}{D}\delta u(v,\state_{\mathrm{lon}}) \label{Eq:Control_rearranged}
 \end{align}
-Compared with the ETPC (see Eq.~(2) in Ref.~\cite{MSL_EDL2}), the only difference lies only in the feedback terms $\delta u$. Just like the ETPC, the control in Eq.~\eqref{Eq:Control} commands the reference vertical $ L/D $, rather than a reference fraction of the available $ L/D $, which turns out to be a more robust choice in the presence of aerodynamic uncertainty.
+Just like the ETPC, the control in Eq.~\eqref{Eq:Control} commands the reference vertical $ L/D $, rather than a reference fraction of the available $ L/D $, which turns out to be a more robust choice in the presence of aerodynamic uncertainty. Compared with the ETPC (see Eq.~(2) in Ref.~\cite{MSL_EDL2}), the difference lies only in the feedback control $\delta u$. Flight path angle is used as a feedback term in place of altitude rate. The rationale is that, when using velocity to interpolate the reference trajectory, only the difference in flight path angle is important. To see this, note $\delta\dot{r}(v) = v\sin\gamma - v\sin\gamma_{\mathrm{ref}} = v(\delta\sin\gamma)$. If the onboard implementation requires that altitude rate be used, we can determine a velocity-varying gain $k_{\dot{r}}$ such that $k_\gamma\delta\gamma \approx k_{\dot{r}}(v)\delta\dot{r}$ as follows
+\begin{align}
+k_{\dot{r}}(v)\delta\dot{r}(v) &= k_{\gamma}\delta\gamma(v) \\
+k_{\dot{r}}(v) &= k_{\gamma}\frac{\delta\gamma(v)}{\delta\dot{r}(v)} \\
+\dot{r} &= v\sin\gamma \\
+\delta \dot{r} &= v\delta\sin\gamma \\
+k_{\dot{r}}(v) &= \frac{k_{\gamma}}{v}\frac{\delta\gamma}{\delta\sin\gamma} \\
+\delta\sin\gamma &= 2\cos\frac{\gamma+\gamma_{\mathrm{ref}}}{2}\sin\frac{\gamma-\gamma_{\mathrm{ref}}}{2} \\
+\delta\sin\gamma &\approx \cos\gamma_{\mathrm{ref}}(\gamma-\gamma_{\mathrm{ref}}) = \cos\gamma_{\mathrm{ref}}\delta\gamma\label{Eq:FPAGainConvert}\\
+k_{\dot{r}}(v) &\approx \frac{k_{\gamma}}{v\cos\gamma_{\mathrm{ref}}(v)}
+\end{align}
+The error in the approximation in Eq.~\ref{Eq:FPAGainConvert} is small when $\gamma$ is close to $\gamma_{\mathrm{ref}}$. For a large flight path angle deviation of $15^{\circ}$, the error for any $\gamma_{\mathrm{ref}}\in[-20^{\circ},5^{\circ}]$ is less than 3\%. 
 
 \section{Defining the Objective Function}
 The first objective is to maximize the mean altitude at the final velocity while minimizing the altitude standard deviation
@@ -80,9 +92,8 @@ The overall performance objective is simply the sum of $J_h$ and $J_s$, posed as
 \begin{align}
 	\min J = -\bar{h}(v_f) + w_h\sigma_h(v_f) + w_s\sigma_s(v_f) \label{Eq:Objective}
 \end{align}
-Due to the nonlinear dynamics, the state distribution will not remain normally distributed; nevertheless we assume that standard deviations remain an appropriate measure of the spread of the distribution. That is, that a reduction in standard deviation will lead to a tighter distribution regardless of the shape of the distribution. Either variances or standard deviations may be used in Eq.~(\ref{Eq:Objective}). In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but in practice, the terminal standard deviations are never exactly zero. Additionally, a small term $\epsilon<<1$ can be added to safeguard against this issue in the event the terminal covariance matrix is only positive semidefinite.
+Equation~\eqref{Eq:Objective} may also be interpreted as the sum of a performance objective (mean altitude) and a robustness objective (the standard deviations). Regardless of the interpretation, the weights offer a simple way to adjust closed-loop performance. Due to the nonlinear dynamics, the state distribution will not remain normally distributed; nevertheless we assume that standard deviations remain an appropriate measure of the spread of the terminal distribution. That is, that a reduction in standard deviation will lead to a tighter distribution regardless of the shape of the distribution. Either variances or standard deviations may be used in Eq.~(\ref{Eq:Objective}). In practice, appropriate choices of the weights can produce equivalent results, but standard deviations are preferred because they are in the same units as the state variables, and allow for more natural interpretations of the weights. An additional consideration is that the square root is not differentiable at zero, but in practice, the terminal standard deviations are never exactly zero. Additionally, a small term $\epsilon<<1$ can be added to safeguard against this issue in the event the terminal covariance matrix is only positive semidefinite.
 %, as might be the case at the initial velocity when considering a certain initial state subject to parametric uncertainty. 
-%TODO: Could talk about the perspective of nominal + robustness instead of altitude vs range 
 %TODO: Discuss the strangeness of defining a reference trajectory by the closed loop mean? Normally, a reference trajectory is created, and the mean is estimated via MC after simulation. 
 
 \section{The Robust Optimal Guidance Problem}\label{Sec:ROGP}

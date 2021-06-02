@@ -1,4 +1,4 @@
-\thesistitle{Robust Optimal Entry Guidance for High Elevation Mars Landing}
+\thesistitle{Robust Optimal Entry Guidance for Future Mars Landers}
 
 %"Dissertation" for PhD, "Thesis" for master's
 \documenttitle{Dissertation}
@@ -14,11 +14,11 @@
 
 % Use the full name of each committee member and full title 
 % (e.g. Professor/Associate Professor).
-\committeechair{Professor Kenneth D. Mease}
+\committeechair{Professor Emeritus Kenneth D. Mease}
 \othercommitteemembers
 {
-  Professor Athanasios Sideris\\
-  Professor Tryphon Georgiou
+  Distinguished Professor Tryphon Georgiou \\
+  Professor Athanasios Sideris
 }
 
 \degreeyear{2021}
@@ -51,13 +51,13 @@
   
   I would like to thank my fellow UCI colleagues, especially Drs. Guangfei Duan, Eric Trumbauer, and Alessandro Bombelli, for many fruitful discussions during our time together.
   
-  I am also indebted to my committee members, Profs. Sideris and Georgiou, for their expedited review and suggestions. 
+  I am also indebted to my committee members, Professor Sideris and Professor Georgiou, for their review and suggestions. 
   
   I would also like to thank my colleagues at the Jet Propulsion Laboratory for their advice, and for their patience. My experience at JPL profoundly shaped the direction of my research culminating in this dissertation. Special thanks to Joel Benito, whose guidance and mentorship taught me so much in so little time, and whose friendship I am continually grateful for. I am a better engineer for having known you. 
   
   I gratefully acknowledge the Holmes Endowed Fellowship for it financial support. 
   
-  Finally, I am immensely grateful to my mother, whose constant support allowed me to pursue this degree.
+  Finally, I am immensely grateful to my mother for all her love and support.
   
 %  You also need to acknowledge any publishers of your previous
 %  work who have given you permission to incorporate that work
@@ -147,7 +147,7 @@
 
 \textbf{PUBLICATIONS}
 
-  \mypubentry{Mars Entry Guidance for High Elevation via Robust Optimal Control}{2021 (Submitted for Review)}{Journal of Spacecraft and Rockets}
+  \mypubentry{Mars Entry Guidance for High Elevation via Robust Optimal Control}{2021}{Journal of Spacecraft and Rockets (Submitted for Review)}
 
 %\vspace{12pt}
 %\textbf{REFEREED CONFERENCE PUBLICATIONS}
@@ -167,8 +167,12 @@
 % currently does not indicate that there is any word limit for the abstract
 \thesisabstract
 {
-  Mars landings at higher elevations than achieved to date are desired for scientific pursuits. The phases of atmospheric flight are entry, descent, and landing. The research reported here concerns the guidance for the entry phase. To support higher elevation landing, entry guidance must deliver the entry vehicle to the required altitude with the required horizontal accuracy at the end of the entry phase. The state-of-the-practice entry guidance cannot both raise the final altitude and achieve the required horizontal accuracy at the end of the entry phase. By formalizing the entry guidance objectives as a robust optimal control problem, we seek both to increase the final altitude and to improve the horizontal accuracy. In this dissertation, we consider only the longitudinal motion and investigate the feasibility of determining a reference trajectory that, in closed-loop reference-trajectory-based guidance, will yield the robust performance required for higher elevation landing. To address robustness, the state variables and uncertain parameters in the entry dynamics are treated as random variables using the unscented transformation to approximate their means and variances and state the performance index in terms of these statistics. Differential dynamic programming is used to solve the robust optimal control problem. Case studies of two different classes of entry vehicle demonstrate both the robust performance of the longitudinal entry guidance and the computational feasibility of the design method.
-
+  Mars landings at higher elevations than achieved to date are desired for scientific pursuits. The phases of atmospheric flight are entry, descent, and landing. The research reported here concerns the guidance for the entry phase. We distinguish between the current generation of Mars landers, defined by its continued reliance on Viking-era space technology, and future missions, such as those carrying humans, characterized by significantly higher entry masses and landing ellipse requirements on the order of 100 m, roughly two orders of magnitude smaller than the current generation.
+  
+  To support higher elevation landing, entry guidance must deliver the entry vehicle to the required altitude with the required horizontal accuracy at the end of the entry phase. The state-of-the-practice entry guidance cannot both raise the final altitude and achieve the required horizontal accuracy at the end of the entry phase. By formalizing the entry guidance objectives as a robust optimal control problem, we seek both to increase the final altitude and to improve the horizontal accuracy. In this approach, we consider only the longitudinal motion and investigate the feasibility of determining a reference trajectory that, in closed-loop reference-trajectory-based guidance, will yield the robust performance required for higher elevation landing. To address robustness, the state variables and uncertain parameters in the entry dynamics are treated as random variables using the unscented transformation to approximate their means and variances and state the performance index in terms of these statistics. Differential dynamic programming is used to solve the robust optimal control problem. Case studies of two different classes of entry vehicle in the current generation demonstrate both the robust performance of the longitudinal entry guidance and the computational feasibility of the design method.
+  
+  One technology hypothesized to be enabling for landing high mass (and therefore high ballistic coefficient) future missions is supersonic retropropulsion. In the latter part of this dissertation we consider the role of entry guidance in missions where powered descent follows the entry phase directly, without an intermediate parachute deceleration prior to ignition of the retropropulsion. In parachute-based architectures, Mars entry guidance algorithms are judged on their ability to control range errors while reaching the safe parachute deployment set. In contrast, in chuteless missions where pinpoint landing is achieved via powered descent, we posit that performance will instead be based on the required propellant to land the vehicle.   
+  A predictor-corrector algorithm, designed to minimize the predicted propellant, is presented. Feasible solutions to the powered descent problem are used to define the entry guidance target set. By computing and storing a mapping from ignition states in the target set to propellant required, the entry guidance algorithm maintains a predicted ignition state that varies over time as various perturbations alter the reachable set of the vehicle. The guidance algorithm updates the bank profile in order to track the propellant optimal reachable state. Simulation results are presented for a hypothetical vehicle with a ballistic coefficient approximately double that of Mars 2020. 
 }
 
 
