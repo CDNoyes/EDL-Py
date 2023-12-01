@@ -1,6 +1,8 @@
 """ Kivy based GUI development.
     Installation required some additional upgrades/installations 
-    Additionally, garden components have to be installed separately like:
+    
+    conda install kivy -c conda-forge
+    conda install kivy-garden
     garden install matplotlib
     
     Simulation.GUI should save its data somewhere (possibly temporary) and call this GUI 
@@ -193,7 +195,7 @@ def generate_dataset():
     
     from EntryGuidance.Simulation import Simulation, EntrySim
     from EntryGuidance.InitialState import InitialState
-    from EntryGuidance.HPC import profile 
+    from EntryGuidance.ParametrizedPlanner import profile 
     
     reference_sim = Simulation(output=False,**EntrySim())
     banks = [-np.pi/2, np.pi/2,-np.pi/9]
@@ -205,6 +207,6 @@ def generate_dataset():
     
     
 if __name__ == "__main__":      
-    # generate_dataset()
+    generate_dataset()
     TrajectoryGUIApp().run()
     

@@ -37,7 +37,7 @@ class SpacecraftDynamics:
     def __dynamics_angular(self, w, t):
         wJw = np.cross(w, self.inertia.dot(w))  # Could compare performance with constructing temporary omega matrix, and using dot instead of cross
         # wJw = np.dot([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[1], w[0], 0]], self.inertia.dot(w))
-        return self.invertia_inverse.dot(u - wJw)
+        return self.inertia_inverse.dot(u - wJw)
 
     def __inertia(self, inertia):
         J = np.asarray(inertia)
@@ -47,7 +47,7 @@ class SpacecraftDynamics:
             J = np.diag(J)
 
         Ji = np.linalg.inv(J)
-        self.inertia, self.invertia_inverse = J, Ji
+        self.inertia, self.inertia_inverse = J, Ji
 
 
 def test():

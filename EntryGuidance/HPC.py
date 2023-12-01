@@ -1,12 +1,16 @@
 """ Differential algebra based replanning using the parametrized planning method.
     aka hybrid predictor corrector
 """
-from Simulation import Simulation, Cycle, EntrySim, TimedSim
-from Triggers import SRPTrigger, AccelerationTrigger
-from InitialState import InitialState
-from Uncertainty import getUncertainty
-from ParametrizedPlanner import profile,profile2
-import Apollo
+import sys
+from os import path
+sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
+
+from EntryGuidance.Simulation import Simulation, Cycle, EntrySim, TimedSim
+from EntryGuidance.Triggers import SRPTrigger, AccelerationTrigger
+from EntryGuidance.InitialState import InitialState
+from EntryGuidance.Uncertainty import getUncertainty
+from EntryGuidance.ParametrizedPlanner import profile,profile2
+import EntryGuidance.Apollo
 
 from pyaudi import gdual_double as gd
 from pyaudi import abs, sqrt
@@ -15,9 +19,6 @@ import matplotlib.pyplot as plt
 from functools import partial
 from scipy.interpolate import interp1d
 
-import sys
-from os import path
-sys.path.append( path.dirname( path.dirname( path.abspath(__file__) ) ) )
 from Utils.RK4 import RK4
 from Utils import DA as da
 
@@ -34,7 +35,7 @@ class controllerState(object):
 
 def controller(time, current_state, switch, bank0, reference, lon_target, lat_target, **kwargs):
     if not hasattr(controller, 'bank'): #or time < tReplan (we've gone back in time so its a new sim) # Perform a number of initializations
-        print "Initializing HPC controller."
+        print( "Initializing HPC controller.")
         controller.bankvars = ['bank{}'.format(i) for i,b in enumerate(bank0)]
         controller.bank = np.array([gd(val,var,2) for val,var in zip(bank0,controller.bankvars)])
         controller.ref = reference # Also need to update the reference each time we replan
@@ -54,7 +55,7 @@ def controller(time, current_state, switch, bank0, reference, lon_target, lat_ta
     # print "In HPC controller: Range Error {} km".format(np.abs(s-controller.ref(v))/1000)
     if v < 5300 and np.abs(s-controller.ref(v)) > 4e3 and controller.nReplan < nReplanMax and (time-controller.tReplan) > tReplanMin:
     # Don't check until velocity is monotonic, less than max replans, hasn't passed the last switch
-        print "Replanning triggered"
+        print( "Replanning triggered")
         controller.nReplan += 1
         controller.tReplan = time
         # One option is just to compare estimated range to go with the reference value at the same (velocity/energy/time)
@@ -77,7 +78,7 @@ def controller(time, current_state, switch, bank0, reference, lon_target, lat_ta
         try:
             controller.ref = interp1d(vel, rtg, fill_value=(rtg[0],rtg[-1]), assume_sorted=True, bounds_error=False, kind='linear')
         except:
-            print "Updating controller reference failed, using previous reference"
+            print("Updating controller reference failed, using previous reference")
 
         # plt.plot(da.const(traj[:,7]),(traj[-1,10].constant_cf - da.const(traj[:,10],array=True))[::-1]*1e3)
         # plt.plot(v,s,'r*')
@@ -98,7 +99,7 @@ def predict(sim, x0, bankProfile, AR):
 def optimize(DA_traj, longitude_target, latitude_target, bankvars, nInactive):
     # NOTICE: targets must be given in degrees!!
     xf = DA_traj[-1]
-    print "Predicted final state: {}".format(da.const(xf)[4:10])
+    print( "Predicted final state: {}".format(da.const(xf)[4:10]))
     # Test some basic optimization:
     f = (xf[5]-longitude_target)**2 + (xf[6]-latitude_target)**2  # Lat/lon target  - works well
     # f = ((xf[3]-6.4)**2 + (1/10000.)*(xf[7]-800.0)**2)    # Alt/vel target - combination doesn't work well
@@ -110,10 +111,10 @@ def optimize(DA_traj, longitude_target, latitude_target, bankvars, nInactive):
     dopt = newton_step(f, bankvars, nInactive)
     dopt *= 15*np.pi/180/np.max(np.abs(dopt)) # Restricts the largest step size
     dopt = line_search(f, dopt, bankvars)       # Estimates the best step size along dopt
-    print "delta Bank: {}".format(dopt*180/np.pi)
+    print( "delta Bank: {}".format(dopt*180/np.pi))
 
     xf_opt = da.evaluate(xf,bankvars,[dopt])[0]
-    print "New final state: {}".format(xf_opt[4:10])
+    print( "New final state: {}".format(xf_opt[4:10]))
     return np.asarray(dopt)
 
 
@@ -229,7 +230,7 @@ def test_expansion():
     t0 = time.time()
     output = da_sim.run(x0,[bankProfile],StepsPerCycle=10)
     tda = time.time()
-    print "DA integration time {}".format(tda-t0)
+    print( "DA integration time {}".format(tda-t0))
 
     xf = output[-1]
 
@@ -255,7 +256,7 @@ def test_expansion():
     dbank = (-1+2*np.random.random([500,len(bank_inp)]))*np.pi/9
     xf_new = da.evaluate(xf,bankvars,dbank)
     teval = time.time()
-    print "DA evaluation time {}".format(teval-tda)
+    print( "DA evaluation time {}".format(teval-tda))
 
     plt.figure(1)
     plt.plot(xf[7].constant_cf,xf[3].constant_cf,'kx')
@@ -292,7 +293,7 @@ def test_expansion():
             plt.figure(3)
             plt.plot(output[-1,8], output[-1,9],'x')
         tint = time.time()
-        print "Integration times for truth comparison {} (includes plotting)".format(tint-t0)
+        # print "Integration times for truth comparison {} (includes plotting)".format(tint-t0)
         xf_new_true = np.array(xf_new_true)
         err = np.abs(xf_new-xf_new_true)
         dbanknorm = np.linalg.norm(dbank,axis=1)

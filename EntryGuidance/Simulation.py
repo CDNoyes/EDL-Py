@@ -15,9 +15,9 @@ from scipy.io import savemat, loadmat
 
 import logging
 from transitions import Machine, State
-from EntryEquations import Entry, System
-from Planet import Planet
-from EntryVehicle import EntryVehicle
+from EntryGuidance.EntryEquations import Entry, System
+from EntryGuidance.Planet import Planet
+from EntryGuidance.EntryVehicle import EntryVehicle
 
 # Graphing specific imports
 from transitions.extensions import GraphMachine as MGraph
